@@ -1,877 +1,727 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interior Design Timeline</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Fix date-fns import for browser usage -->
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/format/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/addWeeks/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/startOfWeek/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/isSameMonth/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/differenceInDays/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/addDays/index.js"></script>
-    
-    <script>
-      // Fallback for date-fns if module versions fail
-      // This is a simplified fallback since importing modular date-fns directly in browser without bundler can be tricky
-      window.dateFnsFallback = {
-        format: (date, formatStr) => {
-            const d = new Date(date);
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            if (formatStr === 'MMM') return months[d.getMonth()];
-            if (formatStr === 'MMM d') return `${months[d.getMonth()]} ${d.getDate()}`;
-            return d.toLocaleDateString();
-        },
-        addWeeks: (date, amount) => {
-            const d = new Date(date);
-            d.setDate(d.getDate() + amount * 7);
-            return d;
-        },
-        startOfWeek: (date, options = { weekStartsOn: 0 }) => {
-            const d = new Date(date);
-            const day = d.getDay();
-            const diff = (day < options.weekStartsOn ? 7 : 0) + day - options.weekStartsOn;
-            d.setDate(d.getDate() - diff);
-            d.setHours(0, 0, 0, 0);
-            return d;
-        },
-        isSameMonth: (dateLeft, dateRight) => {
-            return dateLeft.getFullYear() === dateRight.getFullYear() && dateLeft.getMonth() === dateRight.getMonth();
-        },
-        differenceInDays: (dateLeft, dateRight) => {
-            const diffTime = Math.abs(dateLeft - dateRight);
-            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        },
-        addDays: (date, amount) => {
-            const d = new Date(date);
-            d.setDate(d.getDate() + amount);
-            return d;
-        }
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { 
+  format, 
+  addDays, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  isSameDay, 
+  addWeeks, 
+  subWeeks,
+  startOfMonth,
+  endOfMonth,
+  isToday,
+  differenceInDays,
+  startOfDay
+} from 'date-fns';
+import { 
+  ChevronLeft, 
+  ChevronRight, 
+  Plus, 
+  GripVertical, 
+  CheckSquare, 
+  Calendar,
+  Settings2,
+  Maximize2,
+  Minimize2,
+  Trash2,
+  X
+} from 'lucide-react';
+import { 
+  DndContext, 
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { motion, AnimatePresence } from 'motion/react';
+import { cn } from './lib/utils';
+import { Project, Phase, Task } from './types';
+
+// --- Constants ---
+const COLUMN_WIDTH = 120; // Width of one day in pixels
+const ROW_HEIGHT = 80;
+const SIDEBAR_WIDTH = 250;
+
+// --- Mock Initial Data ---
+const INITIAL_PROJECTS: Project[] = [
+  {
+    id: 'p1',
+    title: 'Modern Penthouse - Chelsea',
+    color: '#3b82f6',
+    phases: [
+      {
+        id: 'ph1',
+        title: 'Concept Design',
+        startDate: addDays(startOfWeek(new Date()), -2),
+        endDate: addDays(startOfWeek(new Date()), 5),
+        color: '#3b82f6',
+        tasks: [
+          { id: 't1', title: 'Moodboard creation', completed: true },
+          { id: 't2', title: 'Material selection', completed: false },
+        ]
+      },
+      {
+        id: 'ph2',
+        title: 'Technical Drawings',
+        startDate: addDays(startOfWeek(new Date()), 7),
+        endDate: addDays(startOfWeek(new Date()), 14),
+        color: '#3b82f6',
+        tasks: [
+          { id: 't3', title: 'Electrical layout', completed: false },
+        ]
       }
-    </script>
-</head>
-<body>
-    <div id="root"></div>
+    ]
+  },
+  {
+    id: 'p2',
+    title: 'Victorian Villa - Kensington',
+    color: '#10b981',
+    phases: [
+      {
+        id: 'ph3',
+        title: 'Site Survey',
+        startDate: addDays(startOfWeek(new Date()), 0),
+        endDate: addDays(startOfWeek(new Date()), 3),
+        color: '#10b981',
+        tasks: [
+          { id: 't4', title: 'Measure rooms', completed: true },
+        ]
+      }
+    ]
+  }
+];
 
-    <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-        
-        // Use window.dateFns if available (from cdn), otherwise use our fallback
-        const df = window.dateFns || window.dateFnsFallback;
-        const { format, addWeeks, startOfWeek, isSameMonth, differenceInDays, addDays } = df;
+// --- Components ---
 
-        // --- Icons ---
-        const Icon = ({ name, size = 24, className = "" }) => {
-            const svgRef = useRef();
+interface SortableRowProps {
+  project: Project;
+  timelineDays: Date[];
+  onExpand: (id: string) => void;
+  isExpanded: boolean;
+  onUpdateProject: (project: Project) => void;
+  onDeleteProject: (id: string) => void;
+  onUpdatePhase: (phaseId: string, updates: Partial<Phase>) => void;
+}
 
-            useEffect(() => {
-                if (svgRef.current) {
-                    lucide.createIcons({
-                        icons: { [name]: lucide.icons[name] },
-                        nameAttr: 'data-lucide',
-                        attrs: {
-                            class: className,
-                            width: size,
-                            height: size,
-                        }
-                    });
-                }
-            }, [name, size, className]);
+const SortableProjectRow = ({ 
+  project, 
+  timelineDays, 
+  onExpand, 
+  isExpanded, 
+  onUpdateProject, 
+  onDeleteProject,
+  onUpdatePhase
+}: SortableRowProps) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: project.id });
 
-            return <i ref={svgRef} data-lucide={name}></i>;
-        };
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+  };
 
-        const Plus = (props) => <Icon name="Plus" {...props} />;
-        const Trash2 = (props) => <Icon name="Trash2" {...props} />;
-        const CheckSquare = (props) => <Icon name="CheckSquare" {...props} />;
-        const X = (props) => <Icon name="X" {...props} />;
-        const AlignLeft = (props) => <Icon name="AlignLeft" {...props} />;
-        const Calendar = (props) => <Icon name="Calendar" {...props} />;
-        const MoreVertical = (props) => <Icon name="MoreVertical" {...props} />;
-        const Edit2 = (props) => <Icon name="Edit2" {...props} />;
-        const ChevronDown = (props) => <Icon name="ChevronDown" {...props} />;
-        const ChevronRight = (props) => <Icon name="ChevronRight" {...props} />;
-        const GripVertical = (props) => <Icon name="GripVertical" {...props} />;
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [tempTitle, setTempTitle] = useState(project.title);
 
-        // --- Constants & Initial Data ---
-        const CELL_WIDTH = 120; // Width of a single week cell in pixels
-        const TOTAL_WEEKS = 26; // Half a year timeline
+  const handleTitleSubmit = () => {
+    onUpdateProject({ ...project, title: tempTitle });
+    setIsEditingTitle(false);
+  };
 
-        const INITIAL_PROJECTS = [
-            { id: 'p1', name: 'Villa Nova - Living Room', color: '#14b8a6', order: 0, isExpanded: false },
-            { id: 'p2', name: 'Smith Residence - Kitchen', color: '#f59e0b', order: 1, isExpanded: false },
-            { id: 'p3', name: 'Downtown Loft - Master Bed', color: '#8b5cf6', order: 2, isExpanded: false }
-        ];
+  return (
+    <div ref={setNodeRef} style={style} className={cn("flex border-b border-slate-200 group bg-white", isDragging && "shadow-lg opacity-50")}>
+      {/* Sidebar Part */}
+      <div className="w-[250px] flex-shrink-0 border-r border-slate-200 p-4 flex items-center gap-3 sticky left-0 bg-white z-20">
+        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600">
+          <GripVertical size={18} />
+        </button>
+        <div className="flex-1 min-w-0">
+          {isEditingTitle ? (
+            <input
+              autoFocus
+              className="w-full text-sm font-semibold border-b border-blue-500 outline-none"
+              value={tempTitle}
+              onChange={(e) => setTempTitle(e.target.value)}
+              onBlur={handleTitleSubmit}
+              onKeyDown={(e) => e.key === 'Enter' && handleTitleSubmit()}
+            />
+          ) : (
+            <h3 
+              className="text-sm font-semibold truncate cursor-pointer hover:text-blue-600"
+              onClick={() => setIsEditingTitle(true)}
+            >
+              {project.title}
+            </h3>
+          )}
+          <div className="flex items-center gap-2 mt-1">
+            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
+            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">
+              {project.phases.length} Phases
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button 
+            onClick={() => onExpand(project.id)}
+            className="p-1 hover:bg-slate-100 rounded text-slate-500"
+          >
+            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          </button>
+          <button 
+            onClick={() => onDeleteProject(project.id)}
+            className="p-1 hover:bg-red-50 rounded text-red-400"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      </div>
 
-        // Helper to generate slightly different shades for blocks based on start position
-        const getShadeForPosition = (baseColor, startWeek, totalWeeks) => {
-            const hexToHSL = (hex) => {
-                let r = 0, g = 0, b = 0;
-                if (hex.length === 4) {
-                    r = parseInt("0x" + hex[1] + hex[1], 16);
-                    g = parseInt("0x" + hex[2] + hex[2], 16);
-                    b = parseInt("0x" + hex[3] + hex[3], 16);
-                } else if (hex.length === 7) {
-                    r = parseInt("0x" + hex[1] + hex[2], 16);
-                    g = parseInt("0x" + hex[3] + hex[4], 16);
-                    b = parseInt("0x" + hex[5] + hex[6], 16);
-                }
-                r /= 255; g /= 255; b /= 255;
-                let cmin = Math.min(r, g, b),
-                    cmax = Math.max(r, g, b),
-                    delta = cmax - cmin,
-                    h = 0, s = 0, l = 0;
+      {/* Timeline Part */}
+      <div className="flex-1 relative overflow-hidden h-[80px]">
+        {/* Day Grid Lines */}
+        <div className="absolute inset-0 flex">
+          {timelineDays.map((day, i) => (
+            <div 
+              key={i} 
+              className={cn(
+                "border-r border-slate-100 flex-shrink-0",
+                isToday(day) && "bg-blue-50/30"
+              )}
+              style={{ width: COLUMN_WIDTH }}
+            />
+          ))}
+        </div>
 
-                if (delta === 0) h = 0;
-                else if (cmax === r) h = ((g - b) / delta) % 6;
-                else if (cmax === g) h = (b - r) / delta + 2;
-                else h = (r - g) / delta + 4;
-
-                h = Math.round(h * 60);
-                if (h < 0) h += 360;
-                l = (cmax + cmin) / 2;
-                s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
-                s = +(s * 100).toFixed(1);
-                l = +(l * 100).toFixed(1);
-                return { h, s, l };
-            }
-
-            const hsl = hexToHSL(baseColor);
-            const darkenAmount = (startWeek / totalWeeks) * 30;
-            const newLightness = Math.max(20, hsl.l - darkenAmount);
-
-            return `hsl(${hsl.h}, ${hsl.s}%, ${newLightness}%)`;
-        }
-
-        const INITIAL_BLOCKS = [
-            {
-                id: 'b1',
-                projectId: 'p1',
-                startWeek: 0,
-                durationWeeks: 3,
-                title: 'Concept & Moodboard',
-                tasks: [
-                    {
-                        id: 'c1',
-                        title: 'Initial Consultation',
-                        isExpanded: true,
-                        subtasks: [
-                            { id: 's1', text: 'Client intake meeting', isDone: true },
-                            { id: 's2', text: 'Site measurement', isDone: true }
-                        ]
-                    },
-                    {
-                        id: 'c2',
-                        title: 'Design Development',
-                        isExpanded: true,
-                        subtasks: [
-                            { id: 's3', text: 'Create moodboard', isDone: false },
-                            { id: 's4', text: 'Finalize fabric swatches', isDone: false }
-                        ]
-                    }
-                ],
-                order: 0
-            },
-            { id: 'b2', projectId: 'p1', startWeek: 3, durationWeeks: 4, title: 'Procurement', tasks: [], order: 1 },
-            { id: 'b3', projectId: 'p2', startWeek: 1, durationWeeks: 3, title: 'Demolition & Prep', tasks: [], order: 0 },
-            { id: 'b4', projectId: 'p2', startWeek: 4, durationWeeks: 5, title: 'Cabinet Installation', tasks: [], order: 1 },
-            { id: 'b5', projectId: 'p3', startWeek: 5, durationWeeks: 4, title: 'Painting & Finishing', tasks: [], order: 0 },
-        ];
-
-        function App() {
-            const [appTitle, setAppTitle] = useState("Studio Timeline");
-            const [isEditingTitle, setIsEditingTitle] = useState(false);
-            const [projects, setProjects] = useState(INITIAL_PROJECTS);
-            const [blocks, setBlocks] = useState(INITIAL_BLOCKS);
-            const [selectedBlockId, setSelectedBlockId] = useState(null);
-            const [startDate, setStartDate] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }));
-
-            // Dragging States
-            const [dragState, setDragState] = useState(null);
-            const [draggedProject, setDraggedProject] = useState(null);
-            const [dragOverProject, setDragOverProject] = useState(null);
-
-            const titleInputRef = useRef(null);
-
-            useEffect(() => {
-                if (isEditingTitle && titleInputRef.current) {
-                    titleInputRef.current.focus();
-                }
-            }, [isEditingTitle]);
-
-            useEffect(() => {
-                const handleMouseMove = (e) => {
-                    if (!dragState) return;
-
-                    const deltaX = e.clientX - dragState.startX;
-                    const deltaWeeks = Math.round(deltaX / CELL_WIDTH);
-
-                    setBlocks(prevBlocks => prevBlocks.map(b => {
-                        if (b.id !== dragState.blockId) return b;
-
-                        let newStart = b.startWeek;
-                        let newDuration = b.durationWeeks;
-
-                        if (dragState.type === 'move') {
-                            newStart = Math.max(0, dragState.originalStart + deltaWeeks);
-                            if (newStart + newDuration > TOTAL_WEEKS) {
-                                newStart = TOTAL_WEEKS - newDuration;
-                            }
-                        } else if (dragState.type === 'resize-right') {
-                            newDuration = Math.max(1, dragState.originalDuration + deltaWeeks);
-                            if (b.startWeek + newDuration > TOTAL_WEEKS) {
-                                newDuration = TOTAL_WEEKS - b.startWeek;
-                            }
-                        } else if (dragState.type === 'resize-left') {
-                            const maxDelta = dragState.originalDuration - 1;
-                            const actualDelta = Math.min(deltaWeeks, maxDelta);
-
-                            newStart = Math.max(0, dragState.originalStart + actualDelta);
-                            const startShift = newStart - dragState.originalStart;
-                            newDuration = dragState.originalDuration - startShift;
-                        }
-
-                        return { ...b, startWeek: newStart, durationWeeks: newDuration };
-                    }));
-                };
-
-                const handleMouseUp = (e) => {
-                    if (dragState) {
-                        if (Math.abs(e.clientX - dragState.startX) < 5 && dragState.type === 'move') {
-                            setSelectedBlockId(dragState.blockId);
-                        }
-                        setDragState(null);
-                    }
-                };
-
-                if (dragState) {
-                    window.addEventListener('mousemove', handleMouseMove);
-                    window.addEventListener('mouseup', handleMouseUp);
-                }
-                return () => {
-                    window.removeEventListener('mousemove', handleMouseMove);
-                    window.removeEventListener('mouseup', handleMouseUp);
-                };
-            }, [dragState]);
-
-            const handleProjectDragStart = (e, index) => {
-                setDraggedProject(index);
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/html", e.target.parentNode);
-            };
-
-            const handleProjectDragOver = (e, index) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "move";
-                setDragOverProject(index);
-            };
-
-            const handleProjectDrop = (e, index) => {
-                e.preventDefault();
-                if (draggedProject === null || draggedProject === index) {
-                    setDraggedProject(null);
-                    setDragOverProject(null);
-                    return;
-                }
-
-                const newProjects = [...projects];
-                const draggedItem = newProjects[draggedProject];
-
-                newProjects.splice(draggedProject, 1);
-                newProjects.splice(index, 0, draggedItem);
-
-                const updatedOrderProjects = newProjects.map((p, i) => ({ ...p, order: i }));
-
-                setProjects(updatedOrderProjects);
-                setDraggedProject(null);
-                setDragOverProject(null);
-            };
-
-            const handleProjectDragEnd = () => {
-                setDraggedProject(null);
-                setDragOverProject(null);
-            };
-
-            const handleBlockMouseDown = (e, type, block) => {
-                e.stopPropagation();
-                setDragState({
-                    type,
-                    blockId: block.id,
-                    startX: e.clientX,
-                    originalStart: block.startWeek,
-                    originalDuration: block.durationWeeks
-                });
-            };
-
-            const addProject = () => {
-                const newProject = {
-                    id: `p${Date.now()}`,
-                    name: 'New Project',
-                    color: '#94a3b8',
-                    order: projects.length,
-                    isExpanded: false
-                };
-                setProjects([...projects, newProject]);
-            };
-
-            const updateProject = (id, field, value) => {
-                setProjects(projects.map(p => p.id === id ? { ...p, [field]: value } : p));
-            };
-
-            const toggleProjectExpanded = (id) => {
-                setProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
-            };
-
-            const deleteProject = (id) => {
-                setProjects(projects.filter(p => p.id !== id));
-                setBlocks(blocks.filter(b => b.projectId !== id));
-            };
-
-            const addTimelineBlock = (projectId, startWeek) => {
-                const projectBlocks = blocks.filter(b => b.projectId === projectId);
-                const newOrder = projectBlocks.length;
-
-                const newBlock = {
-                    id: `b${Date.now()}`,
-                    projectId,
-                    startWeek,
-                    durationWeeks: 2,
-                    title: 'New Phase',
-                    tasks: [],
-                    order: newOrder
-                };
-                setBlocks([...blocks, newBlock]);
-            };
-
-            const handleTitleBlur = () => {
-                setIsEditingTitle(false);
-                if (appTitle.trim() === "") {
-                    setAppTitle("Studio Timeline");
-                }
-            };
-
-            const handleTitleKeyDown = (e) => {
-                if (e.key === 'Enter') {
-                    handleTitleBlur();
-                }
-            };
-
-            const handleAddCategory = (blockId) => {
-                const newCategory = {
-                    id: `c${Date.now()}`,
-                    title: 'New Task Category',
-                    isExpanded: true,
-                    subtasks: []
-                };
-                setBlocks(blocks.map(b =>
-                    b.id === blockId ? { ...b, tasks: [...b.tasks, newCategory] } : b
-                ));
-            };
-
-            const handleUpdateCategoryTitle = (blockId, categoryId, newTitle) => {
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.map(c => c.id === categoryId ? { ...c, title: newTitle } : c)
-                    };
-                }));
-            };
-
-            const handleDeleteCategory = (blockId, categoryId) => {
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.filter(c => c.id !== categoryId)
-                    };
-                }));
-            };
-
-            const handleToggleCategory = (blockId, categoryId) => {
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.map(c => c.id === categoryId ? { ...c, isExpanded: !c.isExpanded } : c)
-                    };
-                }));
-            };
-
-            const handleAddSubtask = (blockId, categoryId, text) => {
-                const newSubtask = { id: `s${Date.now()}`, text, isDone: false };
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.map(c => {
-                            if (c.id !== categoryId) return c;
-                            return { ...c, subtasks: [...c.subtasks, newSubtask] };
-                        })
-                    };
-                }));
-            };
-
-            const handleToggleSubtask = (blockId, categoryId, subtaskId) => {
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.map(c => {
-                            if (c.id !== categoryId) return c;
-                            return {
-                                ...c,
-                                subtasks: c.subtasks.map(s => s.id === subtaskId ? { ...s, isDone: !s.isDone } : s)
-                            };
-                        })
-                    };
-                }));
-            };
-
-            const handleUpdateSubtaskText = (blockId, categoryId, subtaskId, newText) => {
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.map(c => {
-                            if (c.id !== categoryId) return c;
-                            return {
-                                ...c,
-                                subtasks: c.subtasks.map(s => s.id === subtaskId ? { ...s, text: newText } : s)
-                            };
-                        })
-                    };
-                }));
-            };
-
-            const handleDeleteSubtask = (blockId, categoryId, subtaskId) => {
-                setBlocks(blocks.map(b => {
-                    if (b.id !== blockId) return b;
-                    return {
-                        ...b,
-                        tasks: b.tasks.map(c => {
-                            if (c.id !== categoryId) return c;
-                            return {
-                                ...c,
-                                subtasks: c.subtasks.filter(s => s.id !== subtaskId)
-                            };
-                        })
-                    };
-                }));
-            };
-
-            const weeks = Array.from({ length: TOTAL_WEEKS }).map((_, i) => {
-                const weekDate = addWeeks(startDate, i);
-                const endDate = addDays(weekDate, 6);
-                return {
-                    index: i,
-                    startDate: weekDate,
-                    endDate: endDate,
-                    monthName: format(weekDate, 'MMM'),
-                    isCurrentMonth: isSameMonth(weekDate, new Date())
-                };
-            });
-
-            const daysSinceStart = differenceInDays(new Date(), startDate);
-            const currentLinePosition = (daysSinceStart / 7) * CELL_WIDTH;
-            const isCurrentLineVisible = currentLinePosition >= 0 && currentLinePosition <= TOTAL_WEEKS * CELL_WIDTH;
-
-            const selectedBlock = blocks.find(b => b.id === selectedBlockId);
+        {/* Phase Blocks */}
+        <div className="absolute inset-0 p-2 flex flex-col gap-1 overflow-hidden">
+          {project.phases.map((phase) => {
+            const startIdx = timelineDays.findIndex(d => isSameDay(d, phase.startDate));
+            const endIdx = timelineDays.findIndex(d => isSameDay(d, phase.endDate));
+            
+            if (startIdx === -1 && endIdx === -1) return null;
+            
+            const left = Math.max(0, startIdx) * COLUMN_WIDTH;
+            const width = (Math.min(timelineDays.length - 1, endIdx) - Math.max(0, startIdx) + 1) * COLUMN_WIDTH;
 
             return (
-                <div className="min-h-screen bg-stone-50 text-stone-800 font-sans flex flex-col">
-                    <header className="bg-white border-b border-stone-200 px-6 py-4 flex justify-between items-center shadow-sm z-30 relative">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-stone-800 text-white p-2 rounded-lg">
-                                <Calendar size={24} />
-                            </div>
-                            <div className="flex items-center group">
-                                {isEditingTitle ? (
-                                    <input
-                                        ref={titleInputRef}
-                                        type="text"
-                                        value={appTitle}
-                                        onChange={(e) => setAppTitle(e.target.value)}
-                                        onBlur={handleTitleBlur}
-                                        onKeyDown={handleTitleKeyDown}
-                                        className="text-xl font-bold text-stone-800 bg-transparent border-b border-stone-400 outline-none w-64"
-                                    />
-                                ) : (
-                                    <>
-                                        <h1
-                                            className="text-xl font-bold text-stone-800 leading-tight cursor-pointer"
-                                            onClick={() => setIsEditingTitle(true)}
-                                        >
-                                            {appTitle}
-                                        </h1>
-                                        <button
-                                            onClick={() => setIsEditingTitle(true)}
-                                            className="ml-2 text-stone-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            aria-label="Edit title"
-                                        >
-                                            <Edit2 size={16} />
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                        <button
-                            onClick={addProject}
-                            className="flex items-center gap-2 bg-stone-800 hover:bg-stone-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium"
-                        >
-                            <Plus size={16} /> Add Project
-                        </button>
-                    </header>
-
-                    <div className="flex-1 overflow-hidden flex flex-col relative">
-                        <div className="flex-1 overflow-auto flex">
-
-                            <div className="w-72 flex-shrink-0 bg-white border-r border-stone-200 z-20 sticky left-0 shadow-[4px_0_15px_-3px_rgba(0,0,0,0.05)]">
-                                <div className="h-16 border-b border-stone-200 bg-stone-100 flex items-center px-4 font-semibold text-xs text-stone-500 uppercase tracking-wider sticky top-0 z-30">
-                                    Projects & Categories
-                                </div>
-
-                                <div className="flex flex-col">
-                                    {projects.map((project, index) => {
-                                        const projectBlocks = blocks.filter(b => b.projectId === project.id);
-                                        const rowHeightClass = project.isExpanded && projectBlocks.length > 0 ? `h-[${projectBlocks.length * 64 + 16}px]` : 'h-20';
-
-                                        return (
-                                            <div
-                                                key={project.id}
-                                                className={`border-b border-stone-100 px-2 py-3 flex flex-col justify-start group bg-white transition-colors duration-200
-                                                    ${dragOverProject === index ? 'bg-indigo-50 border-t-2 border-t-indigo-500' : ''}
-                                                    ${draggedProject === index ? 'opacity-50' : 'opacity-100'}
-                                                `}
-                                                style={{ minHeight: project.isExpanded && projectBlocks.length > 0 ? `${projectBlocks.length * 64 + 16}px` : '80px' }}
-                                                draggable
-                                                onDragStart={(e) => handleProjectDragStart(e, index)}
-                                                onDragOver={(e) => handleProjectDragOver(e, index)}
-                                                onDrop={(e) => handleProjectDrop(e, index)}
-                                                onDragEnd={handleProjectDragEnd}
-                                            >
-                                                <div className="flex items-center gap-2 w-full">
-                                                    <button
-                                                        onClick={() => toggleProjectExpanded(project.id)}
-                                                        className="text-stone-400 hover:text-stone-600 p-1 rounded"
-                                                    >
-                                                        {project.isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                    </button>
-                                                    <div className="cursor-grab active:cursor-grabbing text-stone-400 hover:text-stone-600 p-1">
-                                                        <GripVertical size={16} />
-                                                    </div>
-                                                    <input
-                                                        type="color"
-                                                        value={project.color}
-                                                        onChange={(e) => updateProject(project.id, 'color', e.target.value)}
-                                                        className="w-6 h-6 rounded cursor-pointer border-0 p-0 bg-transparent flex-shrink-0"
-                                                        title="Change category color"
-                                                    />
-                                                    <input
-                                                        type="text"
-                                                        value={project.name}
-                                                        onChange={(e) => updateProject(project.id, 'name', e.target.value)}
-                                                        className="flex-1 text-sm font-medium bg-transparent border-none outline-none focus:ring-1 focus:ring-stone-300 rounded px-1 -ml-1 text-stone-700"
-                                                    />
-                                                    <button
-                                                        onClick={() => deleteProject(project.id)}
-                                                        className="text-stone-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                        title="Delete Project"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                                {project.isExpanded && projectBlocks.length > 0 && (
-                                                    <div className="mt-2 ml-10 flex flex-col gap-2">
-                                                        {projectBlocks.map((block, i) => (
-                                                            <div key={block.id} className="text-xs text-stone-500 h-[56px] flex items-center">
-                                                                <span className="truncate w-full pr-2">{block.title}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-
-                            <div className="flex-1 relative bg-stone-50 overflow-x-auto">
-                                <div className="h-16 border-b border-stone-200 bg-stone-100 flex sticky top-0 z-10 w-max">
-                                    {weeks.map((week) => (
-                                        <div
-                                            key={week.index}
-                                            className={`flex-shrink-0 border-r border-stone-200 flex flex-col justify-center px-3 text-xs font-semibold
-                                                ${week.isCurrentMonth ? 'bg-indigo-50 text-indigo-700' : 'text-stone-500'}
-                                            `}
-                                            style={{ width: CELL_WIDTH }}
-                                        >
-                                            <span className="opacity-70 uppercase tracking-wider">{week.monthName}</span>
-                                            <span>{format(week.startDate, 'MMM d')} - {format(week.endDate, 'MMM d')}</span>
-                                        </div>
-                                    ))}
-                                </div>
-
-                                <div className="relative w-max">
-                                    <div className="absolute inset-0 flex pointer-events-none z-0">
-                                        {weeks.map((week) => (
-                                            <div
-                                                key={week.index}
-                                                className="flex-shrink-0 border-r border-stone-200/60 h-full"
-                                                style={{ width: CELL_WIDTH }}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    {isCurrentLineVisible && (
-                                        <div
-                                            className="absolute top-0 bottom-0 border-l-2 border-red-500 z-20 pointer-events-none"
-                                            style={{ left: currentLinePosition }}
-                                        >
-                                            <div className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded shadow-sm">
-                                                TODAY
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {projects.map((project, projectIndex) => {
-                                        const projectBlocks = blocks.filter(b => b.projectId === project.id);
-
-                                        return (
-                                            <div
-                                                key={project.id}
-                                                className={`border-b border-stone-100/50 relative group transition-colors z-10
-                                                    ${dragOverProject === projectIndex ? 'bg-indigo-50/30' : 'hover:bg-stone-100/30'}
-                                                `}
-                                                style={{ width: TOTAL_WEEKS * CELL_WIDTH, minHeight: project.isExpanded && projectBlocks.length > 0 ? `${projectBlocks.length * 64 + 16}px` : '80px' }}
-                                            >
-                                                <div
-                                                    className="absolute inset-0 w-full h-full cursor-crosshair opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    onClick={(e) => {
-                                                        const rect = e.currentTarget.getBoundingClientRect();
-                                                        const clickX = e.clientX - rect.left;
-                                                        const weekClicked = Math.floor(clickX / CELL_WIDTH);
-                                                        addTimelineBlock(project.id, weekClicked);
-                                                    }}
-                                                />
-
-                                                {projectBlocks.map((block, i) => {
-                                                    const totalTasks = block.tasks.reduce((sum, cat) => sum + cat.subtasks.length, 0);
-                                                    const completedTasks = block.tasks.reduce((sum, cat) => sum + cat.subtasks.filter(s => s.isDone).length, 0);
-                                                    const blockColor = getShadeForPosition(project.color, block.startWeek, TOTAL_WEEKS);
-
-                                                    const topPosition = project.isExpanded ? (i * 64 + 12) : 12;
-
-                                                    return (
-                                                        <div
-                                                            key={block.id}
-                                                            onMouseDown={(e) => handleBlockMouseDown(e, 'move', block)}
-                                                            className={`absolute h-14 rounded-md shadow-sm border border-black/10 flex items-center group/block text-white transition-all duration-300
-                                                                ${dragState?.blockId === block.id ? 'z-50 shadow-lg ring-2 ring-stone-400' : 'z-20 hover:shadow-md'}
-                                                                ${!project.isExpanded && i > 0 ? 'opacity-80' : 'opacity-100'}`}
-                                                            style={{
-                                                                top: topPosition,
-                                                                left: block.startWeek * CELL_WIDTH,
-                                                                width: block.durationWeeks * CELL_WIDTH,
-                                                                backgroundColor: blockColor,
-                                                                cursor: dragState?.blockId === block.id ? 'grabbing' : 'grab',
-                                                                transform: !project.isExpanded && i > 0 ? `translateY(${i * 4}px) translateX(${i * 4}px)` : 'none'
-                                                            }}
-                                                        >
-                                                            <div
-                                                                className="absolute left-0 top-0 bottom-0 w-3 cursor-col-resize hover:bg-black/20 flex items-center justify-center rounded-l-md"
-                                                                onMouseDown={(e) => handleBlockMouseDown(e, 'resize-left', block)}
-                                                            >
-                                                                <MoreVertical size={12} className="opacity-0 group-hover/block:opacity-50" />
-                                                            </div>
-
-                                                            <div className="px-4 py-1 flex-1 overflow-hidden pointer-events-none flex flex-col justify-center h-full">
-                                                                <div className="font-semibold text-xs truncate drop-shadow-sm">{block.title}</div>
-                                                                {totalTasks > 0 && (
-                                                                    <div className="text-[10px] opacity-80 mt-0.5 flex items-center gap-1">
-                                                                        <CheckSquare size={10} />
-                                                                        {completedTasks}/{totalTasks}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            <div
-                                                                className="absolute right-0 top-0 bottom-0 w-3 cursor-col-resize hover:bg-black/20 flex items-center justify-center rounded-r-md"
-                                                                onMouseDown={(e) => handleBlockMouseDown(e, 'resize-right', block)}
-                                                            >
-                                                                <MoreVertical size={12} className="opacity-0 group-hover/block:opacity-50" />
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                        )
-                                    })}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {selectedBlock && (
-                        <div className="fixed inset-0 bg-stone-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]">
-
-                                <div
-                                    className="px-6 py-4 flex justify-between items-center text-white relative overflow-hidden"
-                                    style={{ backgroundColor: getShadeForPosition(projects.find(p => p.id === selectedBlock.projectId)?.color || '#333', selectedBlock.startWeek, TOTAL_WEEKS) }}
-                                >
-                                    <div className="relative z-10 w-full pr-8">
-                                        <h2 className="text-sm font-medium opacity-80 uppercase tracking-wider mb-1">
-                                            {projects.find(p => p.id === selectedBlock.projectId)?.name}
-                                        </h2>
-                                        <input
-                                            type="text"
-                                            value={selectedBlock.title}
-                                            onChange={(e) => {
-                                                setBlocks(blocks.map(b => b.id === selectedBlock.id ? { ...b, title: e.target.value } : b));
-                                            }}
-                                            className="bg-transparent border-b border-white/30 text-xl font-bold w-full outline-none focus:border-white transition-colors pb-1 placeholder:text-white/50"
-                                            placeholder="Phase Title"
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={() => setSelectedBlockId(null)}
-                                        className="p-1 hover:bg-white/20 rounded-full transition-colors z-10 absolute right-4 top-4"
-                                    >
-                                        <X size={20} />
-                                    </button>
-                                    <div className="absolute right-0 top-0 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
-                                        <AlignLeft size={120} />
-                                    </div>
-                                </div>
-
-                                <div className="p-6 flex-1 overflow-y-auto bg-stone-50">
-                                    <div className="flex justify-between items-center mb-6 border-b border-stone-200 pb-2">
-                                        <div className="flex items-center gap-2 text-stone-800 font-semibold">
-                                            <CheckSquare size={18} className="text-stone-500" />
-                                            <h3>Task Categories</h3>
-                                        </div>
-                                        <button
-                                            onClick={() => handleAddCategory(selectedBlock.id)}
-                                            className="text-xs flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-medium"
-                                        >
-                                            <Plus size={14} /> Add Category
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-6">
-                                        {selectedBlock.tasks.length === 0 && (
-                                            <div className="text-center py-8 text-stone-400 text-sm italic">
-                                                No tasks added yet. Create a category to get started.
-                                            </div>
-                                        )}
-                                        {selectedBlock.tasks.map(category => (
-                                            <div key={category.id} className="bg-white border border-stone-200 rounded-lg shadow-sm overflow-hidden">
-                                                <div className="flex items-center justify-between bg-stone-100/50 px-4 py-2 border-b border-stone-200 group/catheader">
-                                                    <div className="flex items-center gap-2 flex-1">
-                                                        <button
-                                                            onClick={() => handleToggleCategory(selectedBlock.id, category.id)}
-                                                            className="text-stone-400 hover:text-stone-600 p-1 rounded"
-                                                        >
-                                                            {category.isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                        </button>
-                                                        <input
-                                                            type="text"
-                                                            value={category.title}
-                                                            onChange={(e) => handleUpdateCategoryTitle(selectedBlock.id, category.id, e.target.value)}
-                                                            className="font-medium text-stone-700 bg-transparent outline-none flex-1 focus:ring-1 focus:ring-stone-300 rounded px-1"
-                                                            placeholder="Category Title"
-                                                        />
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleDeleteCategory(selectedBlock.id, category.id)}
-                                                        className="text-stone-300 hover:text-red-500 opacity-0 group-hover/catheader:opacity-100 transition-opacity p-1"
-                                                        title="Delete Category"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-
-                                                {category.isExpanded && (
-                                                    <div className="p-3 space-y-2">
-                                                        {category.subtasks.map(task => (
-                                                            <div key={task.id} className="flex items-center gap-3 p-2 rounded-md hover:bg-stone-50 group/task transition-colors">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={task.isDone}
-                                                                    onChange={() => handleToggleSubtask(selectedBlock.id, category.id, task.id)}
-                                                                    className="w-4 h-4 rounded border-stone-300 text-stone-800 focus:ring-stone-800 cursor-pointer accent-stone-700"
-                                                                />
-                                                                <input
-                                                                    type="text"
-                                                                    value={task.text}
-                                                                    onChange={(e) => handleUpdateSubtaskText(selectedBlock.id, category.id, task.id, e.target.value)}
-                                                                    className={`flex-1 bg-transparent border-none outline-none text-sm focus:ring-1 focus:ring-stone-300 rounded px-1 ${task.isDone ? 'text-stone-400 line-through' : 'text-stone-700'}`}
-                                                                    placeholder="Task description..."
-                                                                />
-                                                                <button
-                                                                    onClick={() => handleDeleteSubtask(selectedBlock.id, category.id, task.id)}
-                                                                    className="text-stone-300 hover:text-red-500 opacity-0 group-hover/task:opacity-100 transition-opacity p-1"
-                                                                >
-                                                                    <X size={14} />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-
-                                                        <div className="flex items-center gap-3 p-2 rounded-md border border-dashed border-stone-200 mt-2">
-                                                            <Plus size={16} className="text-stone-400" />
-                                                            <input
-                                                                type="text"
-                                                                placeholder="Add a new task... (press Enter)"
-                                                                className="flex-1 bg-transparent border-none outline-none text-sm text-stone-600 placeholder:text-stone-400"
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter' && e.target.value.trim() !== '') {
-                                                                        handleAddSubtask(selectedBlock.id, category.id, e.target.value.trim());
-                                                                        e.target.value = '';
-                                                                    }
-                                                                }}
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                <div className="px-6 py-4 border-t border-stone-200 bg-white flex justify-between items-center rounded-b-xl">
-                                    <button
-                                        onClick={() => {
-                                            setBlocks(blocks.filter(b => b.id !== selectedBlock.id));
-                                            setSelectedBlockId(null);
-                                        }}
-                                        className="text-sm text-red-500 hover:text-red-600 hover:bg-red-50 px-3 py-1.5 rounded transition-colors flex items-center gap-2 font-medium"
-                                    >
-                                        <Trash2 size={16} /> Delete Block
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedBlockId(null)}
-                                        className="bg-stone-800 text-white px-5 py-2 rounded-md hover:bg-stone-700 transition-colors text-sm font-medium"
-                                    >
-                                        Done
-                                    </button>
-                                </div>
-
-                            </div>
-                        </div>
-                    )}
-                </div>
+              <PhaseBlock 
+                key={phase.id}
+                phase={phase}
+                left={left}
+                width={width}
+                projectColor={project.color}
+                onUpdate={(updates) => onUpdatePhase(phase.id, updates)}
+              />
             );
-        }
+          })}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+const PhaseBlock = ({ 
+  phase, 
+  left, 
+  width, 
+  projectColor, 
+  onUpdate 
+}: { 
+  phase: Phase, 
+  left: number, 
+  width: number, 
+  projectColor: string, 
+  onUpdate?: (updates: Partial<Phase>) => void,
+  key?: string 
+}) => {
+  const [showTasks, setShowTasks] = useState(false);
+  const [tasks, setTasks] = useState(phase.tasks);
+
+  const toggleTask = (taskId: string) => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t));
+  };
+
+  const addTask = () => {
+    const newTask: Task = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: 'New Task',
+      completed: false
+    };
+    setTasks([...tasks, newTask]);
+  };
+
+  const handleDragEnd = (_: any, info: any) => {
+    if (!onUpdate) return;
+    const daysShifted = Math.round(info.offset.x / COLUMN_WIDTH);
+    if (daysShifted !== 0) {
+      onUpdate({
+        startDate: addDays(phase.startDate, daysShifted),
+        endDate: addDays(phase.endDate, daysShifted)
+      });
+    }
+  };
+
+  return (
+    <>
+      <motion.div
+        layoutId={phase.id}
+        drag="x"
+        dragMomentum={false}
+        dragElastic={0}
+        onDragEnd={handleDragEnd}
+        className="absolute h-10 rounded-md shadow-sm cursor-pointer flex items-center px-3 overflow-hidden group/block z-10"
+        style={{ 
+          left, 
+          width,
+          background: `linear-gradient(to right, ${projectColor}44, ${projectColor})`,
+          borderLeft: `4px solid ${projectColor}`
+        }}
+        onClick={(e) => {
+          // Only open tasks if we didn't just drag
+          if (Math.abs(e.currentTarget.getBoundingClientRect().left - left) < 5) {
+            setShowTasks(true);
+          }
+        }}
+        whileHover={{ scale: 1.01, zIndex: 20 }}
+        whileDrag={{ scale: 1.05, zIndex: 30, cursor: 'grabbing', opacity: 0.8 }}
+      >
+        <span className="text-xs font-bold text-white truncate drop-shadow-sm">
+          {phase.title}
+        </span>
+        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover/block:opacity-100 transition-opacity">
+          <CheckSquare size={12} className="text-white" />
+          <span className="text-[10px] text-white font-bold">
+            {tasks.filter(t => t.completed).length}/{tasks.length}
+          </span>
+        </div>
+      </motion.div>
+
+      <AnimatePresence>
+        {showTasks && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+                <div>
+                  <h4 className="font-bold text-slate-800">{phase.title}</h4>
+                  <p className="text-xs text-slate-500">
+                    {format(phase.startDate, 'MMM d')} - {format(phase.endDate, 'MMM d, yyyy')}
+                  </p>
+                </div>
+                <button onClick={() => setShowTasks(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Checklist</label>
+                  <div className="max-h-[300px] overflow-y-auto space-y-1 pr-2">
+                    {tasks.map((task) => (
+                      <div key={task.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg group">
+                        <input 
+                          type="checkbox" 
+                          checked={task.completed}
+                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                          onChange={() => toggleTask(task.id)}
+                        />
+                        <span className={cn("text-sm flex-1", task.completed && "line-through text-slate-400")}>
+                          {task.title}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <button 
+                    onClick={addTask}
+                    className="flex items-center gap-2 text-sm text-blue-600 font-medium p-2 hover:bg-blue-50 w-full rounded-lg transition-colors mt-2"
+                  >
+                    <Plus size={14} /> Add Task
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+};
+
+const PhaseRow = ({ 
+  phase, 
+  project, 
+  timelineDays, 
+  onUpdate 
+}: { 
+  phase: Phase, 
+  project: Project, 
+  timelineDays: Date[], 
+  onUpdate: (updates: Partial<Phase>) => void,
+  key?: string
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [title, setTitle] = useState(phase.title);
+
+  const handleSubmit = () => {
+    onUpdate({ title });
+    setIsEditing(false);
+  };
+
+  return (
+    <div className="flex border-b border-slate-100 last:border-0 hover:bg-slate-100/50 transition-colors">
+      <div className="w-[250px] flex-shrink-0 border-r border-slate-200 p-3 pl-12 flex items-center gap-2">
+        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />
+        {isEditing ? (
+          <input
+            autoFocus
+            className="text-xs font-medium text-slate-600 border-b border-blue-500 outline-none bg-transparent w-full"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={handleSubmit}
+            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+          />
+        ) : (
+          <span 
+            className="text-xs font-medium text-slate-600 cursor-pointer hover:text-blue-600 truncate"
+            onClick={() => setIsEditing(true)}
+          >
+            {phase.title}
+          </span>
+        )}
+      </div>
+      <div className="flex-1 relative h-10">
+        {/* Phase Specific Block */}
+        {(() => {
+          const startIdx = timelineDays.findIndex(d => isSameDay(d, phase.startDate));
+          const endIdx = timelineDays.findIndex(d => isSameDay(d, phase.endDate));
+          if (startIdx === -1 && endIdx === -1) return null;
+          
+          const left = Math.max(0, startIdx) * COLUMN_WIDTH;
+          const width = (Math.min(timelineDays.length - 1, endIdx) - Math.max(0, startIdx) + 1) * COLUMN_WIDTH;
+
+          return (
+            <motion.div 
+              drag="x"
+              dragMomentum={false}
+              dragElastic={0}
+              onDragEnd={(_: any, info: any) => {
+                const daysShifted = Math.round(info.offset.x / COLUMN_WIDTH);
+                if (daysShifted !== 0) {
+                  onUpdate({
+                    startDate: addDays(phase.startDate, daysShifted),
+                    endDate: addDays(phase.endDate, daysShifted)
+                  });
+                }
+              }}
+              className="absolute top-2 h-6 rounded shadow-sm flex items-center px-2 text-[10px] font-bold text-white truncate cursor-grab active:cursor-grabbing z-10"
+              style={{ 
+                left, 
+                width, 
+                backgroundColor: project.color,
+                opacity: 0.8
+              }}
+              whileDrag={{ scale: 1.05, zIndex: 20, opacity: 1 }}
+            >
+              {phase.title}
+            </motion.div>
+          );
+        })()}
+      </div>
+    </div>
+  );
+};
+
+export default function App() {
+  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
+  const [startDate, setStartDate] = useState(startOfWeek(new Date()));
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
+  const [appTitle, setAppTitle] = useState("Studio Timeline Manager");
+  const [isEditingAppTitle, setIsEditingAppTitle] = useState(false);
+
+  const timelineDays = useMemo(() => {
+    return eachDayOfInterval({
+      start: startDate,
+      end: addDays(startDate, 28) // 4 weeks view
+    });
+  }, [startDate]);
+
+  const months = useMemo(() => {
+    const monthsMap = new Map<string, { name: string, days: number }>();
+    timelineDays.forEach(day => {
+      const monthKey = format(day, 'MMMM yyyy');
+      if (!monthsMap.has(monthKey)) {
+        monthsMap.set(monthKey, { name: monthKey, days: 0 });
+      }
+      monthsMap.get(monthKey)!.days += 1;
+    });
+    return Array.from(monthsMap.values());
+  }, [timelineDays]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setProjects((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to today
+  useEffect(() => {
+    if (scrollRef.current) {
+      const todayIdx = timelineDays.findIndex(d => isSameDay(startOfDay(d), startOfDay(new Date())));
+      if (todayIdx !== -1) {
+        scrollRef.current.scrollLeft = todayIdx * COLUMN_WIDTH - 200;
+      }
+    }
+  }, []);
+
+  const addProject = () => {
+    const newProject: Project = {
+      id: Math.random().toString(36).substr(2, 9),
+      title: 'New Project',
+      color: '#' + Math.floor(Math.random()*16777215).toString(16),
+      phases: []
+    };
+    setProjects([...projects, newProject]);
+  };
+
+  const addPhase = (projectId: string) => {
+    setProjects(projects.map(p => {
+      if (p.id === projectId) {
+        const newPhase: Phase = {
+          id: Math.random().toString(36).substr(2, 9),
+          title: 'New Phase',
+          startDate: new Date(),
+          endDate: addDays(new Date(), 7),
+          color: p.color,
+          tasks: []
+        };
+        return { ...p, phases: [...p.phases, newPhase] };
+      }
+      return p;
+    }));
+  };
+
+  const updatePhase = (projectId: string, phaseId: string, updates: Partial<Phase>) => {
+    setProjects(projects.map(p => {
+      if (p.id === projectId) {
+        return {
+          ...p,
+          phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, ...updates } : ph)
+        };
+      }
+      return p;
+    }));
+  };
+
+  return (
+    <div className="flex flex-col h-screen bg-white overflow-hidden">
+      {/* Header */}
+      <header className="h-16 border-b border-slate-200 flex items-center justify-between px-6 bg-white z-30">
+        <div className="flex items-center gap-4">
+          <div className="p-2 bg-blue-600 rounded-lg text-white">
+            <Calendar size={24} />
+          </div>
+          {isEditingAppTitle ? (
+            <input
+              autoFocus
+              className="text-xl font-bold text-slate-800 border-b-2 border-blue-500 outline-none"
+              value={appTitle}
+              onChange={(e) => setAppTitle(e.target.value)}
+              onBlur={() => setIsEditingAppTitle(false)}
+              onKeyDown={(e) => e.key === 'Enter' && setIsEditingAppTitle(false)}
+            />
+          ) : (
+            <h1 
+              className="text-xl font-bold text-slate-800 cursor-pointer hover:text-blue-600 transition-colors"
+              onClick={() => setIsEditingAppTitle(true)}
+            >
+              {appTitle}
+            </h1>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-slate-100 rounded-lg p-1">
+            <button 
+              onClick={() => setStartDate(subWeeks(startDate, 1))}
+              className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <button 
+              onClick={() => setStartDate(new Date())}
+              className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-blue-600"
+            >
+              Today
+            </button>
+            <button 
+              onClick={() => setStartDate(addWeeks(startDate, 1))}
+              className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+          <button 
+            onClick={addProject}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-colors shadow-sm"
+          >
+            <Plus size={18} /> New Project
+          </button>
+          <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
+            <Settings2 size={20} />
+          </button>
+        </div>
+      </header>
+
+      {/* Main Timeline Area */}
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        {/* Timeline Header (Sticky) */}
+        <div className="flex border-b border-slate-200 bg-slate-50/80 backdrop-blur-md z-20">
+          <div className="w-[250px] flex-shrink-0 border-r border-slate-200 p-4 font-bold text-xs text-slate-400 uppercase tracking-widest flex items-center justify-between">
+            Projects
+            <GripVertical size={14} />
+          </div>
+          
+          <div className="flex-1 overflow-hidden" ref={scrollRef}>
+            {/* Months Row */}
+            <div className="flex border-b border-slate-200">
+              {months.map((month, i) => (
+                <div 
+                  key={i} 
+                  className="border-r border-slate-200 h-8 flex items-center px-4 text-xs font-bold text-slate-600 bg-slate-100/50"
+                  style={{ width: month.days * COLUMN_WIDTH }}
+                >
+                  {month.name}
+                </div>
+              ))}
+            </div>
+            
+            {/* Days/Dates Row */}
+            <div className="flex">
+              {timelineDays.map((day, i) => (
+                <div 
+                  key={i} 
+                  className={cn(
+                    "border-r border-slate-200 flex-shrink-0 h-12 flex flex-col items-center justify-center text-[10px] font-medium",
+                    isToday(day) ? "bg-blue-600 text-white" : "text-slate-500"
+                  )}
+                  style={{ width: COLUMN_WIDTH }}
+                >
+                  <span className="uppercase opacity-70">{format(day, 'EEE')}</span>
+                  <span className="text-sm font-bold">{format(day, 'd')}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Timeline Content (Scrollable) */}
+        <div className="flex-1 overflow-y-auto overflow-x-hidden">
+          <DndContext 
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext 
+              items={projects.map(p => p.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {projects.map((project) => (
+                <React.Fragment key={project.id}>
+                  <SortableProjectRow 
+                    project={project} 
+                    timelineDays={timelineDays}
+                    isExpanded={expandedProjectId === project.id}
+                    onExpand={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
+                    onUpdateProject={(updated) => setProjects(projects.map(p => p.id === updated.id ? updated : p))}
+                    onDeleteProject={(id) => setProjects(projects.filter(p => p.id !== id))}
+                    onUpdatePhase={(phaseId, updates) => updatePhase(project.id, phaseId, updates)}
+                  />
+                  
+                  {/* Expanded View for Sub-categories/Phases */}
+                  <AnimatePresence>
+                    {expandedProjectId === project.id && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-slate-50 border-b border-slate-200 overflow-hidden"
+                      >
+                        {project.phases.map((phase) => (
+                          <PhaseRow 
+                            key={phase.id}
+                            phase={phase}
+                            project={project}
+                            timelineDays={timelineDays}
+                            onUpdate={(updates) => updatePhase(project.id, phase.id, updates)}
+                          />
+                        ))}
+                        {project.phases.length === 0 && (
+                          <div className="p-4 text-center text-xs text-slate-400 italic">
+                            No phases defined for this project.
+                          </div>
+                        )}
+                        <div className="p-2 pl-[250px]">
+                          <button 
+                            onClick={() => addPhase(project.id)}
+                            className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1"
+                          >
+                            <Plus size={10} /> Add Phase
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </React.Fragment>
+              ))}
+            </SortableContext>
+          </DndContext>
+        </div>
+
+        {/* Live Date Line */}
+        <div 
+          className="absolute top-0 bottom-0 pointer-events-none z-10 border-l-2 border-red-500 flex flex-col items-center"
+          style={{ 
+            left: 250 + (timelineDays.findIndex(d => isSameDay(startOfDay(d), startOfDay(new Date()))) * COLUMN_WIDTH) + (COLUMN_WIDTH / 2)
+          }}
+        >
+          <div className="bg-red-500 text-white text-[8px] font-bold px-1 rounded-sm -mt-1">NOW</div>
+        </div>
+      </div>
+    </div>
+  );
+}
