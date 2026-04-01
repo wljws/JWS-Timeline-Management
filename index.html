@@ -5,18 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Interior Design Timeline</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/index.min.js"></script>
+    <!-- Fix date-fns import for browser usage -->
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/format/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/addWeeks/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/startOfWeek/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/isSameMonth/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/differenceInDays/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.29.3/addDays/index.js"></script>
+    
+    <script>
+      // Fallback for date-fns if module versions fail
+      // This is a simplified fallback since importing modular date-fns directly in browser without bundler can be tricky
+      window.dateFnsFallback = {
+        format: (date, formatStr) => {
+            const d = new Date(date);
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            if (formatStr === 'MMM') return months[d.getMonth()];
+            if (formatStr === 'MMM d') return `${months[d.getMonth()]} ${d.getDate()}`;
+            return d.toLocaleDateString();
+        },
+        addWeeks: (date, amount) => {
+            const d = new Date(date);
+            d.setDate(d.getDate() + amount * 7);
+            return d;
+        },
+        startOfWeek: (date, options = { weekStartsOn: 0 }) => {
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = (day < options.weekStartsOn ? 7 : 0) + day - options.weekStartsOn;
+            d.setDate(d.getDate() - diff);
+            d.setHours(0, 0, 0, 0);
+            return d;
+        },
+        isSameMonth: (dateLeft, dateRight) => {
+            return dateLeft.getFullYear() === dateRight.getFullYear() && dateLeft.getMonth() === dateRight.getMonth();
+        },
+        differenceInDays: (dateLeft, dateRight) => {
+            const diffTime = Math.abs(dateLeft - dateRight);
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        },
+        addDays: (date, amount) => {
+            const d = new Date(date);
+            d.setDate(d.getDate() + amount);
+            return d;
+        }
+      }
+    </script>
 </head>
 <body>
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
-        const { format, addWeeks, startOfWeek, isSameMonth, differenceInDays, addDays } = dateFns;
+        
+        // Use window.dateFns if available (from cdn), otherwise use our fallback
+        const df = window.dateFns || window.dateFnsFallback;
+        const { format, addWeeks, startOfWeek, isSameMonth, differenceInDays, addDays } = df;
 
         // --- Icons ---
         const Icon = ({ name, size = 24, className = "" }) => {
