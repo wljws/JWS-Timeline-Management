@@ -1,727 +1,701 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { 
-  format, 
-  addDays, 
-  startOfWeek, 
-  endOfWeek, 
-  eachDayOfInterval, 
-  isSameDay, 
-  addWeeks, 
-  subWeeks,
-  startOfMonth,
-  endOfMonth,
-  isToday,
-  differenceInDays,
-  startOfDay
-} from 'date-fns';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
-  GripVertical, 
-  CheckSquare, 
-  Calendar,
-  Settings2,
-  Maximize2,
-  Minimize2,
-  Trash2,
-  X
-} from 'lucide-react';
-import { 
-  DndContext, 
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragEndEvent
-} from '@dnd-kit/core';
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { motion, AnimatePresence } from 'motion/react';
-import { cn } from './lib/utils';
-import { Project, Phase, Task } from './types';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interior Design Timeline Manager</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background-color: #f8fafc; overflow: hidden; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-// --- Constants ---
-const COLUMN_WIDTH = 120; // Width of one day in pixels
-const ROW_HEIGHT = 80;
-const SIDEBAR_WIDTH = 250;
+        .timeline-block {
+            transition: box-shadow 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .timeline-block:hover {
+            box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+            z-index: 10;
+        }
+        
+        .resize-handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 8px;
+            cursor: ew-resize;
+            z-index: 20;
+        }
+        .resize-handle-left { left: 0; }
+        .resize-handle-right { right: 0; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
 
-// --- Mock Initial Data ---
-const INITIAL_PROJECTS: Project[] = [
-  {
-    id: 'p1',
-    title: 'Modern Penthouse - Chelsea',
-    color: '#3b82f6',
-    phases: [
-      {
-        id: 'ph1',
-        title: 'Concept Design',
-        startDate: addDays(startOfWeek(new Date()), -2),
-        endDate: addDays(startOfWeek(new Date()), 5),
-        color: '#3b82f6',
-        tasks: [
-          { id: 't1', title: 'Moodboard creation', completed: true },
-          { id: 't2', title: 'Material selection', completed: false },
-        ]
-      },
-      {
-        id: 'ph2',
-        title: 'Technical Drawings',
-        startDate: addDays(startOfWeek(new Date()), 7),
-        endDate: addDays(startOfWeek(new Date()), 14),
-        color: '#3b82f6',
-        tasks: [
-          { id: 't3', title: 'Electrical layout', completed: false },
-        ]
-      }
-    ]
-  },
-  {
-    id: 'p2',
-    title: 'Victorian Villa - Kensington',
-    color: '#10b981',
-    phases: [
-      {
-        id: 'ph3',
-        title: 'Site Survey',
-        startDate: addDays(startOfWeek(new Date()), 0),
-        endDate: addDays(startOfWeek(new Date()), 3),
-        color: '#10b981',
-        tasks: [
-          { id: 't4', title: 'Measure rooms', completed: true },
-        ]
-      }
-    ]
-  }
-];
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
 
-// --- Components ---
+        // --- Utility Functions ---
+        const addDays = (date, days) => {
+            const result = new Date(date);
+            result.setDate(result.getDate() + days);
+            return result;
+        };
+        const diffDays = (date1, date2) => {
+            const d1 = new Date(date1); d1.setHours(0,0,0,0);
+            const d2 = new Date(date2); d2.setHours(0,0,0,0);
+            const diffTime = d2.getTime() - d1.getTime();
+            return Math.round(diffTime / (1000 * 60 * 60 * 24));
+        };
+        const formatDate = (date) => {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        };
+        const generateId = () => Math.random().toString(36).substr(2, 9);
 
-interface SortableRowProps {
-  project: Project;
-  timelineDays: Date[];
-  onExpand: (id: string) => void;
-  isExpanded: boolean;
-  onUpdateProject: (project: Project) => void;
-  onDeleteProject: (id: string) => void;
-  onUpdatePhase: (phaseId: string, updates: Partial<Phase>) => void;
-}
+        // --- SVG Icons ---
+        const Icons = {
+            ChevronRight: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>,
+            ChevronDown: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg>,
+            Grip: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="cursor-grab text-gray-400 hover:text-gray-600"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
+            Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>,
+            X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
+            Trash: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>
+        };
 
-const SortableProjectRow = ({ 
-  project, 
-  timelineDays, 
-  onExpand, 
-  isExpanded, 
-  onUpdateProject, 
-  onDeleteProject,
-  onUpdatePhase
-}: SortableRowProps) => {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    transform,
-    transition,
-    isDragging
-  } = useSortable({ id: project.id });
+        const THEME_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'slate'];
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    zIndex: isDragging ? 10 : 1,
-  };
+        const COLOR_PALETTES = {
+            blue: ['#3b82f6', '#2563eb', '#1d4ed8', '#1e40af', '#1e3a8a', '#172554'],
+            green: ['#22c55e', '#16a34a', '#15803d', '#166534', '#14532d', '#052e16'],
+            orange: ['#f97316', '#ea580c', '#c2410c', '#9a3412', '#7c2d12', '#431407'],
+            purple: ['#a855f7', '#9333ea', '#7e22ce', '#6b21a8', '#581c87', '#3b0764'],
+            pink: ['#ec4899', '#db2777', '#be185d', '#9d174d', '#831843', '#500724'],
+            slate: ['#64748b', '#475569', '#334155', '#1e293b', '#0f172a', '#020617']
+        };
 
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [tempTitle, setTempTitle] = useState(project.title);
+        const getPhaseColor = (colorName, index) => {
+            const palette = COLOR_PALETTES[colorName] || COLOR_PALETTES.blue;
+            return palette[index % palette.length];
+        };
 
-  const handleTitleSubmit = () => {
-    onUpdateProject({ ...project, title: tempTitle });
-    setIsEditingTitle(false);
-  };
+        const getChronologicalIndices = (phases) => {
+            const validPhases = phases.filter(p => p.start && p.end).sort((a, b) => a.start.getTime() - b.start.getTime());
+            const indices = {};
+            validPhases.forEach((p, idx) => {
+                indices[p.id] = idx;
+            });
+            return indices;
+        };
 
-  return (
-    <div ref={setNodeRef} style={style} className={cn("flex border-b border-slate-200 group bg-white", isDragging && "shadow-lg opacity-50")}>
-      {/* Sidebar Part */}
-      <div className="w-[250px] flex-shrink-0 border-r border-slate-200 p-4 flex items-center gap-3 sticky left-0 bg-white z-20">
-        <button {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-400 hover:text-slate-600">
-          <GripVertical size={18} />
-        </button>
-        <div className="flex-1 min-w-0">
-          {isEditingTitle ? (
-            <input
-              autoFocus
-              className="w-full text-sm font-semibold border-b border-blue-500 outline-none"
-              value={tempTitle}
-              onChange={(e) => setTempTitle(e.target.value)}
-              onBlur={handleTitleSubmit}
-              onKeyDown={(e) => e.key === 'Enter' && handleTitleSubmit()}
-            />
-          ) : (
-            <h3 
-              className="text-sm font-semibold truncate cursor-pointer hover:text-blue-600"
-              onClick={() => setIsEditingTitle(true)}
-            >
-              {project.title}
-            </h3>
-          )}
-          <div className="flex items-center gap-2 mt-1">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: project.color }} />
-            <span className="text-[10px] text-slate-500 uppercase tracking-wider font-medium">
-              {project.phases.length} Phases
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
-            onClick={() => onExpand(project.id)}
-            className="p-1 hover:bg-slate-100 rounded text-slate-500"
-          >
-            {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
-          <button 
-            onClick={() => onDeleteProject(project.id)}
-            className="p-1 hover:bg-red-50 rounded text-red-400"
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </div>
-
-      {/* Timeline Part */}
-      <div className="flex-1 relative overflow-hidden h-[80px]">
-        {/* Day Grid Lines */}
-        <div className="absolute inset-0 flex">
-          {timelineDays.map((day, i) => (
-            <div 
-              key={i} 
-              className={cn(
-                "border-r border-slate-100 flex-shrink-0",
-                isToday(day) && "bg-blue-50/30"
-              )}
-              style={{ width: COLUMN_WIDTH }}
-            />
-          ))}
-        </div>
-
-        {/* Phase Blocks */}
-        <div className="absolute inset-0 p-2 flex flex-col gap-1 overflow-hidden">
-          {project.phases.map((phase) => {
-            const startIdx = timelineDays.findIndex(d => isSameDay(d, phase.startDate));
-            const endIdx = timelineDays.findIndex(d => isSameDay(d, phase.endDate));
+        // --- Main Application Component ---
+        const App = () => {
+            const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
+            const [zoomLevel, setZoomLevel] = useState(24); // pixels per day
+            const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             
-            if (startIdx === -1 && endIdx === -1) return null;
-            
-            const left = Math.max(0, startIdx) * COLUMN_WIDTH;
-            const width = (Math.min(timelineDays.length - 1, endIdx) - Math.max(0, startIdx) + 1) * COLUMN_WIDTH;
+            // Modal State
+            const [modalData, setModalData] = useState(null);
+
+            // Timeline bounds
+            const today = useMemo(() => {
+                const d = new Date();
+                d.setHours(0,0,0,0);
+                return d;
+            }, []);
+
+            // Set timeline to start nearest Monday ~1 month ago
+            const timelineStart = useMemo(() => {
+                const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                return new Date(d.setDate(diff));
+            }, [today]);
+
+            // Set timeline end nearest Sunday ~5 months ahead
+            const timelineEnd = useMemo(() => {
+                const d = new Date(today.getFullYear(), today.getMonth() + 5, 0);
+                const day = d.getDay();
+                const diff = d.getDate() + (day === 0 ? 0 : 7 - day); 
+                return new Date(d.setDate(diff));
+            }, [today]);
+
+            const totalDays = diffDays(timelineStart, timelineEnd) + 1;
+
+            // Initial Mock Data
+            const [projects, setProjects] = useState([
+                {
+                    id: 'p1', title: 'Smith Residence Renovation', color: 'blue', isExpanded: true,
+                    phases: [
+                        { id: 'ph1', title: 'Concept & Schematic', start: new Date(today.getFullYear(), today.getMonth(), 5), end: new Date(today.getFullYear(), today.getMonth(), 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }] },
+                        { id: 'ph2', title: 'Design Development', start: new Date(today.getFullYear(), today.getMonth(), 22), end: new Date(today.getFullYear(), today.getMonth() + 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }] },
+                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', start: null, end: null, tasks: [] },
+                    ]
+                },
+                {
+                    id: 'p2', title: 'Downtown Corporate Office', color: 'orange', isExpanded: false,
+                    phases: [
+                        { id: 'ph3', title: 'Space Planning', start: new Date(today.getFullYear(), today.getMonth() - 1, 15), end: new Date(today.getFullYear(), today.getMonth(), 10), tasks: [{ id: 't4', text: 'Floor plans', done: true }] },
+                        { id: 'ph4', title: 'Procurement', start: new Date(today.getFullYear(), today.getMonth(), 12), end: new Date(today.getFullYear(), today.getMonth() + 2, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }] },
+                        { id: 'ph5', title: 'Installation', start: new Date(today.getFullYear(), today.getMonth() + 2, 10), end: new Date(today.getFullYear(), today.getMonth() + 2, 25), tasks: [{ id: 't6', text: 'Site Supervision', done: false }] },
+                    ]
+                }
+            ]);
+
+            // --- Handlers ---
+            const toggleProjectExpand = (id) => {
+                setProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
+            };
+
+            const updateProjectTitle = (id, newTitle) => {
+                setProjects(projects.map(p => p.id === id ? { ...p, title: newTitle } : p));
+            };
+
+            const updateProjectColor = (id, newColor) => {
+                setProjects(projects.map(p => p.id === id ? { ...p, color: newColor } : p));
+            };
+
+            const addProject = () => {
+                setProjects([...projects, {
+                    id: generateId(),
+                    title: 'New Project',
+                    color: THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)],
+                    isExpanded: true,
+                    phases: [{
+                        id: generateId(),
+                        title: 'Phase 1',
+                        start: null,
+                        end: null,
+                        tasks: []
+                    }]
+                }]);
+            };
+
+            const addPhase = (projectId) => {
+                 setProjects(projects.map(p => {
+                    if (p.id === projectId) {
+                        return {
+                            ...p,
+                            isExpanded: true,
+                            phases: [...p.phases, {
+                                id: generateId(),
+                                title: 'New Phase',
+                                start: null,
+                                end: null,
+                                tasks: []
+                            }]
+                        }
+                    }
+                    return p;
+                 }));
+            };
+
+            const handleGridClick = (e, projectId, phaseId) => {
+                // Ensure click is on the grid background, not dragging a block
+                if (e.target !== e.currentTarget) return;
+
+                const clickX = e.nativeEvent.offsetX;
+                const daysFromStart = Math.floor(clickX / zoomLevel);
+                const weekIndex = Math.floor(daysFromStart / 7);
+                
+                // Snap new blocks to the beginning of the clicked week
+                const newStart = addDays(timelineStart, weekIndex * 7);
+                const newEnd = addDays(newStart, 6); // Default 1 full week duration
+
+                setProjects(projects.map(p => {
+                    if (p.id === projectId) {
+                        return {
+                            ...p,
+                            phases: p.phases.map(ph => {
+                                if (ph.id === phaseId) {
+                                    return { ...ph, start: newStart, end: newEnd };
+                                }
+                                return ph;
+                            })
+                        }
+                    }
+                    return p;
+                }));
+            };
+
+            // Drag and Drop Rows
+            const onDragStartRow = (e, index) => {
+                setDraggedProjectIndex(index);
+                e.dataTransfer.effectAllowed = "move";
+            };
+            const onDragOverRow = (e, index) => {
+                e.preventDefault();
+                if (draggedProjectIndex === null || draggedProjectIndex === index) return;
+                const newProjects = [...projects];
+                const draggedItem = newProjects[draggedProjectIndex];
+                newProjects.splice(draggedProjectIndex, 1);
+                newProjects.splice(index, 0, draggedItem);
+                setDraggedProjectIndex(index);
+                setProjects(newProjects);
+            };
+            const onDragEndRow = () => {
+                setDraggedProjectIndex(null);
+            };
+
+            // Block Dragging & Resizing Logic
+            const [draggingBlock, setDraggingBlock] = useState(null);
+
+            useEffect(() => {
+                const handleMouseMove = (e) => {
+                    if (!draggingBlock) return;
+                    
+                    const deltaX = e.clientX - draggingBlock.startX;
+                    const deltaDays = Math.round(deltaX / zoomLevel);
+                    
+                    if (deltaDays !== 0) {
+                        setProjects(prev => prev.map(p => {
+                            if (p.id === draggingBlock.projectId) {
+                                return {
+                                    ...p,
+                                    phases: p.phases.map(ph => {
+                                        if (ph.id === draggingBlock.phaseId) {
+                                            let newStart = ph.start;
+                                            let newEnd = ph.end;
+
+                                            if (draggingBlock.type === 'move') {
+                                                newStart = addDays(draggingBlock.origStart, deltaDays);
+                                                newEnd = addDays(draggingBlock.origEnd, deltaDays);
+                                            } else if (draggingBlock.type === 'resize-left') {
+                                                newStart = addDays(draggingBlock.origStart, deltaDays);
+                                                if (newStart > newEnd) newStart = newEnd;
+                                            } else if (draggingBlock.type === 'resize-right') {
+                                                newEnd = addDays(draggingBlock.origEnd, deltaDays);
+                                                if (newEnd < newStart) newEnd = newStart;
+                                            }
+                                            return { ...ph, start: newStart, end: newEnd };
+                                        }
+                                        return ph;
+                                    })
+                                }
+                            }
+                            return p;
+                        }));
+                    }
+                };
+
+                const handleMouseUp = () => {
+                    if (draggingBlock) {
+                        setDraggingBlock(null);
+                    }
+                };
+
+                if (draggingBlock) {
+                    window.addEventListener('mousemove', handleMouseMove);
+                    window.addEventListener('mouseup', handleMouseUp);
+                }
+                return () => {
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                };
+            }, [draggingBlock, zoomLevel]);
+
+            const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd) => {
+                e.stopPropagation();
+                setDraggingBlock({
+                    projectId, phaseId, type,
+                    startX: e.clientX,
+                    origStart, origEnd,
+                    isMoved: false
+                });
+            };
+            const handleBlockClick = (e, projectId, phase, colorIndex) => {
+                e.stopPropagation();
+                if (draggingBlock) return; // Don't open if just finished dragging
+                setModalData({ projectId, phase, colorIndex });
+            };
+
+            // Modal Handlers
+            const updatePhaseTitle = (newTitle) => {
+                setProjects(projects.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, title: newTitle } : ph)
+                } : p));
+                setModalData({ ...modalData, phase: { ...modalData.phase, title: newTitle } });
+            };
+
+            const toggleTask = (taskId) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const addTask = () => {
+                const updatedTasks = [...modalData.phase.tasks, { id: generateId(), text: 'New Task', done: false }];
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskText = (taskId, text) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, text } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const deleteTask = (taskId) => {
+                const updatedTasks = modalData.phase.tasks.filter(t => t.id !== taskId);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTasksInState = (updatedTasks) => {
+                setProjects(projects.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: updatedTasks } : ph)
+                } : p));
+                setModalData({ ...modalData, phase: { ...modalData.phase, tasks: updatedTasks } });
+            };
+
+            const deletePhase = () => {
+                setProjects(projects.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.filter(ph => ph.id !== modalData.phase.id)
+                } : p));
+                setModalData(null);
+            };
+
+
+            // --- Render Helpers ---
+            // Build calendar headers (Weekly)
+            const months = [];
+            const weeks = [];
+            let currentMonth = -1;
+            let weeksInMonth = 0;
+
+            for (let i = 0; i < totalDays; i += 7) {
+                const weekStart = addDays(timelineStart, i);
+                const weekEnd = addDays(weekStart, 6);
+                
+                weeks.push({
+                    start: weekStart,
+                    end: weekEnd,
+                    label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`,
+                    daysFromStart: i
+                });
+
+                const month = weekStart.getMonth();
+                if (month !== currentMonth) {
+                    if (currentMonth !== -1) {
+                        months[months.length - 1].colSpan = weeksInMonth * 7;
+                    }
+                    months.push({
+                        name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                        colSpan: 7
+                    });
+                    currentMonth = month;
+                    weeksInMonth = 1;
+                } else {
+                    weeksInMonth++;
+                    months[months.length - 1].colSpan = weeksInMonth * 7;
+                }
+            }
+            if (months.length > 0) months[months.length - 1].colSpan = weeksInMonth * 7;
+
+            const gridWidth = totalDays * zoomLevel;
+            const activeProject = modalData ? projects.find(p => p.id === modalData.projectId) : null;
 
             return (
-              <PhaseBlock 
-                key={phase.id}
-                phase={phase}
-                left={left}
-                width={width}
-                projectColor={project.color}
-                onUpdate={(updates) => onUpdatePhase(phase.id, updates)}
-              />
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const PhaseBlock = ({ 
-  phase, 
-  left, 
-  width, 
-  projectColor, 
-  onUpdate 
-}: { 
-  phase: Phase, 
-  left: number, 
-  width: number, 
-  projectColor: string, 
-  onUpdate?: (updates: Partial<Phase>) => void,
-  key?: string 
-}) => {
-  const [showTasks, setShowTasks] = useState(false);
-  const [tasks, setTasks] = useState(phase.tasks);
-
-  const toggleTask = (taskId: string) => {
-    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t));
-  };
-
-  const addTask = () => {
-    const newTask: Task = {
-      id: Math.random().toString(36).substr(2, 9),
-      title: 'New Task',
-      completed: false
-    };
-    setTasks([...tasks, newTask]);
-  };
-
-  const handleDragEnd = (_: any, info: any) => {
-    if (!onUpdate) return;
-    const daysShifted = Math.round(info.offset.x / COLUMN_WIDTH);
-    if (daysShifted !== 0) {
-      onUpdate({
-        startDate: addDays(phase.startDate, daysShifted),
-        endDate: addDays(phase.endDate, daysShifted)
-      });
-    }
-  };
-
-  return (
-    <>
-      <motion.div
-        layoutId={phase.id}
-        drag="x"
-        dragMomentum={false}
-        dragElastic={0}
-        onDragEnd={handleDragEnd}
-        className="absolute h-10 rounded-md shadow-sm cursor-pointer flex items-center px-3 overflow-hidden group/block z-10"
-        style={{ 
-          left, 
-          width,
-          background: `linear-gradient(to right, ${projectColor}44, ${projectColor})`,
-          borderLeft: `4px solid ${projectColor}`
-        }}
-        onClick={(e) => {
-          // Only open tasks if we didn't just drag
-          if (Math.abs(e.currentTarget.getBoundingClientRect().left - left) < 5) {
-            setShowTasks(true);
-          }
-        }}
-        whileHover={{ scale: 1.01, zIndex: 20 }}
-        whileDrag={{ scale: 1.05, zIndex: 30, cursor: 'grabbing', opacity: 0.8 }}
-      >
-        <span className="text-xs font-bold text-white truncate drop-shadow-sm">
-          {phase.title}
-        </span>
-        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover/block:opacity-100 transition-opacity">
-          <CheckSquare size={12} className="text-white" />
-          <span className="text-[10px] text-white font-bold">
-            {tasks.filter(t => t.completed).length}/{tasks.length}
-          </span>
-        </div>
-      </motion.div>
-
-      <AnimatePresence>
-        {showTasks && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/20 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden"
-            >
-              <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-                <div>
-                  <h4 className="font-bold text-slate-800">{phase.title}</h4>
-                  <p className="text-xs text-slate-500">
-                    {format(phase.startDate, 'MMM d')} - {format(phase.endDate, 'MMM d, yyyy')}
-                  </p>
-                </div>
-                <button onClick={() => setShowTasks(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Checklist</label>
-                  <div className="max-h-[300px] overflow-y-auto space-y-1 pr-2">
-                    {tasks.map((task) => (
-                      <div key={task.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg group">
-                        <input 
-                          type="checkbox" 
-                          checked={task.completed}
-                          className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                          onChange={() => toggleTask(task.id)}
-                        />
-                        <span className={cn("text-sm flex-1", task.completed && "line-through text-slate-400")}>
-                          {task.title}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <button 
-                    onClick={addTask}
-                    className="flex items-center gap-2 text-sm text-blue-600 font-medium p-2 hover:bg-blue-50 w-full rounded-lg transition-colors mt-2"
-                  >
-                    <Plus size={14} /> Add Task
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-    </>
-  );
-};
-
-const PhaseRow = ({ 
-  phase, 
-  project, 
-  timelineDays, 
-  onUpdate 
-}: { 
-  phase: Phase, 
-  project: Project, 
-  timelineDays: Date[], 
-  onUpdate: (updates: Partial<Phase>) => void,
-  key?: string
-}) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(phase.title);
-
-  const handleSubmit = () => {
-    onUpdate({ title });
-    setIsEditing(false);
-  };
-
-  return (
-    <div className="flex border-b border-slate-100 last:border-0 hover:bg-slate-100/50 transition-colors">
-      <div className="w-[250px] flex-shrink-0 border-r border-slate-200 p-3 pl-12 flex items-center gap-2">
-        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />
-        {isEditing ? (
-          <input
-            autoFocus
-            className="text-xs font-medium text-slate-600 border-b border-blue-500 outline-none bg-transparent w-full"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={handleSubmit}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
-          />
-        ) : (
-          <span 
-            className="text-xs font-medium text-slate-600 cursor-pointer hover:text-blue-600 truncate"
-            onClick={() => setIsEditing(true)}
-          >
-            {phase.title}
-          </span>
-        )}
-      </div>
-      <div className="flex-1 relative h-10">
-        {/* Phase Specific Block */}
-        {(() => {
-          const startIdx = timelineDays.findIndex(d => isSameDay(d, phase.startDate));
-          const endIdx = timelineDays.findIndex(d => isSameDay(d, phase.endDate));
-          if (startIdx === -1 && endIdx === -1) return null;
-          
-          const left = Math.max(0, startIdx) * COLUMN_WIDTH;
-          const width = (Math.min(timelineDays.length - 1, endIdx) - Math.max(0, startIdx) + 1) * COLUMN_WIDTH;
-
-          return (
-            <motion.div 
-              drag="x"
-              dragMomentum={false}
-              dragElastic={0}
-              onDragEnd={(_: any, info: any) => {
-                const daysShifted = Math.round(info.offset.x / COLUMN_WIDTH);
-                if (daysShifted !== 0) {
-                  onUpdate({
-                    startDate: addDays(phase.startDate, daysShifted),
-                    endDate: addDays(phase.endDate, daysShifted)
-                  });
-                }
-              }}
-              className="absolute top-2 h-6 rounded shadow-sm flex items-center px-2 text-[10px] font-bold text-white truncate cursor-grab active:cursor-grabbing z-10"
-              style={{ 
-                left, 
-                width, 
-                backgroundColor: project.color,
-                opacity: 0.8
-              }}
-              whileDrag={{ scale: 1.05, zIndex: 20, opacity: 1 }}
-            >
-              {phase.title}
-            </motion.div>
-          );
-        })()}
-      </div>
-    </div>
-  );
-};
-
-export default function App() {
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
-  const [startDate, setStartDate] = useState(startOfWeek(new Date()));
-  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
-  const [appTitle, setAppTitle] = useState("Studio Timeline Manager");
-  const [isEditingAppTitle, setIsEditingAppTitle] = useState(false);
-
-  const timelineDays = useMemo(() => {
-    return eachDayOfInterval({
-      start: startDate,
-      end: addDays(startDate, 28) // 4 weeks view
-    });
-  }, [startDate]);
-
-  const months = useMemo(() => {
-    const monthsMap = new Map<string, { name: string, days: number }>();
-    timelineDays.forEach(day => {
-      const monthKey = format(day, 'MMMM yyyy');
-      if (!monthsMap.has(monthKey)) {
-        monthsMap.set(monthKey, { name: monthKey, days: 0 });
-      }
-      monthsMap.get(monthKey)!.days += 1;
-    });
-    return Array.from(monthsMap.values());
-  }, [timelineDays]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setProjects((items) => {
-        const oldIndex = items.findIndex((i) => i.id === active.id);
-        const newIndex = items.findIndex((i) => i.id === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
-    }
-  };
-
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to today
-  useEffect(() => {
-    if (scrollRef.current) {
-      const todayIdx = timelineDays.findIndex(d => isSameDay(startOfDay(d), startOfDay(new Date())));
-      if (todayIdx !== -1) {
-        scrollRef.current.scrollLeft = todayIdx * COLUMN_WIDTH - 200;
-      }
-    }
-  }, []);
-
-  const addProject = () => {
-    const newProject: Project = {
-      id: Math.random().toString(36).substr(2, 9),
-      title: 'New Project',
-      color: '#' + Math.floor(Math.random()*16777215).toString(16),
-      phases: []
-    };
-    setProjects([...projects, newProject]);
-  };
-
-  const addPhase = (projectId: string) => {
-    setProjects(projects.map(p => {
-      if (p.id === projectId) {
-        const newPhase: Phase = {
-          id: Math.random().toString(36).substr(2, 9),
-          title: 'New Phase',
-          startDate: new Date(),
-          endDate: addDays(new Date(), 7),
-          color: p.color,
-          tasks: []
-        };
-        return { ...p, phases: [...p.phases, newPhase] };
-      }
-      return p;
-    }));
-  };
-
-  const updatePhase = (projectId: string, phaseId: string, updates: Partial<Phase>) => {
-    setProjects(projects.map(p => {
-      if (p.id === projectId) {
-        return {
-          ...p,
-          phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, ...updates } : ph)
-        };
-      }
-      return p;
-    }));
-  };
-
-  return (
-    <div className="flex flex-col h-screen bg-white overflow-hidden">
-      {/* Header */}
-      <header className="h-16 border-b border-slate-200 flex items-center justify-between px-6 bg-white z-30">
-        <div className="flex items-center gap-4">
-          <div className="p-2 bg-blue-600 rounded-lg text-white">
-            <Calendar size={24} />
-          </div>
-          {isEditingAppTitle ? (
-            <input
-              autoFocus
-              className="text-xl font-bold text-slate-800 border-b-2 border-blue-500 outline-none"
-              value={appTitle}
-              onChange={(e) => setAppTitle(e.target.value)}
-              onBlur={() => setIsEditingAppTitle(false)}
-              onKeyDown={(e) => e.key === 'Enter' && setIsEditingAppTitle(false)}
-            />
-          ) : (
-            <h1 
-              className="text-xl font-bold text-slate-800 cursor-pointer hover:text-blue-600 transition-colors"
-              onClick={() => setIsEditingAppTitle(true)}
-            >
-              {appTitle}
-            </h1>
-          )}
-        </div>
-
-        <div className="flex items-center gap-3">
-          <div className="flex items-center bg-slate-100 rounded-lg p-1">
-            <button 
-              onClick={() => setStartDate(subWeeks(startDate, 1))}
-              className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <button 
-              onClick={() => setStartDate(new Date())}
-              className="px-3 py-1 text-xs font-bold text-slate-600 hover:text-blue-600"
-            >
-              Today
-            </button>
-            <button 
-              onClick={() => setStartDate(addWeeks(startDate, 1))}
-              className="p-1.5 hover:bg-white hover:shadow-sm rounded-md transition-all text-slate-600"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
-          <button 
-            onClick={addProject}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm transition-colors shadow-sm"
-          >
-            <Plus size={18} /> New Project
-          </button>
-          <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all">
-            <Settings2 size={20} />
-          </button>
-        </div>
-      </header>
-
-      {/* Main Timeline Area */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Timeline Header (Sticky) */}
-        <div className="flex border-b border-slate-200 bg-slate-50/80 backdrop-blur-md z-20">
-          <div className="w-[250px] flex-shrink-0 border-r border-slate-200 p-4 font-bold text-xs text-slate-400 uppercase tracking-widest flex items-center justify-between">
-            Projects
-            <GripVertical size={14} />
-          </div>
-          
-          <div className="flex-1 overflow-hidden" ref={scrollRef}>
-            {/* Months Row */}
-            <div className="flex border-b border-slate-200">
-              {months.map((month, i) => (
-                <div 
-                  key={i} 
-                  className="border-r border-slate-200 h-8 flex items-center px-4 text-xs font-bold text-slate-600 bg-slate-100/50"
-                  style={{ width: month.days * COLUMN_WIDTH }}
-                >
-                  {month.name}
-                </div>
-              ))}
-            </div>
-            
-            {/* Days/Dates Row */}
-            <div className="flex">
-              {timelineDays.map((day, i) => (
-                <div 
-                  key={i} 
-                  className={cn(
-                    "border-r border-slate-200 flex-shrink-0 h-12 flex flex-col items-center justify-center text-[10px] font-medium",
-                    isToday(day) ? "bg-blue-600 text-white" : "text-slate-500"
-                  )}
-                  style={{ width: COLUMN_WIDTH }}
-                >
-                  <span className="uppercase opacity-70">{format(day, 'EEE')}</span>
-                  <span className="text-sm font-bold">{format(day, 'd')}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Timeline Content (Scrollable) */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden">
-          <DndContext 
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
-          >
-            <SortableContext 
-              items={projects.map(p => p.id)}
-              strategy={verticalListSortingStrategy}
-            >
-              {projects.map((project) => (
-                <React.Fragment key={project.id}>
-                  <SortableProjectRow 
-                    project={project} 
-                    timelineDays={timelineDays}
-                    isExpanded={expandedProjectId === project.id}
-                    onExpand={(id) => setExpandedProjectId(expandedProjectId === id ? null : id)}
-                    onUpdateProject={(updated) => setProjects(projects.map(p => p.id === updated.id ? updated : p))}
-                    onDeleteProject={(id) => setProjects(projects.filter(p => p.id !== id))}
-                    onUpdatePhase={(phaseId, updates) => updatePhase(project.id, phaseId, updates)}
-                  />
-                  
-                  {/* Expanded View for Sub-categories/Phases */}
-                  <AnimatePresence>
-                    {expandedProjectId === project.id && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: 'auto', opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="bg-slate-50 border-b border-slate-200 overflow-hidden"
-                      >
-                        {project.phases.map((phase) => (
-                          <PhaseRow 
-                            key={phase.id}
-                            phase={phase}
-                            project={project}
-                            timelineDays={timelineDays}
-                            onUpdate={(updates) => updatePhase(project.id, phase.id, updates)}
-                          />
-                        ))}
-                        {project.phases.length === 0 && (
-                          <div className="p-4 text-center text-xs text-slate-400 italic">
-                            No phases defined for this project.
-                          </div>
-                        )}
-                        <div className="p-2 pl-[250px]">
-                          <button 
-                            onClick={() => addPhase(project.id)}
-                            className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            <Plus size={10} /> Add Phase
-                          </button>
+                <div className="flex flex-col h-screen bg-white">
+                    {/* Header */}
+                    <div className="flex-shrink-0 bg-slate-900 text-white p-4 shadow-md flex justify-between items-center z-50 relative">
+                        <div>
+                            <input 
+                                type="text" 
+                                value={appTitle} 
+                                onChange={(e) => setAppTitle(e.target.value)}
+                                className="bg-transparent text-xl font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-96"
+                            />
+                            <p className="text-slate-400 text-xs mt-1">Interior Design Timeline & Task Management</p>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </React.Fragment>
-              ))}
-            </SortableContext>
-          </DndContext>
-        </div>
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs text-slate-400">Zoom</span>
+                                <input 
+                                    type="range" 
+                                    min="10" max="50" 
+                                    value={zoomLevel} 
+                                    onChange={(e) => setZoomLevel(Number(e.target.value))}
+                                    className="w-24 accent-blue-500"
+                                />
+                            </div>
+                            <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors">
+                                <Icons.Plus /> Add Project
+                            </button>
+                        </div>
+                    </div>
 
-        {/* Live Date Line */}
-        <div 
-          className="absolute top-0 bottom-0 pointer-events-none z-10 border-l-2 border-red-500 flex flex-col items-center"
-          style={{ 
-            left: 250 + (timelineDays.findIndex(d => isSameDay(startOfDay(d), startOfDay(new Date()))) * COLUMN_WIDTH) + (COLUMN_WIDTH / 2)
-          }}
-        >
-          <div className="bg-red-500 text-white text-[8px] font-bold px-1 rounded-sm -mt-1">NOW</div>
-        </div>
-      </div>
-    </div>
-  );
-}
+                    {/* Main Gantt Area */}
+                    <div className="flex flex-1 overflow-hidden relative">
+                        
+                        {/* Scrollable Container */}
+                        <div className="flex-1 overflow-auto relative flex hide-scrollbar">
+                            
+                            {/* Left Sticky Column: Projects */}
+                            <div className="w-80 flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                                {/* Header spacer */}
+                                <div className="h-[60px] border-b border-slate-200 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
+                                    <span className="text-xs font-semibold text-slate-500 uppercase">Projects & Phases</span>
+                                </div>
+                                
+                                {/* Project List */}
+                                <div className="pb-32">
+                                    {projects.map((project, index) => (
+                                        <div 
+                                            key={project.id}
+                                            draggable
+                                            onDragStart={(e) => onDragStartRow(e, index)}
+                                            onDragOver={(e) => onDragOverRow(e, index)}
+                                            onDragEnd={onDragEndRow}
+                                            className={`border-b border-slate-100 ${draggedProjectIndex === index ? 'opacity-50 bg-slate-100' : ''}`}
+                                        >
+                                            {/* Main Project Row */}
+                                            <div className="flex items-center h-12 hover:bg-slate-50 group pl-2">
+                                                <div className="w-8 flex justify-center items-center h-full">
+                                                    <div className="opacity-0 group-hover:opacity-100"><Icons.Grip /></div>
+                                                </div>
+                                                <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-2 text-slate-400 hover:text-slate-700">
+                                                    {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+                                                </button>
+
+                                                {/* Color Picker Indicator */}
+                                                <div className="relative group/color mr-2">
+                                                    <div className="w-3 h-3 rounded-full cursor-pointer" style={{backgroundColor: COLOR_PALETTES[project.color][1]}}></div>
+                                                    <div className="absolute left-0 top-full mt-1 hidden group-hover/color:flex gap-1 bg-white border shadow-lg rounded p-1 z-50">
+                                                        {THEME_COLORS.map(c => (
+                                                            <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <input 
+                                                    value={project.title}
+                                                    onChange={(e) => updateProjectTitle(project.id, e.target.value)}
+                                                    className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate"
+                                                />
+                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600 mr-2" title="Add Phase">
+                                                    <Icons.Plus />
+                                                </button>
+                                            </div>
+
+                                            {/* Expanded Phase Sub-rows */}
+                                            {project.isExpanded && project.phases.map(phase => (
+                                                <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-2 border-t border-slate-100/50">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2"></div>
+                                                    <span className="text-xs text-slate-600 truncate">{phase.title}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Right Scrolling Timeline Grid */}
+                            <div className="relative" style={{ width: gridWidth }}>
+                                {/* Fixed Date Header */}
+                                <div className="sticky top-0 z-20 bg-white border-b border-slate-200">
+                                    {/* Months */}
+                                    <div className="flex border-b border-slate-100 bg-slate-50 text-slate-600 text-xs font-semibold h-8">
+                                        {months.map((m, i) => (
+                                            <div key={i} className="flex items-center pl-2 border-r border-slate-200 truncate" style={{ width: m.colSpan * zoomLevel }}>
+                                                {m.name}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {/* Weeks */}
+                                    <div className="flex h-7 bg-white text-[10px] text-slate-500 font-medium">
+                                        {weeks.map((w, i) => (
+                                            <div key={i} className="flex justify-center items-center border-r border-slate-100 bg-slate-50" style={{ width: 7 * zoomLevel }}>
+                                                {w.label}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Timeline Background Grid & Data Rows */}
+                                <div className="relative pb-32">
+                                    {/* Vertical Grid Lines (Weekly) */}
+                                    <div className="absolute top-0 bottom-0 left-0 right-0 flex pointer-events-none z-0">
+                                         {weeks.map((w, i) => (
+                                            <div key={i} className="h-full border-r border-slate-100/50" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}></div>
+                                        ))}
+                                    </div>
+
+                                    {/* Live Today Line */}
+                                    {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
+                                        <div 
+                                            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 opacity-70" 
+                                            style={{ left: diffDays(timelineStart, today) * zoomLevel }}
+                                        >
+                                            <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
+                                        </div>
+                                    )}
+
+                                    {/* Data Rows Content */}
+                                    {projects.map(project => {
+                                        const chronoIndices = getChronologicalIndices(project.phases);
+                                        
+                                        return (
+                                        <div key={project.id} className="relative border-b border-slate-100/50">
+                                            {/* Main Project Row Space (Empty if expanded, holds collapsed blocks if not) */}
+                                            <div 
+                                                className="h-12 relative z-10 w-full"
+                                            >
+                                                {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
+                                                    if (!phase.start || !phase.end) return null;
+                                                    const left = diffDays(timelineStart, phase.start) * zoomLevel;
+                                                    const width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                    if (left + width < 0 || left > gridWidth) return null; // offscreen optimization
+                                                    
+                                                    const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
+
+                                                    return (
+                                                        <div 
+                                                            key={phase.id}
+                                                            onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
+                                                            onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
+                                                            className="absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center cursor-pointer timeline-block overflow-hidden"
+                                                            style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
+                                                        >
+                                                            <div className="truncate drop-shadow-md">{phase.title}</div>
+                                                            {/* Resize Handles */}
+                                                            <div className="resize-handle resize-handle-left hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                            <div className="resize-handle resize-handle-right hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+
+                                            {/* Expanded Sub-rows */}
+                                            {project.isExpanded && project.phases.map((phase, phaseIndex) => {
+                                                const hasTimeline = phase.start && phase.end;
+                                                const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
+                                                let left = 0, width = 0;
+                                                if (hasTimeline) {
+                                                    left = diffDays(timelineStart, phase.start) * zoomLevel;
+                                                    width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                }
+                                                const taskCount = phase.tasks.length;
+                                                const doneCount = phase.tasks.filter(t => t.done).length;
+                                                
+                                                return (
+                                                    <div 
+                                                        key={phase.id} 
+                                                        className="h-10 relative z-10 w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors"
+                                                        onClick={(e) => handleGridClick(e, project.id, phase.id)}
+                                                        title={!hasTimeline ? "Click to add timeline block" : "Click background to move timeline block"}
+                                                    >
+                                                        {hasTimeline && (
+                                                            <div 
+                                                                onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
+                                                                onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
+                                                                className="absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between cursor-pointer timeline-block overflow-hidden"
+                                                                style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
+                                                            >
+                                                                <span className="truncate drop-shadow-md">{phase.title}</span>
+                                                                {taskCount > 0 && width > 100 && (
+                                                                    <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">
+                                                                        {doneCount}/{taskCount}
+                                                                    </span>
+                                                                )}
+
+                                                                <div className="resize-handle resize-handle-left hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                <div className="resize-handle resize-handle-right hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    )})}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Task Checklist Modal */}
+                    {modalData && activeProject && (
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center" onMouseDown={() => setModalData(null)}>
+                            <div className="bg-white rounded-xl shadow-2xl w-[450px] max-w-full m-4 overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
+                                {/* Modal Header */}
+                                <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(activeProject.color, modalData.colorIndex) }}>
+                                    <div className="flex-1 mr-4 flex items-center">
+                                        <div className="flex-1">
+                                            <p className="text-xs opacity-80 font-medium tracking-wide uppercase mb-1">{activeProject.title}</p>
+                                            <input 
+                                                value={modalData.phase.title}
+                                                onChange={e => updatePhaseTitle(e.target.value)}
+                                                className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50"
+                                            />
+                                        </div>
+                                    </div>
+                                    <button onClick={() => setModalData(null)} className="p-1 hover:bg-black/10 rounded-full transition-colors">
+                                        <Icons.X />
+                                    </button>
+                                </div>
+
+                                {/* Modal Body (Tasks) */}
+                                <div className="p-5 max-h-[60vh] overflow-y-auto">
+                                    <div className="flex justify-between items-end mb-4 border-b border-slate-100 pb-2">
+                                        <div>
+                                            <h3 className="text-sm font-semibold text-slate-800">Checklist Tasks</h3>
+                                            <p className="text-xs text-slate-500 mt-1">
+                                                {formatDate(modalData.phase.start)} — {formatDate(modalData.phase.end)} 
+                                                <span className="ml-2 font-medium">({diffDays(modalData.phase.start, modalData.phase.end) + 1} days)</span>
+                                            </p>
+                                        </div>
+                                        <button onClick={addTask} className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+                                            <Icons.Plus /> Add Task
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        {modalData.phase.tasks.length === 0 ? (
+                                            <p className="text-center text-sm text-slate-400 py-4 italic">No tasks added yet.</p>
+                                        ) : (
+                                            modalData.phase.tasks.map(task => (
+                                                <div key={task.id} className="flex items-center gap-3 group">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={task.done} 
+                                                        onChange={() => toggleTask(task.id)}
+                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
+                                                    />
+                                                    <input 
+                                                        value={task.text}
+                                                        onChange={(e) => updateTaskText(task.id, e.target.value)}
+                                                        className={`flex-1 text-sm bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                                                    />
+                                                    <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity">
+                                                        <Icons.Trash />
+                                                    </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Modal Footer */}
+                                <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between">
+                                    <button onClick={deletePhase} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete Phase</button>
+                                    <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded shadow-sm">Done</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
