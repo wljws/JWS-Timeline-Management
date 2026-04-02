@@ -18,7 +18,7 @@
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         .timeline-block {
-            transition: box-shadow 0.2s;
+            transition: box-shadow 0.2s, outline 0.1s;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .timeline-block:hover {
@@ -124,7 +124,11 @@
             Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>,
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
             Trash: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
-            Star: ({ className }) => <svg width="16" height="16" fill="currentColor" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24" className={className}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            Flag: ({ className }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>,
+            Undo: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg>,
+            Redo: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path></svg>,
+            Lock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0110 0v4"></path></svg>,
+            Unlock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 019.9-1"></path></svg>,
         };
 
         const THEME_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'slate'];
@@ -139,8 +143,23 @@
         };
 
         const getPhaseColor = (colorName, index) => {
+            if (colorName && colorName.startsWith('#')) {
+                // Dynamically generate a palette shade from a custom hex using CSS color-mix
+                const p = index % 6;
+                if (p === 0) return `color-mix(in srgb, ${colorName} 40%, white)`;
+                if (p === 1) return `color-mix(in srgb, ${colorName} 70%, white)`;
+                if (p === 2) return colorName;
+                if (p === 3) return `color-mix(in srgb, ${colorName} 80%, black)`;
+                if (p === 4) return `color-mix(in srgb, ${colorName} 60%, black)`;
+                if (p === 5) return `color-mix(in srgb, ${colorName} 40%, black)`;
+            }
             const palette = COLOR_PALETTES[colorName] || COLOR_PALETTES.blue;
             return palette[index % palette.length];
+        };
+
+        const getIndicatorColor = (colorName) => {
+            if (colorName && colorName.startsWith('#')) return colorName;
+            return COLOR_PALETTES[colorName] ? COLOR_PALETTES[colorName][1] : COLOR_PALETTES.blue[1];
         };
 
         const getChronologicalIndices = (phases) => {
@@ -166,9 +185,12 @@
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
             const [zoomLevel, setZoomLevel] = useState(24); // pixels per day
-            const [leftColWidth, setLeftColWidth] = useState(320); // adjustable left column
+            const [leftColWidth, setLeftColWidth] = useState(330); // adjustable left column
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             const [draggedPhase, setDraggedPhase] = useState(null);
+            
+            // Multi-Select State
+            const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
             
             // Modal State
             const [modalData, setModalData] = useState(null);
@@ -191,12 +213,65 @@
 
             const totalDays = diffDays(timelineStart, timelineEnd) + 1;
 
+            // --- UNDO / REDO HISTORY SYSTEM ---
+            const [past, setPast] = useState([]);
+            const [future, setFuture] = useState([]);
+            const dragStartProjects = useRef(null);
+
+            // Initial Mock Data
+            const [projects, setProjects] = useState([
+                {
+                    id: 'p1', title: 'Smith Residence Renovation', color: 'blue', isExpanded: true,
+                    phases: [
+                        { id: 'ph1', title: 'Concept & Schematic', isLocked: false, start: new Date(2026, 0, 5), end: new Date(2026, 0, 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }], milestones: [] },
+                        { id: 'ph2', title: 'Design Development', isLocked: false, start: new Date(2026, 0, 22), end: new Date(2026, 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }], milestones: [{ id: 'm1', date: new Date(2026, 1, 10) }] },
+                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', isLocked: false, start: null, end: null, tasks: [], milestones: [] },
+                    ]
+                },
+                {
+                    id: 'p2', title: 'Downtown Corporate Office', color: 'orange', isExpanded: false,
+                    phases: [
+                        { id: 'ph3', title: 'Space Planning', isLocked: true, start: new Date(2026, 1, 1), end: new Date(2026, 1, 28), tasks: [{ id: 't4', text: 'Floor plans', done: true }], milestones: [] },
+                        { id: 'ph4', title: 'Procurement', isLocked: false, start: new Date(2026, 2, 1), end: new Date(2026, 3, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }], milestones: [] },
+                        { id: 'ph5', title: 'Installation', isLocked: false, start: new Date(2026, 3, 10), end: new Date(2026, 4, 15), tasks: [{ id: 't6', text: 'Site Supervision', done: false }], milestones: [{ id: 'm2', date: new Date(2026, 4, 15) }] },
+                    ]
+                }
+            ]);
+
+            // Wrapper to safely update projects and push to history
+            const updateProjects = (updater) => {
+                setProjects(prev => {
+                    const next = typeof updater === 'function' ? updater(prev) : updater;
+                    if (next !== prev) {
+                        setPast(p => [...p, prev]);
+                        setFuture([]);
+                    }
+                    return next;
+                });
+            };
+
+            const undo = () => {
+                if (past.length === 0) return;
+                const previous = past[past.length - 1];
+                setPast(past.slice(0, -1));
+                setFuture(f => [projects, ...f]);
+                setProjects(previous);
+            };
+
+            const redo = () => {
+                if (future.length === 0) return;
+                const next = future[0];
+                setFuture(future.slice(1));
+                setPast(p => [...p, projects]);
+                setProjects(next);
+            };
+
             // --- Scroll to Today Logic ---
             const scrollToToday = () => {
                 if (scrollContainerRef.current) {
                     const daysFromStart = diffDays(timelineStart, today);
                     if (daysFromStart >= 0) {
-                        // Calculate position and offset it so 'today' is nicely visible, not glued to the sticky column
+                        // Calculate position and offset it so 'today' is nicely visible
                         const targetScroll = (daysFromStart * zoomLevel) - 150;
                         scrollContainerRef.current.scrollLeft = Math.max(0, targetScroll);
                     }
@@ -206,49 +281,53 @@
             // Auto-scroll on initial load
             useEffect(() => {
                 if (!initialScrollDone.current && scrollContainerRef.current) {
-                    // Small timeout ensures the DOM has painted the wide grid before attempting to scroll
-                    setTimeout(() => {
-                        scrollToToday();
-                    }, 50);
+                    setTimeout(() => { scrollToToday(); }, 50);
                     initialScrollDone.current = true;
                 }
             }, [timelineStart, today, zoomLevel]);
 
-            // Initial Mock Data
-            const [projects, setProjects] = useState([
-                {
-                    id: 'p1', title: 'Smith Residence Renovation', color: 'blue', isExpanded: true,
-                    phases: [
-                        { id: 'ph1', title: 'Concept & Schematic', start: new Date(2026, 0, 5), end: new Date(2026, 0, 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }], milestones: [] },
-                        { id: 'ph2', title: 'Design Development', start: new Date(2026, 0, 22), end: new Date(2026, 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }], milestones: [{ id: 'm1', date: new Date(2026, 1, 10) }] },
-                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', start: null, end: null, tasks: [], milestones: [] },
-                    ]
-                },
-                {
-                    id: 'p2', title: 'Downtown Corporate Office', color: 'orange', isExpanded: false,
-                    phases: [
-                        { id: 'ph3', title: 'Space Planning', start: new Date(2026, 1, 1), end: new Date(2026, 1, 28), tasks: [{ id: 't4', text: 'Floor plans', done: true }], milestones: [] },
-                        { id: 'ph4', title: 'Procurement', start: new Date(2026, 2, 1), end: new Date(2026, 3, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }], milestones: [] },
-                        { id: 'ph5', title: 'Installation', start: new Date(2026, 3, 10), end: new Date(2026, 4, 15), tasks: [{ id: 't6', text: 'Site Supervision', done: false }], milestones: [{ id: 'm2', date: new Date(2026, 4, 15) }] },
-                    ]
+            // --- Selection & Lock Handlers ---
+            const togglePhaseSelection = (phaseId) => {
+                setSelectedPhaseIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(phaseId)) next.delete(phaseId);
+                    else next.add(phaseId);
+                    return next;
+                });
+            };
+
+            const toggleProjectSelection = (projectId) => {
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return;
+                const allPhaseIds = project.phases.map(ph => ph.id);
+                const allSelected = allPhaseIds.every(id => selectedPhaseIds.has(id));
+                setSelectedPhaseIds(prev => {
+                    const next = new Set(prev);
+                    if (allSelected) {
+                        allPhaseIds.forEach(id => next.delete(id));
+                    } else {
+                        allPhaseIds.forEach(id => next.add(id));
+                    }
+                    return next;
+                });
+            };
+
+            const toggleLock = (projectId, phaseId) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, isLocked: !ph.isLocked } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, isLocked: !prev.phase.isLocked } }));
                 }
-            ]);
-
-            // --- Handlers ---
-            const toggleProjectExpand = (id) => {
-                setProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
             };
 
-            const updateProjectTitle = (id, newTitle) => {
-                setProjects(projects.map(p => p.id === id ? { ...p, title: newTitle } : p));
-            };
-
-            const updateProjectColor = (id, newColor) => {
-                setProjects(projects.map(p => p.id === id ? { ...p, color: newColor } : p));
-            };
+            // --- General Handlers ---
+            const toggleProjectExpand = (id) => updateProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
+            const updateProjectTitle = (id, newTitle) => updateProjects(projects.map(p => p.id === id ? { ...p, title: newTitle } : p));
+            const updateProjectColor = (id, newColor) => updateProjects(projects.map(p => p.id === id ? { ...p, color: newColor } : p));
 
             const addProject = () => {
-                setProjects([...projects, {
+                updateProjects([...projects, {
                     id: generateId(),
                     title: 'New Project',
                     color: THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)],
@@ -256,6 +335,7 @@
                     phases: STANDARD_TEMPLATE_PHASES.map(t => ({
                         id: generateId(),
                         title: t.title,
+                        isLocked: false,
                         start: null,
                         end: null,
                         tasks: t.tasks.map(text => ({ id: generateId(), text, done: false })),
@@ -265,7 +345,7 @@
             };
 
             const addPhase = (projectId) => {
-                 setProjects(projects.map(p => {
+                 updateProjects(projects.map(p => {
                     if (p.id === projectId) {
                         return {
                             ...p,
@@ -273,6 +353,7 @@
                             phases: [...p.phases, {
                                 id: generateId(),
                                 title: 'New Phase',
+                                isLocked: false,
                                 start: null,
                                 end: null,
                                 tasks: [],
@@ -285,10 +366,8 @@
             };
 
             const deleteProject = (projectId) => {
-                setProjects(projects.filter(p => p.id !== projectId));
-                if (modalData && modalData.projectId === projectId) {
-                    setModalData(null);
-                }
+                updateProjects(projects.filter(p => p.id !== projectId));
+                if (modalData && modalData.projectId === projectId) setModalData(null);
             };
 
             const handleGridClick = (e, projectId, phaseId) => {
@@ -298,16 +377,15 @@
                 const daysFromStart = Math.floor(clickX / zoomLevel);
                 const weekIndex = Math.floor(daysFromStart / 7);
                 
-                // Snap new blocks to the beginning of the clicked week
                 const newStart = addDays(timelineStart, weekIndex * 7);
-                const newEnd = addDays(newStart, 6); // Default 1 full week duration
+                const newEnd = addDays(newStart, 6);
 
-                setProjects(projects.map(p => {
+                updateProjects(projects.map(p => {
                     if (p.id === projectId) {
                         return {
                             ...p,
                             phases: p.phases.map(ph => {
-                                if (ph.id === phaseId) {
+                                if (ph.id === phaseId && !ph.isLocked) {
                                     return { ...ph, start: newStart, end: newEnd };
                                 }
                                 return ph;
@@ -320,6 +398,7 @@
 
             // Drag and Drop Rows
             const onDragStartRow = (e, index) => {
+                dragStartProjects.current = projects; // Save state for history
                 setDraggedProjectIndex(index);
                 e.dataTransfer.effectAllowed = "move";
             };
@@ -331,19 +410,26 @@
                 newProjects.splice(draggedProjectIndex, 1);
                 newProjects.splice(index, 0, draggedItem);
                 setDraggedProjectIndex(index);
-                setProjects(newProjects);
+                setProjects(newProjects); // direct, no history push yet
             };
             const onDragEndRow = () => {
                 setDraggedProjectIndex(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
             };
 
             // Drag and Drop Phases
             const onDragStartPhase = (e, projectId, phaseIndex) => {
                 e.stopPropagation();
+                dragStartProjects.current = projects;
                 setDraggedPhase({ projectId, phaseIndex });
                 e.dataTransfer.effectAllowed = "move";
             };
-
             const onDragOverPhase = (e, projectId, targetIndex) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -361,10 +447,16 @@
                 }));
                 setDraggedPhase({ projectId, phaseIndex: targetIndex });
             };
-
             const onDragEndPhase = (e) => {
                 e.stopPropagation();
                 setDraggedPhase(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
             };
 
             // Block & Column Resizing/Dragging Logic
@@ -383,7 +475,6 @@
                     // Handle Block Resizing/Moving
                     if (!draggingBlock) return;
                     
-                    // Register that an actual movement happened (to prevent accidental clicks opening modal)
                     if (Math.abs(e.clientX - draggingBlock.startX) > 3) {
                         lastInteractionRef.current.isDragging = true;
                     }
@@ -392,39 +483,58 @@
                     const deltaDays = Math.round(deltaX / zoomLevel);
                     
                     if (deltaDays !== 0) {
-                        setProjects(prev => prev.map(p => {
-                            if (p.id === draggingBlock.projectId) {
-                                return {
-                                    ...p,
-                                    phases: p.phases.map(ph => {
-                                        if (ph.id === draggingBlock.phaseId) {
-                                            let newStart = ph.start;
-                                            let newEnd = ph.end;
+                        // Direct setProjects (no history save during active dragging)
+                        setProjects(prev => {
+                            let next = [...prev];
+                            let changed = false;
 
-                                            if (draggingBlock.type === 'move') {
-                                                newStart = addDays(draggingBlock.origStart, deltaDays);
-                                                newEnd = addDays(draggingBlock.origEnd, deltaDays);
-                                            } else if (draggingBlock.type === 'resize-left') {
-                                                newStart = addDays(draggingBlock.origStart, deltaDays);
-                                                if (newStart > newEnd) newStart = newEnd;
-                                            } else if (draggingBlock.type === 'resize-right') {
-                                                newEnd = addDays(draggingBlock.origEnd, deltaDays);
-                                                if (newEnd < newStart) newEnd = newStart;
-                                            }
-                                            return { ...ph, start: newStart, end: newEnd };
+                            draggingBlock.blocksToMove.forEach(b => {
+                                const pIndex = next.findIndex(p => p.id === b.projectId);
+                                if (pIndex > -1) {
+                                    const phIndex = next[pIndex].phases.findIndex(ph => ph.id === b.phaseId);
+                                    if (phIndex > -1) {
+                                        const ph = next[pIndex].phases[phIndex];
+                                        let newStart = ph.start;
+                                        let newEnd = ph.end;
+
+                                        if (draggingBlock.type === 'move') {
+                                            newStart = addDays(b.origStart, deltaDays);
+                                            newEnd = addDays(b.origEnd, deltaDays);
+                                        } else if (draggingBlock.type === 'resize-left') {
+                                            newStart = addDays(b.origStart, deltaDays);
+                                            if (newStart > newEnd) newStart = newEnd;
+                                        } else if (draggingBlock.type === 'resize-right') {
+                                            newEnd = addDays(b.origEnd, deltaDays);
+                                            if (newEnd < newStart) newEnd = newStart;
                                         }
-                                        return ph;
-                                    })
+
+                                        if (newStart?.getTime() !== ph.start?.getTime() || newEnd?.getTime() !== ph.end?.getTime()) {
+                                            const newPhases = [...next[pIndex].phases];
+                                            newPhases[phIndex] = { ...ph, start: newStart, end: newEnd };
+                                            next[pIndex] = { ...next[pIndex], phases: newPhases };
+                                            changed = true;
+                                        }
+                                    }
                                 }
-                            }
-                            return p;
-                        }));
+                            });
+                            return changed ? next : prev;
+                        });
                     }
                 };
 
                 const handleMouseUp = () => {
                     if (isResizingCol) setIsResizingCol(false);
-                    if (draggingBlock) setDraggingBlock(null);
+                    if (draggingBlock) {
+                        // Commit to history on drag end
+                        setProjects(current => {
+                            if (dragStartProjects.current && dragStartProjects.current !== current) {
+                                setPast(p => [...p, dragStartProjects.current]);
+                                setFuture([]);
+                            }
+                            return current;
+                        });
+                        setDraggingBlock(null);
+                    }
                 };
 
                 if (draggingBlock || isResizingCol) {
@@ -439,12 +549,29 @@
 
             const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd) => {
                 e.stopPropagation();
+                
+                // Block dragging if locked
+                const phase = projects.find(p => p.id === projectId)?.phases.find(ph => ph.id === phaseId);
+                if (phase?.isLocked) return;
+
                 lastInteractionRef.current = { isDragging: false, startX: e.clientX };
-                setDraggingBlock({
-                    projectId, phaseId, type,
-                    startX: e.clientX,
-                    origStart, origEnd
-                });
+                dragStartProjects.current = projects; // Snapshot for history
+
+                let blocksToMove = [{ projectId, phaseId, origStart, origEnd }];
+
+                // If moving a selected block, gather all selected unlocked blocks to shift together
+                if (type === 'move' && selectedPhaseIds.has(phaseId)) {
+                    blocksToMove = [];
+                    projects.forEach(p => {
+                        p.phases.forEach(ph => {
+                            if (selectedPhaseIds.has(ph.id) && !ph.isLocked) {
+                                blocksToMove.push({ projectId: p.id, phaseId: ph.id, origStart: ph.start, origEnd: ph.end });
+                            }
+                        });
+                    });
+                }
+
+                setDraggingBlock({ blocksToMove, type, startX: e.clientX });
             };
 
             const handleBlockClick = (e, projectId, phase, colorIndex) => {
@@ -459,7 +586,7 @@
 
             // Modal & Direct Handlers
             const editPhaseTitle = (projectId, phaseId, newTitle) => {
-                setProjects(projects.map(p => p.id === projectId ? {
+                updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, title: newTitle } : ph)
                 } : p));
                 if (modalData && modalData.projectId === projectId && modalData.phase.id === phaseId) {
@@ -471,7 +598,7 @@
                 const newStart = startStr ? fromYMD(startStr) : null;
                 const newEnd = endStr ? fromYMD(endStr) : null;
                 
-                setProjects(projects.map(p => p.id === projectId ? {
+                updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, start: newStart, end: newEnd } : ph)
                 } : p));
                 
@@ -482,7 +609,7 @@
 
             const addPhaseMilestone = (projectId, phaseId) => {
                 const newMilestone = { id: generateId(), date: new Date() };
-                setProjects(projects.map(p => p.id === projectId ? {
+                updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, milestones: [...(ph.milestones || []), newMilestone] } : ph)
                 } : p));
                 if (modalData && modalData.phase.id === phaseId) {
@@ -492,7 +619,7 @@
 
             const updatePhaseMilestoneDate = (projectId, phaseId, milestoneId, dateStr) => {
                 const newDate = dateStr ? fromYMD(dateStr) : null;
-                setProjects(projects.map(p => p.id === projectId ? {
+                updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
                         ...ph, 
                         milestones: (ph.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m)
@@ -510,7 +637,7 @@
             };
 
             const removePhaseMilestone = (projectId, phaseId, milestoneId) => {
-                setProjects(projects.map(p => p.id === projectId ? {
+                updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
                         ...ph, 
                         milestones: (ph.milestones || []).filter(m => m.id !== milestoneId)
@@ -528,12 +655,10 @@
             };
 
             const removePhase = (projectId, phaseId) => {
-                setProjects(projects.map(p => p.id === projectId ? {
+                updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.filter(ph => ph.id !== phaseId)
                 } : p));
-                if (modalData && modalData.phase.id === phaseId) {
-                    setModalData(null);
-                }
+                if (modalData && modalData.phase.id === phaseId) setModalData(null);
             };
 
             const toggleTask = (taskId) => {
@@ -557,7 +682,7 @@
             };
 
             const updateTasksInState = (updatedTasks) => {
-                setProjects(projects.map(p => p.id === modalData.projectId ? {
+                updateProjects(projects.map(p => p.id === modalData.projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: updatedTasks } : ph)
                 } : p));
                 setModalData({ ...modalData, phase: { ...modalData.phase, tasks: updatedTasks } });
@@ -622,7 +747,18 @@
                             />
                             <p className="text-slate-400 text-xs mt-1">Interior Design Timeline & Task Management</p>
                         </div>
-                        <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-4">
+                            
+                            {/* Undo / Redo */}
+                            <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
+                                <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo">
+                                    <Icons.Undo />
+                                </button>
+                                <button onClick={redo} disabled={future.length === 0} className={`p-1 rounded ${future.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Redo">
+                                    <Icons.Redo />
+                                </button>
+                            </div>
+
                             <button onClick={scrollToToday} className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-3 py-1.5 transition-colors font-medium">
                                 Today
                             </button>
@@ -636,7 +772,7 @@
                                     className="w-24 accent-blue-500"
                                 />
                             </div>
-                            <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors">
+                            <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors ml-2">
                                 <Icons.Plus /> Add Project
                             </button>
                         </div>
@@ -657,7 +793,7 @@
                                 <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)}></div>
                                 
                                 {/* Header spacer */}
-                                <div className="h-[60px] border-b border-slate-200 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
+                                <div className="h-[60px] border-b border-slate-300 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
                                     <input 
                                         value={leftColTitle} 
                                         onChange={e => setLeftColTitle(e.target.value)}
@@ -667,7 +803,10 @@
                                 
                                 {/* Project List */}
                                 <div className="pb-32">
-                                    {projects.map((project, index) => (
+                                    {projects.map((project, index) => {
+                                        const allPhasesSelected = project.phases.length > 0 && project.phases.every(ph => selectedPhaseIds.has(ph.id));
+
+                                        return (
                                         <div 
                                             key={project.id}
                                             draggable
@@ -681,19 +820,45 @@
                                                 <div className="w-8 flex justify-center items-center h-full">
                                                     <div className="opacity-0 group-hover:opacity-100"><Icons.Grip /></div>
                                                 </div>
-                                                <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-2 text-slate-400 hover:text-slate-700">
+                                                <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700">
                                                     {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
                                                 </button>
 
                                                 {/* Color Picker Indicator */}
-                                                <div className="relative group/color mr-2">
-                                                    <div className="w-3 h-3 rounded-full cursor-pointer" style={{backgroundColor: COLOR_PALETTES[project.color][1]}}></div>
-                                                    <div className="absolute left-0 top-full mt-1 hidden group-hover/color:flex gap-1 bg-white border shadow-lg rounded p-1 z-50">
-                                                        {THEME_COLORS.map(c => (
-                                                            <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
-                                                        ))}
+                                                <div className="relative group/color mr-2 flex items-center h-full">
+                                                    <div className="w-3 h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
+                                                    
+                                                    {/* Hover Dropdown with padding bridge to prevent disappearing */}
+                                                    <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
+                                                        <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
+                                                            {THEME_COLORS.map(c => (
+                                                                <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
+                                                            ))}
+                                                            
+                                                            <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
+                                                            
+                                                            {/* Native Color Wheel Input */}
+                                                            <label className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 overflow-hidden relative border border-slate-300 shadow-inner flex-shrink-0" title="Custom Color">
+                                                                <input 
+                                                                    type="color" 
+                                                                    value={project.color && project.color.startsWith('#') ? project.color : '#000000'}
+                                                                    onChange={(e) => updateProjectColor(project.id, e.target.value)}
+                                                                    className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer"
+                                                                />
+                                                                <div className="w-full h-full bg-[conic-gradient(red,yellow,lime,aqua,blue,fuchsia,red)]"></div>
+                                                            </label>
+                                                        </div>
                                                     </div>
                                                 </div>
+
+                                                {/* Select All Project Phases Checkbox */}
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={allPhasesSelected}
+                                                    onChange={() => toggleProjectSelection(project.id)}
+                                                    className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
+                                                    title="Select All Phases to shift timeline"
+                                                />
 
                                                 <input 
                                                     value={project.title}
@@ -716,12 +881,21 @@
                                                     onDragStart={(e) => onDragStartPhase(e, project.id, phaseIndex)}
                                                     onDragOver={(e) => onDragOverPhase(e, project.id, phaseIndex)}
                                                     onDragEnd={onDragEndPhase}
-                                                    className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-4 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''}`}
+                                                    className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-3 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''} ${selectedPhaseIds.has(phase.id) ? 'bg-blue-50/50' : ''}`}
                                                 >
                                                     <div className="w-6 flex justify-center items-center h-full opacity-0 group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1">
                                                         <Icons.Grip />
                                                     </div>
                                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
+                                                    
+                                                    {/* Select Phase Checkbox */}
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={selectedPhaseIds.has(phase.id)}
+                                                        onChange={() => togglePhaseSelection(phase.id)}
+                                                        className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
+                                                    />
+
                                                     <input 
                                                         list="standard-phases-list"
                                                         value={phase.title}
@@ -729,24 +903,30 @@
                                                         className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate"
                                                         placeholder="Phase Title"
                                                     />
+                                                    
+                                                    {/* Lock Phase Button */}
+                                                    <button onClick={() => toggleLock(project.id, phase.id)} className={`p-1 transition-colors ml-1 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-0 group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>
+                                                        {phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}
+                                                    </button>
+                                                    
                                                     <button onClick={() => removePhase(project.id, phase.id)} className="opacity-0 group-hover/phase:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase">
                                                         <Icons.Trash />
                                                     </button>
                                                 </div>
                                             ))}
                                         </div>
-                                    ))}
+                                    )})}
                                 </div>
                             </div>
 
                             {/* Right Scrolling Timeline Grid */}
                             <div className="relative" style={{ width: gridWidth }}>
                                 {/* Fixed Date Header */}
-                                <div className="sticky top-0 z-20 bg-white border-b border-slate-200">
+                                <div className="sticky top-0 z-20 bg-white border-b border-slate-300">
                                     {/* Months */}
-                                    <div className="flex border-b border-slate-100 bg-slate-50 text-slate-600 text-xs font-semibold h-8">
+                                    <div className="flex border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold h-8">
                                         {months.map((m, i) => (
-                                            <div key={i} className="flex items-center pl-2 border-r border-slate-200 truncate" style={{ width: m.colSpan * zoomLevel }}>
+                                            <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>
                                                 {m.name}
                                             </div>
                                         ))}
@@ -754,7 +934,7 @@
                                     {/* Weeks */}
                                     <div className="flex h-7 bg-white text-[10px] text-slate-500 font-medium">
                                         {weeks.map((w, i) => (
-                                            <div key={i} className="flex justify-center items-center border-r border-slate-100 bg-slate-50" style={{ width: 7 * zoomLevel }}>
+                                            <div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50" style={{ width: 7 * zoomLevel }}>
                                                 {w.label}
                                             </div>
                                         ))}
@@ -763,17 +943,24 @@
 
                                 {/* Timeline Background Grid & Data Rows */}
                                 <div className="relative pb-32">
-                                    {/* Vertical Grid Lines (Weekly) */}
+                                    {/* Vertical Grid Lines (Weekly thick + subtle days) */}
                                     <div className="absolute top-0 bottom-0 left-0 right-0 flex pointer-events-none z-0">
                                          {weeks.map((w, i) => (
-                                            <div key={i} className="h-full border-r border-slate-100/50" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}></div>
+                                            <div key={i} className="h-full border-r border-slate-300 relative" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
+                                                {/* Sub-day dashed lines inside the week */}
+                                                <div className="absolute inset-0 flex">
+                                                    {[...Array(7)].map((_, dayIdx) => (
+                                                        <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>
+                                                    ))}
+                                                </div>
+                                            </div>
                                         ))}
                                     </div>
 
                                     {/* Live Today Line */}
                                     {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
                                         <div 
-                                            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-10 opacity-70" 
+                                            className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 opacity-70" 
                                             style={{ left: diffDays(timelineStart, today) * zoomLevel }}
                                         >
                                             <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
@@ -785,33 +972,45 @@
                                         const chronoIndices = getChronologicalIndices(project.phases);
                                         
                                         return (
-                                        <div key={project.id} className="relative border-b border-slate-100/50">
+                                        <div key={project.id} className="relative border-b border-slate-200">
                                             {/* Main Project Row Space (Empty if expanded, holds collapsed blocks if not) */}
                                             <div 
-                                                className="h-12 relative w-full"
+                                                className="h-12 relative w-full bg-slate-50/10"
                                             >
                                                 {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
                                                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                                                     const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
                                                     const hasTimeline = phase.start && phase.end;
+                                                    const isSelected = selectedPhaseIds.has(phase.id);
 
                                                     return (
                                                         <React.Fragment key={phase.id}>
                                                             {hasTimeline && (() => {
                                                                 const left = diffDays(timelineStart, phase.start) * zoomLevel;
                                                                 const width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
-                                                                if (left + width < 0 || left > gridWidth) return null; // offscreen optimization
+                                                                if (left + width < 0 || left > gridWidth) return null; 
                                                                 
                                                                 return (
                                                                     <div 
                                                                         onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                         onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                        className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center cursor-pointer timeline-block overflow-hidden z-10 ${isCompleted ? 'completed-block' : ''}`}
+                                                                        className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block 
+                                                                            ${isCompleted ? 'completed-block' : ''} 
+                                                                            ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
+                                                                            ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                                                                        `}
                                                                         style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
                                                                     >
-                                                                        <div className="truncate drop-shadow-md">{phase.title}</div>
-                                                                        <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                                        <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                        <div className="truncate drop-shadow-md flex items-center gap-1">
+                                                                            {phase.isLocked && <Icons.Lock />}
+                                                                            {phase.title}
+                                                                        </div>
+                                                                        {!phase.isLocked && (
+                                                                            <>
+                                                                                <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                                <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                            </>
+                                                                        )}
                                                                     </div>
                                                                 );
                                                             })()}
@@ -824,7 +1023,7 @@
                                                                         className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
                                                                         style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
                                                                     >
-                                                                        <Icons.Star className="text-amber-400 fill-amber-400" />
+                                                                        <Icons.Flag className="text-amber-400" />
                                                                     </div>
                                                                 )
                                                             })}
@@ -845,30 +1044,42 @@
                                                 const taskCount = phase.tasks.length;
                                                 const doneCount = phase.tasks.filter(t => t.done).length;
                                                 const isCompleted = taskCount > 0 && doneCount === taskCount;
+                                                const isSelected = selectedPhaseIds.has(phase.id);
                                                 
                                                 return (
                                                     <div 
                                                         key={phase.id} 
                                                         className="h-10 relative w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors"
                                                         onClick={(e) => handleGridClick(e, project.id, phase.id)}
-                                                        title={!hasTimeline ? "Click to add timeline block" : "Click background to move timeline block"}
+                                                        title={!hasTimeline ? "Click to add timeline block" : (phase.isLocked ? "Locked" : "Click background to move timeline block")}
                                                     >
                                                         {hasTimeline && (
                                                             <div 
                                                                 onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                 onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between cursor-pointer timeline-block overflow-hidden z-10 ${isCompleted ? 'completed-block' : ''}`}
+                                                                className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block 
+                                                                    ${isCompleted ? 'completed-block' : ''}
+                                                                    ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
+                                                                    ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                                                                `}
                                                                 style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
                                                             >
-                                                                <span className="truncate drop-shadow-md">{phase.title}</span>
+                                                                <span className="truncate drop-shadow-md flex items-center gap-1">
+                                                                    {phase.isLocked && <Icons.Lock />}
+                                                                    {phase.title}
+                                                                </span>
                                                                 {taskCount > 0 && width > 100 && (
                                                                     <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">
                                                                         {doneCount}/{taskCount}
                                                                     </span>
                                                                 )}
 
-                                                                <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                                <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                {!phase.isLocked && (
+                                                                    <>
+                                                                        <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                        <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         )}
 
@@ -880,7 +1091,7 @@
                                                                     className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
                                                                     style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
                                                                 >
-                                                                    <Icons.Star className="text-amber-400 fill-amber-400" />
+                                                                    <Icons.Flag className="text-amber-400" />
                                                                 </div>
                                                             )
                                                         })}
@@ -902,7 +1113,10 @@
                                 <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(activeProject.color, modalData.colorIndex) }}>
                                     <div className="flex-1 mr-4 flex items-center">
                                         <div className="flex-1">
-                                            <p className="text-xs opacity-80 font-medium tracking-wide uppercase mb-1">{activeProject.title}</p>
+                                            <p className="text-xs opacity-80 font-medium tracking-wide uppercase mb-1 flex items-center gap-1">
+                                                {activeProject.title} 
+                                                {modalData.phase.isLocked && <span className="bg-black/20 px-1.5 rounded-sm flex items-center gap-1"><Icons.Lock /> Locked</span>}
+                                            </p>
                                             <input 
                                                 list="standard-phases-list"
                                                 value={modalData.phase.title}
@@ -928,15 +1142,17 @@
                                                     <input 
                                                         type="date" 
                                                         value={toYMD(modalData.phase.start)} 
+                                                        disabled={modalData.phase.isLocked}
                                                         onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))}
-                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400"
+                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
                                                     />
                                                     <span className="text-xs text-slate-400">to</span>
                                                     <input 
                                                         type="date" 
                                                         value={toYMD(modalData.phase.end)} 
+                                                        disabled={modalData.phase.isLocked}
                                                         onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)}
-                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400"
+                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
                                                     />
                                                     {modalData.phase.start && modalData.phase.end && (
                                                         <span className="text-xs text-slate-500 font-medium ml-1">
@@ -949,10 +1165,10 @@
                                                 <div className="mt-4 pt-3 border-t border-slate-100">
                                                     <div className="flex justify-between items-center mb-2">
                                                         <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                                            <Icons.Star className="text-amber-400 fill-amber-400 w-3 h-3" />
+                                                            <Icons.Flag className="text-amber-400 w-3 h-3" />
                                                             Milestones
                                                         </span>
-                                                        <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1">
+                                                        <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} disabled={modalData.phase.isLocked} className={`text-[10px] font-medium flex items-center gap-1 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed' : 'text-amber-600 hover:text-amber-800'}`}>
                                                             <Icons.Plus /> Add Milestone
                                                         </button>
                                                     </div>
@@ -966,10 +1182,11 @@
                                                                     <input 
                                                                         type="date" 
                                                                         value={toYMD(m.date)} 
+                                                                        disabled={modalData.phase.isLocked}
                                                                         onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
-                                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400"
+                                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
                                                                     />
-                                                                    <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} className="text-slate-400 hover:text-red-500 transition-colors p-0.5">
+                                                                    <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={modalData.phase.isLocked} className={`p-0.5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500 transition-colors'}`}>
                                                                         <Icons.Trash />
                                                                     </button>
                                                                 </div>
