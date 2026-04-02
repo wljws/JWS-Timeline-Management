@@ -221,20 +221,17 @@
             // Initial Mock Data
             const [projects, setProjects] = useState([
                 {
-                    id: 'p1', title: 'Smith Residence Renovation', color: 'blue', isExpanded: true,
-                    phases: [
-                        { id: 'ph1', title: 'Concept & Schematic', isLocked: false, start: new Date(2026, 0, 5), end: new Date(2026, 0, 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }], milestones: [] },
-                        { id: 'ph2', title: 'Design Development', isLocked: false, start: new Date(2026, 0, 22), end: new Date(2026, 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }], milestones: [{ id: 'm1', date: new Date(2026, 1, 10) }] },
-                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', isLocked: false, start: null, end: null, tasks: [], milestones: [] },
-                    ]
-                },
-                {
-                    id: 'p2', title: 'Downtown Corporate Office', color: 'orange', isExpanded: false,
-                    phases: [
-                        { id: 'ph3', title: 'Space Planning', isLocked: true, start: new Date(2026, 1, 1), end: new Date(2026, 1, 28), tasks: [{ id: 't4', text: 'Floor plans', done: true }], milestones: [] },
-                        { id: 'ph4', title: 'Procurement', isLocked: false, start: new Date(2026, 2, 1), end: new Date(2026, 3, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }], milestones: [] },
-                        { id: 'ph5', title: 'Installation', isLocked: false, start: new Date(2026, 3, 10), end: new Date(2026, 4, 15), tasks: [{ id: 't6', text: 'Site Supervision', done: false }], milestones: [{ id: 'm2', date: new Date(2026, 4, 15) }] },
-                    ]
+                    id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
+                    phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
+                        id: `ph_${i}`,
+                        title: t.title,
+                        isLocked: false,
+                        // Provide example dates for the first two phases so the timeline isn't completely empty
+                        start: i === 0 ? new Date(2026, 0, 5) : (i === 1 ? new Date(2026, 0, 25) : null),
+                        end: i === 0 ? new Date(2026, 0, 20) : (i === 1 ? new Date(2026, 1, 20) : null),
+                        tasks: t.tasks.map((text, tIdx) => ({ id: `t_${i}_${tIdx}`, text, done: false })),
+                        milestones: []
+                    }))
                 }
             ]);
 
@@ -608,12 +605,30 @@
             };
 
             const addPhaseMilestone = (projectId, phaseId) => {
-                const newMilestone = { id: generateId(), date: new Date() };
+                const newMilestone = { id: generateId(), date: new Date(), label: 'New Milestone' };
                 updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, milestones: [...(ph.milestones || []), newMilestone] } : ph)
                 } : p));
                 if (modalData && modalData.phase.id === phaseId) {
                     setModalData(prev => ({ ...prev, phase: { ...prev.phase, milestones: [...(prev.phase.milestones || []), newMilestone] } }));
+                }
+            };
+
+            const updatePhaseMilestoneLabel = (projectId, phaseId, milestoneId, labelStr) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
+                        ...ph, 
+                        milestones: (ph.milestones || []).map(m => m.id === milestoneId ? { ...m, label: labelStr } : m)
+                    } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ 
+                        ...prev, 
+                        phase: { 
+                            ...prev.phase, 
+                            milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, label: labelStr } : m)
+                        } 
+                    }));
                 }
             };
 
@@ -974,9 +989,7 @@
                                         return (
                                         <div key={project.id} className="relative border-b border-slate-200">
                                             {/* Main Project Row Space (Empty if expanded, holds collapsed blocks if not) */}
-                                            <div 
-                                                className="h-12 relative w-full bg-slate-50/10"
-                                            >
+                                            <div className="h-12 relative w-full bg-slate-50/10">
                                                 {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
                                                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                                                     const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
@@ -1022,8 +1035,10 @@
                                                                         key={milestone.id}
                                                                         className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
                                                                         style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                        title={milestone.label}
                                                                     >
                                                                         <Icons.Flag className="text-amber-400" />
+                                                                        {milestone.label && <span className="text-[8px] font-bold text-amber-700 mt-0.5 bg-white/80 px-1 rounded shadow-sm whitespace-nowrap">{milestone.label}</span>}
                                                                     </div>
                                                                 )
                                                             })}
@@ -1090,8 +1105,10 @@
                                                                     key={milestone.id}
                                                                     className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
                                                                     style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                    title={milestone.label}
                                                                 >
                                                                     <Icons.Flag className="text-amber-400" />
+                                                                    {milestone.label && <span className="text-[8px] font-bold text-amber-700 mt-0.5 bg-white/80 px-1 rounded shadow-sm whitespace-nowrap">{milestone.label}</span>}
                                                                 </div>
                                                             )
                                                         })}
@@ -1180,11 +1197,19 @@
                                                             modalData.phase.milestones.map(m => (
                                                                 <div key={m.id} className="flex items-center gap-2">
                                                                     <input 
+                                                                        type="text" 
+                                                                        value={m.label || ''} 
+                                                                        disabled={modalData.phase.isLocked}
+                                                                        onChange={(e) => updatePhaseMilestoneLabel(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
+                                                                        placeholder="Milestone Name"
+                                                                        className={`flex-1 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
+                                                                    />
+                                                                    <input 
                                                                         type="date" 
                                                                         value={toYMD(m.date)} 
                                                                         disabled={modalData.phase.isLocked}
                                                                         onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
-                                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
+                                                                        className={`w-32 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
                                                                     />
                                                                     <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={modalData.phase.isLocked} className={`p-0.5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500 transition-colors'}`}>
                                                                         <Icons.Trash />
