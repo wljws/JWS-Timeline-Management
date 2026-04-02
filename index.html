@@ -32,12 +32,40 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            width: 8px;
+            width: 14px;
             cursor: ew-resize;
             z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: rgba(255, 255, 255, 0.15);
+            transition: background-color 0.2s;
         }
-        .resize-handle-left { left: 0; }
-        .resize-handle-right { right: 0; }
+        .resize-handle:hover {
+            background-color: rgba(255, 255, 255, 0.4);
+        }
+        .resize-handle::after {
+            content: '';
+            width: 2px;
+            height: 12px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 1px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+        .resize-handle-left { left: 0; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
+        .resize-handle-right { right: 0; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
+        
+        .completed-block {
+            background-image: repeating-linear-gradient(
+                45deg,
+                rgba(255, 255, 255, 0.25),
+                rgba(255, 255, 255, 0.25) 10px,
+                transparent 10px,
+                transparent 20px
+            );
+            opacity: 0.9;
+            box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4) !important;
+        }
     </style>
 </head>
 <body>
@@ -319,12 +347,23 @@
                 setModalData({ projectId, phase, colorIndex });
             };
 
-            // Modal Handlers
-            const updatePhaseTitle = (newTitle) => {
-                setProjects(projects.map(p => p.id === modalData.projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, title: newTitle } : ph)
+            // Modal & Direct Handlers
+            const editPhaseTitle = (projectId, phaseId, newTitle) => {
+                setProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, title: newTitle } : ph)
                 } : p));
-                setModalData({ ...modalData, phase: { ...modalData.phase, title: newTitle } });
+                if (modalData && modalData.projectId === projectId && modalData.phase.id === phaseId) {
+                    setModalData({ ...modalData, phase: { ...modalData.phase, title: newTitle } });
+                }
+            };
+
+            const removePhase = (projectId, phaseId) => {
+                setProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.filter(ph => ph.id !== phaseId)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(null);
+                }
             };
 
             const toggleTask = (taskId) => {
@@ -353,14 +392,6 @@
                 } : p));
                 setModalData({ ...modalData, phase: { ...modalData.phase, tasks: updatedTasks } });
             };
-
-            const deletePhase = () => {
-                setProjects(projects.map(p => p.id === modalData.projectId ? {
-                    ...p, phases: p.phases.filter(ph => ph.id !== modalData.phase.id)
-                } : p));
-                setModalData(null);
-            };
-
 
             // --- Render Helpers ---
             // Build calendar headers (Weekly)
@@ -486,9 +517,17 @@
 
                                             {/* Expanded Phase Sub-rows */}
                                             {project.isExpanded && project.phases.map(phase => (
-                                                <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-2 border-t border-slate-100/50">
-                                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2"></div>
-                                                    <span className="text-xs text-slate-600 truncate">{phase.title}</span>
+                                                <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-2 border-t border-slate-100/50 group/phase">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
+                                                    <input 
+                                                        value={phase.title}
+                                                        onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)}
+                                                        className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate"
+                                                        placeholder="Phase Title"
+                                                    />
+                                                    <button onClick={() => removePhase(project.id, phase.id)} className="opacity-0 group-hover/phase:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase">
+                                                        <Icons.Trash />
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
@@ -554,19 +593,20 @@
                                                     if (left + width < 0 || left > gridWidth) return null; // offscreen optimization
                                                     
                                                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
+                                                    const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
 
                                                     return (
                                                         <div 
                                                             key={phase.id}
                                                             onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                             onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                            className="absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center cursor-pointer timeline-block overflow-hidden"
+                                                            className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center cursor-pointer timeline-block overflow-hidden ${isCompleted ? 'completed-block' : ''}`}
                                                             style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
                                                         >
                                                             <div className="truncate drop-shadow-md">{phase.title}</div>
                                                             {/* Resize Handles */}
-                                                            <div className="resize-handle resize-handle-left hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                            <div className="resize-handle resize-handle-right hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                            <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                            <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
                                                         </div>
                                                     )
                                                 })}
@@ -583,6 +623,7 @@
                                                 }
                                                 const taskCount = phase.tasks.length;
                                                 const doneCount = phase.tasks.filter(t => t.done).length;
+                                                const isCompleted = taskCount > 0 && doneCount === taskCount;
                                                 
                                                 return (
                                                     <div 
@@ -595,7 +636,7 @@
                                                             <div 
                                                                 onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                 onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                className="absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between cursor-pointer timeline-block overflow-hidden"
+                                                                className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between cursor-pointer timeline-block overflow-hidden ${isCompleted ? 'completed-block' : ''}`}
                                                                 style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
                                                             >
                                                                 <span className="truncate drop-shadow-md">{phase.title}</span>
@@ -605,8 +646,8 @@
                                                                     </span>
                                                                 )}
 
-                                                                <div className="resize-handle resize-handle-left hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                                <div className="resize-handle resize-handle-right hover:bg-white/20" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -630,7 +671,7 @@
                                             <p className="text-xs opacity-80 font-medium tracking-wide uppercase mb-1">{activeProject.title}</p>
                                             <input 
                                                 value={modalData.phase.title}
-                                                onChange={e => updatePhaseTitle(e.target.value)}
+                                                onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)}
                                                 className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50"
                                             />
                                         </div>
@@ -683,7 +724,7 @@
                                 
                                 {/* Modal Footer */}
                                 <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between">
-                                    <button onClick={deletePhase} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete Phase</button>
+                                    <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete Phase</button>
                                     <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded shadow-sm">Done</button>
                                 </div>
                             </div>
