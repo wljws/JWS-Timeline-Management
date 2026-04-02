@@ -168,9 +168,14 @@
             const [zoomLevel, setZoomLevel] = useState(24); // pixels per day
             const [leftColWidth, setLeftColWidth] = useState(320); // adjustable left column
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
+            const [draggedPhase, setDraggedPhase] = useState(null);
             
             // Modal State
             const [modalData, setModalData] = useState(null);
+            
+            // Scrolling Ref
+            const scrollContainerRef = useRef(null);
+            const initialScrollDone = useRef(false);
 
             // Timeline bounds: Full Year starting Jan 2026 onwards
             const today = useMemo(() => {
@@ -186,22 +191,45 @@
 
             const totalDays = diffDays(timelineStart, timelineEnd) + 1;
 
+            // --- Scroll to Today Logic ---
+            const scrollToToday = () => {
+                if (scrollContainerRef.current) {
+                    const daysFromStart = diffDays(timelineStart, today);
+                    if (daysFromStart >= 0) {
+                        // Calculate position and offset it so 'today' is nicely visible, not glued to the sticky column
+                        const targetScroll = (daysFromStart * zoomLevel) - 150;
+                        scrollContainerRef.current.scrollLeft = Math.max(0, targetScroll);
+                    }
+                }
+            };
+
+            // Auto-scroll on initial load
+            useEffect(() => {
+                if (!initialScrollDone.current && scrollContainerRef.current) {
+                    // Small timeout ensures the DOM has painted the wide grid before attempting to scroll
+                    setTimeout(() => {
+                        scrollToToday();
+                    }, 50);
+                    initialScrollDone.current = true;
+                }
+            }, [timelineStart, today, zoomLevel]);
+
             // Initial Mock Data
             const [projects, setProjects] = useState([
                 {
                     id: 'p1', title: 'Smith Residence Renovation', color: 'blue', isExpanded: true,
                     phases: [
-                        { id: 'ph1', title: 'Concept & Schematic', start: new Date(2026, 0, 5), end: new Date(2026, 0, 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }], milestone: null },
-                        { id: 'ph2', title: 'Design Development', start: new Date(2026, 0, 22), end: new Date(2026, 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }], milestone: new Date(2026, 1, 10) },
-                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', start: null, end: null, tasks: [], milestone: null },
+                        { id: 'ph1', title: 'Concept & Schematic', start: new Date(2026, 0, 5), end: new Date(2026, 0, 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }], milestones: [] },
+                        { id: 'ph2', title: 'Design Development', start: new Date(2026, 0, 22), end: new Date(2026, 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }], milestones: [{ id: 'm1', date: new Date(2026, 1, 10) }] },
+                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', start: null, end: null, tasks: [], milestones: [] },
                     ]
                 },
                 {
                     id: 'p2', title: 'Downtown Corporate Office', color: 'orange', isExpanded: false,
                     phases: [
-                        { id: 'ph3', title: 'Space Planning', start: new Date(2026, 1, 1), end: new Date(2026, 1, 28), tasks: [{ id: 't4', text: 'Floor plans', done: true }], milestone: null },
-                        { id: 'ph4', title: 'Procurement', start: new Date(2026, 2, 1), end: new Date(2026, 3, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }], milestone: null },
-                        { id: 'ph5', title: 'Installation', start: new Date(2026, 3, 10), end: new Date(2026, 4, 15), tasks: [{ id: 't6', text: 'Site Supervision', done: false }], milestone: new Date(2026, 4, 15) },
+                        { id: 'ph3', title: 'Space Planning', start: new Date(2026, 1, 1), end: new Date(2026, 1, 28), tasks: [{ id: 't4', text: 'Floor plans', done: true }], milestones: [] },
+                        { id: 'ph4', title: 'Procurement', start: new Date(2026, 2, 1), end: new Date(2026, 3, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }], milestones: [] },
+                        { id: 'ph5', title: 'Installation', start: new Date(2026, 3, 10), end: new Date(2026, 4, 15), tasks: [{ id: 't6', text: 'Site Supervision', done: false }], milestones: [{ id: 'm2', date: new Date(2026, 4, 15) }] },
                     ]
                 }
             ]);
@@ -231,7 +259,7 @@
                         start: null,
                         end: null,
                         tasks: t.tasks.map(text => ({ id: generateId(), text, done: false })),
-                        milestone: null
+                        milestones: []
                     }))
                 }]);
             };
@@ -248,7 +276,7 @@
                                 start: null,
                                 end: null,
                                 tasks: [],
-                                milestone: null
+                                milestones: []
                             }]
                         }
                     }
@@ -307,6 +335,36 @@
             };
             const onDragEndRow = () => {
                 setDraggedProjectIndex(null);
+            };
+
+            // Drag and Drop Phases
+            const onDragStartPhase = (e, projectId, phaseIndex) => {
+                e.stopPropagation();
+                setDraggedPhase({ projectId, phaseIndex });
+                e.dataTransfer.effectAllowed = "move";
+            };
+
+            const onDragOverPhase = (e, projectId, targetIndex) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!draggedPhase || draggedPhase.projectId !== projectId || draggedPhase.phaseIndex === targetIndex) return;
+
+                setProjects(prev => prev.map(p => {
+                    if (p.id === projectId) {
+                        const newPhases = [...p.phases];
+                        const draggedItem = newPhases[draggedPhase.phaseIndex];
+                        newPhases.splice(draggedPhase.phaseIndex, 1);
+                        newPhases.splice(targetIndex, 0, draggedItem);
+                        return { ...p, phases: newPhases };
+                    }
+                    return p;
+                }));
+                setDraggedPhase({ projectId, phaseIndex: targetIndex });
+            };
+
+            const onDragEndPhase = (e) => {
+                e.stopPropagation();
+                setDraggedPhase(null);
             };
 
             // Block & Column Resizing/Dragging Logic
@@ -422,13 +480,50 @@
                 }
             };
 
-            const updatePhaseMilestone = (projectId, phaseId, dateStr) => {
-                const newMilestone = dateStr ? fromYMD(dateStr) : null;
+            const addPhaseMilestone = (projectId, phaseId) => {
+                const newMilestone = { id: generateId(), date: new Date() };
                 setProjects(projects.map(p => p.id === projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, milestone: newMilestone } : ph)
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, milestones: [...(ph.milestones || []), newMilestone] } : ph)
                 } : p));
                 if (modalData && modalData.phase.id === phaseId) {
-                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, milestone: newMilestone } }));
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, milestones: [...(prev.phase.milestones || []), newMilestone] } }));
+                }
+            };
+
+            const updatePhaseMilestoneDate = (projectId, phaseId, milestoneId, dateStr) => {
+                const newDate = dateStr ? fromYMD(dateStr) : null;
+                setProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
+                        ...ph, 
+                        milestones: (ph.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m)
+                    } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ 
+                        ...prev, 
+                        phase: { 
+                            ...prev.phase, 
+                            milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m)
+                        } 
+                    }));
+                }
+            };
+
+            const removePhaseMilestone = (projectId, phaseId, milestoneId) => {
+                setProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
+                        ...ph, 
+                        milestones: (ph.milestones || []).filter(m => m.id !== milestoneId)
+                    } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ 
+                        ...prev, 
+                        phase: { 
+                            ...prev.phase, 
+                            milestones: (prev.phase.milestones || []).filter(m => m.id !== milestoneId)
+                        } 
+                    }));
                 }
             };
 
@@ -528,6 +623,9 @@
                             <p className="text-slate-400 text-xs mt-1">Interior Design Timeline & Task Management</p>
                         </div>
                         <div className="flex items-center gap-6">
+                            <button onClick={scrollToToday} className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-3 py-1.5 transition-colors font-medium">
+                                Today
+                            </button>
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-slate-400">Zoom</span>
                                 <input 
@@ -548,7 +646,7 @@
                     <div className="flex flex-1 overflow-hidden relative">
                         
                         {/* Scrollable Container (horizontal scrolling allowed here) */}
-                        <div className="flex-1 overflow-auto relative flex">
+                        <div className="flex-1 overflow-auto relative flex" ref={scrollContainerRef}>
                             
                             {/* Left Sticky Column: Projects */}
                             <div 
@@ -611,8 +709,18 @@
                                             </div>
 
                                             {/* Expanded Phase Sub-rows */}
-                                            {project.isExpanded && project.phases.map(phase => (
-                                                <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-4 border-t border-slate-100/50 group/phase">
+                                            {project.isExpanded && project.phases.map((phase, phaseIndex) => (
+                                                <div 
+                                                    key={phase.id} 
+                                                    draggable
+                                                    onDragStart={(e) => onDragStartPhase(e, project.id, phaseIndex)}
+                                                    onDragOver={(e) => onDragOverPhase(e, project.id, phaseIndex)}
+                                                    onDragEnd={onDragEndPhase}
+                                                    className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-4 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''}`}
+                                                >
+                                                    <div className="w-6 flex justify-center items-center h-full opacity-0 group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1">
+                                                        <Icons.Grip />
+                                                    </div>
                                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
                                                     <input 
                                                         list="standard-phases-list"
@@ -708,14 +816,18 @@
                                                                 );
                                                             })()}
                                                             
-                                                            {phase.milestone && (
-                                                                <div 
-                                                                    className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
-                                                                    style={{ left: `${diffDays(timelineStart, phase.milestone) * zoomLevel}px`, transform: 'translateX(-50%)' }}
-                                                                >
-                                                                    <Icons.Star className="text-amber-400 fill-amber-400" />
-                                                                </div>
-                                                            )}
+                                                            {(phase.milestones || []).map(milestone => {
+                                                                if (!milestone.date) return null;
+                                                                return (
+                                                                    <div 
+                                                                        key={milestone.id}
+                                                                        className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
+                                                                        style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                    >
+                                                                        <Icons.Star className="text-amber-400 fill-amber-400" />
+                                                                    </div>
+                                                                )
+                                                            })}
                                                         </React.Fragment>
                                                     )
                                                 })}
@@ -760,14 +872,18 @@
                                                             </div>
                                                         )}
 
-                                                        {phase.milestone && (
-                                                            <div 
-                                                                className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
-                                                                style={{ left: `${diffDays(timelineStart, phase.milestone) * zoomLevel}px`, transform: 'translateX(-50%)' }}
-                                                            >
-                                                                <Icons.Star className="text-amber-400 fill-amber-400" />
-                                                            </div>
-                                                        )}
+                                                        {(phase.milestones || []).map(milestone => {
+                                                            if (!milestone.date) return null;
+                                                            return (
+                                                                <div 
+                                                                    key={milestone.id}
+                                                                    className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
+                                                                    style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                >
+                                                                    <Icons.Star className="text-amber-400 fill-amber-400" />
+                                                                </div>
+                                                            )
+                                                        })}
                                                     </div>
                                                 )
                                             })}
@@ -829,18 +945,37 @@
                                                     )}
                                                 </div>
 
-                                                {/* Milestone Calendar */}
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                                        <Icons.Star className="text-amber-400 fill-amber-400 w-3 h-3" />
-                                                        Milestone:
-                                                    </span>
-                                                    <input 
-                                                        type="date" 
-                                                        value={toYMD(modalData.phase.milestone)} 
-                                                        onChange={(e) => updatePhaseMilestone(modalData.projectId, modalData.phase.id, e.target.value)}
-                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400"
-                                                    />
+                                                {/* Milestones List */}
+                                                <div className="mt-4 pt-3 border-t border-slate-100">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                                                            <Icons.Star className="text-amber-400 fill-amber-400 w-3 h-3" />
+                                                            Milestones
+                                                        </span>
+                                                        <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1">
+                                                            <Icons.Plus /> Add Milestone
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    <div className="space-y-2">
+                                                        {(!modalData.phase.milestones || modalData.phase.milestones.length === 0) ? (
+                                                            <p className="text-xs text-slate-400 italic">No milestones added.</p>
+                                                        ) : (
+                                                            modalData.phase.milestones.map(m => (
+                                                                <div key={m.id} className="flex items-center gap-2">
+                                                                    <input 
+                                                                        type="date" 
+                                                                        value={toYMD(m.date)} 
+                                                                        onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
+                                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400"
+                                                                    />
+                                                                    <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} className="text-slate-400 hover:text-red-500 transition-colors p-0.5">
+                                                                        <Icons.Trash />
+                                                                    </button>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                             </div>
