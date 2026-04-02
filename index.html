@@ -129,6 +129,8 @@
             Redo: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path></svg>,
             Lock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0110 0v4"></path></svg>,
             Unlock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 019.9-1"></path></svg>,
+            Download: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
+            Upload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>,
         };
 
         const THEME_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'slate'];
@@ -198,6 +200,7 @@
             // Scrolling Ref
             const scrollContainerRef = useRef(null);
             const initialScrollDone = useRef(false);
+            const fileInputRef = useRef(null);
 
             // Timeline bounds: Full Year starting Jan 2026 onwards
             const today = useMemo(() => {
@@ -261,6 +264,48 @@
                 setFuture(future.slice(1));
                 setPast(p => [...p, projects]);
                 setProjects(next);
+            };
+
+            // --- Export / Import Handlers ---
+            const handleExport = () => {
+                const dataStr = JSON.stringify(projects, null, 2);
+                const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+                const linkElement = document.createElement('a');
+                linkElement.setAttribute('href', dataUri);
+                linkElement.setAttribute('download', 'interior-design-timeline.json');
+                document.body.appendChild(linkElement);
+                linkElement.click();
+                document.body.removeChild(linkElement);
+            };
+
+            const handleImport = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const parsed = JSON.parse(e.target.result);
+                        const processedProjects = parsed.map(p => ({
+                            ...p,
+                            phases: p.phases.map(ph => ({
+                                ...ph,
+                                start: ph.start ? new Date(ph.start) : null,
+                                end: ph.end ? new Date(ph.end) : null,
+                                milestones: (ph.milestones || []).map(m => ({
+                                    ...m,
+                                    date: m.date ? new Date(m.date) : null
+                                }))
+                            }))
+                        }));
+                        
+                        updateProjects(processedProjects);
+                    } catch (error) {
+                        console.error("Error parsing file", error);
+                    }
+                    if (fileInputRef.current) fileInputRef.current.value = '';
+                };
+                reader.readAsText(file);
             };
 
             // --- Scroll to Today Logic ---
@@ -764,6 +809,24 @@
                         </div>
                         <div className="flex items-center gap-4">
                             
+                            {/* Export / Import */}
+                            <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
+                                <button onClick={handleExport} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-1 text-xs font-medium" title="Save to File">
+                                    <Icons.Download /> Save
+                                </button>
+                                <div className="w-px h-4 bg-slate-600 mx-1"></div>
+                                <button onClick={() => fileInputRef.current?.click()} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-1 text-xs font-medium" title="Load from File">
+                                    <Icons.Upload /> Load
+                                </button>
+                                <input 
+                                    type="file" 
+                                    accept=".json" 
+                                    ref={fileInputRef} 
+                                    onChange={handleImport} 
+                                    className="hidden" 
+                                />
+                            </div>
+
                             {/* Undo / Redo */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
                                 <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo">
