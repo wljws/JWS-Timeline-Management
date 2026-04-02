@@ -152,6 +152,15 @@
             return indices;
         };
 
+        const STANDARD_TEMPLATE_PHASES = [
+            { title: 'Feasibility Studies', tasks: ['Site Analysis', 'Initial Consultation', 'Budget Review'] },
+            { title: 'Concept Design', tasks: ['Space Planning', 'Moodboards', 'Concept Presentation'] },
+            { title: 'Schematic Design', tasks: ['Initial Floor Plans', 'Material Palettes', 'Client Feedback'] },
+            { title: 'Design Development', tasks: ['Detailed Drawings', 'Custom Millwork Design', 'Finalize Materials'] },
+            { title: 'Tender Stage', tasks: ['Issue Tender Packages', 'Review Bids', 'Contractor Selection'] },
+            { title: 'Construction Admin', tasks: ['Site Visits', 'RFI Responses', 'Snagging/Defect List'] }
+        ];
+
         // --- Main Application Component ---
         const App = () => {
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
@@ -216,14 +225,14 @@
                     title: 'New Project',
                     color: THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)],
                     isExpanded: true,
-                    phases: [{
+                    phases: STANDARD_TEMPLATE_PHASES.map(t => ({
                         id: generateId(),
-                        title: 'Phase 1',
+                        title: t.title,
                         start: null,
                         end: null,
-                        tasks: [],
+                        tasks: t.tasks.map(text => ({ id: generateId(), text, done: false })),
                         milestone: null
-                    }]
+                    }))
                 }]);
             };
 
@@ -493,6 +502,13 @@
 
             return (
                 <div className="flex flex-col h-screen bg-white">
+                    {/* Datalist for Phase dropdowns */}
+                    <datalist id="standard-phases-list">
+                        {STANDARD_TEMPLATE_PHASES.map((p, i) => <option key={i} value={p.title} />)}
+                        <option value="Client Handover" />
+                        <option value="Post-Project Support" />
+                    </datalist>
+
                     {/* Header */}
                     <div className="flex-shrink-0 bg-slate-900 text-white p-4 shadow-md flex justify-between items-center z-50 relative">
                         <div>
@@ -589,6 +605,7 @@
                                                 <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-4 border-t border-slate-100/50 group/phase">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
                                                     <input 
+                                                        list="standard-phases-list"
                                                         value={phase.title}
                                                         onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)}
                                                         className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate"
@@ -761,6 +778,7 @@
                                         <div className="flex-1">
                                             <p className="text-xs opacity-80 font-medium tracking-wide uppercase mb-1">{activeProject.title}</p>
                                             <input 
+                                                list="standard-phases-list"
                                                 value={modalData.phase.title}
                                                 onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)}
                                                 className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50"
