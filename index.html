@@ -10,13 +10,11 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background-color: #f8fafc; overflow: hidden; }
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        /* Custom Scrollbar ensures scrolling visibility */
+        ::-webkit-scrollbar { width: 12px; height: 12px; }
+        ::-webkit-scrollbar-track { background: #f8fafc; border-top: 1px solid #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 3px solid #f8fafc; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
         .timeline-block {
@@ -66,6 +64,20 @@
             opacity: 0.9;
             box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4) !important;
         }
+
+        .col-resizer {
+            position: absolute;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 6px;
+            cursor: col-resize;
+            background-color: transparent;
+            z-index: 50;
+        }
+        .col-resizer:hover, .col-resizer:active {
+            background-color: #60a5fa; /* Tailwind blue-400 */
+        }
     </style>
 </head>
 <body>
@@ -87,9 +99,22 @@
             return Math.round(diffTime / (1000 * 60 * 60 * 24));
         };
         const formatDate = (date) => {
+            if (!date) return '';
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         };
         const generateId = () => Math.random().toString(36).substr(2, 9);
+        
+        // Date Input Formatters (Local Timezone safe)
+        const toYMD = (d) => {
+            if (!d) return '';
+            const dt = new Date(d);
+            return dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0') + '-' + String(dt.getDate()).padStart(2,'0');
+        };
+        const fromYMD = (str) => {
+            if (!str) return null;
+            const [y,m,d] = str.split('-');
+            return new Date(y, m-1, d);
+        };
 
         // --- SVG Icons ---
         const Icons = {
@@ -98,7 +123,8 @@
             Grip: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="cursor-grab text-gray-400 hover:text-gray-600"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
             Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>,
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
-            Trash: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>
+            Trash: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
+            Star: ({ className }) => <svg width="16" height="16" fill="currentColor" stroke="currentColor" strokeWidth="1" viewBox="0 0 24 24" className={className}><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
         };
 
         const THEME_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'slate'];
@@ -129,34 +155,25 @@
         // --- Main Application Component ---
         const App = () => {
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
+            const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
             const [zoomLevel, setZoomLevel] = useState(24); // pixels per day
+            const [leftColWidth, setLeftColWidth] = useState(320); // adjustable left column
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             
             // Modal State
             const [modalData, setModalData] = useState(null);
 
-            // Timeline bounds
+            // Timeline bounds: Full Year starting Jan 2026 onwards
             const today = useMemo(() => {
                 const d = new Date();
                 d.setHours(0,0,0,0);
                 return d;
             }, []);
 
-            // Set timeline to start nearest Monday ~1 month ago
-            const timelineStart = useMemo(() => {
-                const d = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-                return new Date(d.setDate(diff));
-            }, [today]);
-
-            // Set timeline end nearest Sunday ~5 months ahead
-            const timelineEnd = useMemo(() => {
-                const d = new Date(today.getFullYear(), today.getMonth() + 5, 0);
-                const day = d.getDay();
-                const diff = d.getDate() + (day === 0 ? 0 : 7 - day); 
-                return new Date(d.setDate(diff));
-            }, [today]);
+            // Start explicitly from Jan 1, 2026
+            const timelineStart = useMemo(() => new Date(2026, 0, 1), []);
+            // End 3 full years later 
+            const timelineEnd = useMemo(() => new Date(2028, 11, 31), []);
 
             const totalDays = diffDays(timelineStart, timelineEnd) + 1;
 
@@ -165,17 +182,17 @@
                 {
                     id: 'p1', title: 'Smith Residence Renovation', color: 'blue', isExpanded: true,
                     phases: [
-                        { id: 'ph1', title: 'Concept & Schematic', start: new Date(today.getFullYear(), today.getMonth(), 5), end: new Date(today.getFullYear(), today.getMonth(), 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }] },
-                        { id: 'ph2', title: 'Design Development', start: new Date(today.getFullYear(), today.getMonth(), 22), end: new Date(today.getFullYear(), today.getMonth() + 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }] },
-                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', start: null, end: null, tasks: [] },
+                        { id: 'ph1', title: 'Concept & Schematic', start: new Date(2026, 0, 5), end: new Date(2026, 0, 20), tasks: [{ id: 't1', text: 'Client Briefing', done: true }, { id: 't2', text: 'Moodboard Presentation', done: false }], milestone: null },
+                        { id: 'ph2', title: 'Design Development', start: new Date(2026, 0, 22), end: new Date(2026, 1, 15), tasks: [{ id: 't3', text: 'Material Selection', done: false }], milestone: new Date(2026, 1, 10) },
+                        { id: 'ph2_5', title: 'Permitting (Click grid to add)', start: null, end: null, tasks: [], milestone: null },
                     ]
                 },
                 {
                     id: 'p2', title: 'Downtown Corporate Office', color: 'orange', isExpanded: false,
                     phases: [
-                        { id: 'ph3', title: 'Space Planning', start: new Date(today.getFullYear(), today.getMonth() - 1, 15), end: new Date(today.getFullYear(), today.getMonth(), 10), tasks: [{ id: 't4', text: 'Floor plans', done: true }] },
-                        { id: 'ph4', title: 'Procurement', start: new Date(today.getFullYear(), today.getMonth(), 12), end: new Date(today.getFullYear(), today.getMonth() + 2, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }] },
-                        { id: 'ph5', title: 'Installation', start: new Date(today.getFullYear(), today.getMonth() + 2, 10), end: new Date(today.getFullYear(), today.getMonth() + 2, 25), tasks: [{ id: 't6', text: 'Site Supervision', done: false }] },
+                        { id: 'ph3', title: 'Space Planning', start: new Date(2026, 1, 1), end: new Date(2026, 1, 28), tasks: [{ id: 't4', text: 'Floor plans', done: true }], milestone: null },
+                        { id: 'ph4', title: 'Procurement', start: new Date(2026, 2, 1), end: new Date(2026, 3, 5), tasks: [{ id: 't5', text: 'Order Furniture', done: false }], milestone: null },
+                        { id: 'ph5', title: 'Installation', start: new Date(2026, 3, 10), end: new Date(2026, 4, 15), tasks: [{ id: 't6', text: 'Site Supervision', done: false }], milestone: new Date(2026, 4, 15) },
                     ]
                 }
             ]);
@@ -204,7 +221,8 @@
                         title: 'Phase 1',
                         start: null,
                         end: null,
-                        tasks: []
+                        tasks: [],
+                        milestone: null
                     }]
                 }]);
             };
@@ -220,7 +238,8 @@
                                 title: 'New Phase',
                                 start: null,
                                 end: null,
-                                tasks: []
+                                tasks: [],
+                                milestone: null
                             }]
                         }
                     }
@@ -229,8 +248,7 @@
             };
 
             const handleGridClick = (e, projectId, phaseId) => {
-                // Ensure click is on the grid background, not dragging a block
-                if (e.target !== e.currentTarget) return;
+                if (e.target !== e.currentTarget) return; // Prevent clicks falling through blocks
 
                 const clickX = e.nativeEvent.offsetX;
                 const daysFromStart = Math.floor(clickX / zoomLevel);
@@ -275,13 +293,27 @@
                 setDraggedProjectIndex(null);
             };
 
-            // Block Dragging & Resizing Logic
+            // Block & Column Resizing/Dragging Logic
             const [draggingBlock, setDraggingBlock] = useState(null);
+            const [isResizingCol, setIsResizingCol] = useState(false);
+            const lastInteractionRef = useRef({ isDragging: false, startX: 0 });
 
             useEffect(() => {
                 const handleMouseMove = (e) => {
+                    // Handle Column Resizing
+                    if (isResizingCol) {
+                        setLeftColWidth(Math.max(200, Math.min(800, e.clientX)));
+                        return;
+                    }
+
+                    // Handle Block Resizing/Moving
                     if (!draggingBlock) return;
                     
+                    // Register that an actual movement happened (to prevent accidental clicks opening modal)
+                    if (Math.abs(e.clientX - draggingBlock.startX) > 3) {
+                        lastInteractionRef.current.isDragging = true;
+                    }
+
                     const deltaX = e.clientX - draggingBlock.startX;
                     const deltaDays = Math.round(deltaX / zoomLevel);
                     
@@ -317,12 +349,11 @@
                 };
 
                 const handleMouseUp = () => {
-                    if (draggingBlock) {
-                        setDraggingBlock(null);
-                    }
+                    if (isResizingCol) setIsResizingCol(false);
+                    if (draggingBlock) setDraggingBlock(null);
                 };
 
-                if (draggingBlock) {
+                if (draggingBlock || isResizingCol) {
                     window.addEventListener('mousemove', handleMouseMove);
                     window.addEventListener('mouseup', handleMouseUp);
                 }
@@ -330,20 +361,25 @@
                     window.removeEventListener('mousemove', handleMouseMove);
                     window.removeEventListener('mouseup', handleMouseUp);
                 };
-            }, [draggingBlock, zoomLevel]);
+            }, [draggingBlock, zoomLevel, isResizingCol]);
 
             const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd) => {
                 e.stopPropagation();
+                lastInteractionRef.current = { isDragging: false, startX: e.clientX };
                 setDraggingBlock({
                     projectId, phaseId, type,
                     startX: e.clientX,
-                    origStart, origEnd,
-                    isMoved: false
+                    origStart, origEnd
                 });
             };
+
             const handleBlockClick = (e, projectId, phase, colorIndex) => {
                 e.stopPropagation();
-                if (draggingBlock) return; // Don't open if just finished dragging
+                // Prevent opening checklist if block was just dragged
+                if (lastInteractionRef.current.isDragging) {
+                    lastInteractionRef.current.isDragging = false; 
+                    return; 
+                }
                 setModalData({ projectId, phase, colorIndex });
             };
 
@@ -354,6 +390,29 @@
                 } : p));
                 if (modalData && modalData.projectId === projectId && modalData.phase.id === phaseId) {
                     setModalData({ ...modalData, phase: { ...modalData.phase, title: newTitle } });
+                }
+            };
+
+            const updatePhaseDates = (projectId, phaseId, startStr, endStr) => {
+                const newStart = startStr ? fromYMD(startStr) : null;
+                const newEnd = endStr ? fromYMD(endStr) : null;
+                
+                setProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, start: newStart, end: newEnd } : ph)
+                } : p));
+                
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, start: newStart, end: newEnd } }));
+                }
+            };
+
+            const updatePhaseMilestone = (projectId, phaseId, dateStr) => {
+                const newMilestone = dateStr ? fromYMD(dateStr) : null;
+                setProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, milestone: newMilestone } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, milestone: newMilestone } }));
                 }
             };
 
@@ -465,14 +524,24 @@
                     {/* Main Gantt Area */}
                     <div className="flex flex-1 overflow-hidden relative">
                         
-                        {/* Scrollable Container */}
-                        <div className="flex-1 overflow-auto relative flex hide-scrollbar">
+                        {/* Scrollable Container (horizontal scrolling allowed here) */}
+                        <div className="flex-1 overflow-auto relative flex">
                             
                             {/* Left Sticky Column: Projects */}
-                            <div className="w-80 flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-200 shadow-[2px_0_5px_rgba(0,0,0,0.05)]">
+                            <div 
+                                className="flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]"
+                                style={{ width: leftColWidth, minWidth: leftColWidth }}
+                            >
+                                {/* Draggable Column Resizer Handle */}
+                                <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)}></div>
+                                
                                 {/* Header spacer */}
                                 <div className="h-[60px] border-b border-slate-200 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
-                                    <span className="text-xs font-semibold text-slate-500 uppercase">Projects & Phases</span>
+                                    <input 
+                                        value={leftColTitle} 
+                                        onChange={e => setLeftColTitle(e.target.value)}
+                                        className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full"
+                                    />
                                 </div>
                                 
                                 {/* Project List */}
@@ -510,14 +579,14 @@
                                                     onChange={(e) => updateProjectTitle(project.id, e.target.value)}
                                                     className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate"
                                                 />
-                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600 mr-2" title="Add Phase">
+                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600 mr-4" title="Add Phase">
                                                     <Icons.Plus />
                                                 </button>
                                             </div>
 
                                             {/* Expanded Phase Sub-rows */}
                                             {project.isExpanded && project.phases.map(phase => (
-                                                <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-2 border-t border-slate-100/50 group/phase">
+                                                <div key={phase.id} className="flex items-center h-10 bg-slate-50/50 pl-14 pr-4 border-t border-slate-100/50 group/phase">
                                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
                                                     <input 
                                                         value={phase.title}
@@ -584,30 +653,43 @@
                                         <div key={project.id} className="relative border-b border-slate-100/50">
                                             {/* Main Project Row Space (Empty if expanded, holds collapsed blocks if not) */}
                                             <div 
-                                                className="h-12 relative z-10 w-full"
+                                                className="h-12 relative w-full"
                                             >
                                                 {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
-                                                    if (!phase.start || !phase.end) return null;
-                                                    const left = diffDays(timelineStart, phase.start) * zoomLevel;
-                                                    const width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
-                                                    if (left + width < 0 || left > gridWidth) return null; // offscreen optimization
-                                                    
                                                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                                                     const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
+                                                    const hasTimeline = phase.start && phase.end;
 
                                                     return (
-                                                        <div 
-                                                            key={phase.id}
-                                                            onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
-                                                            onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                            className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center cursor-pointer timeline-block overflow-hidden ${isCompleted ? 'completed-block' : ''}`}
-                                                            style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
-                                                        >
-                                                            <div className="truncate drop-shadow-md">{phase.title}</div>
-                                                            {/* Resize Handles */}
-                                                            <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                            <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
-                                                        </div>
+                                                        <React.Fragment key={phase.id}>
+                                                            {hasTimeline && (() => {
+                                                                const left = diffDays(timelineStart, phase.start) * zoomLevel;
+                                                                const width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                                if (left + width < 0 || left > gridWidth) return null; // offscreen optimization
+                                                                
+                                                                return (
+                                                                    <div 
+                                                                        onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
+                                                                        onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
+                                                                        className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center cursor-pointer timeline-block overflow-hidden z-10 ${isCompleted ? 'completed-block' : ''}`}
+                                                                        style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
+                                                                    >
+                                                                        <div className="truncate drop-shadow-md">{phase.title}</div>
+                                                                        <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                        <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            
+                                                            {phase.milestone && (
+                                                                <div 
+                                                                    className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
+                                                                    style={{ left: `${diffDays(timelineStart, phase.milestone) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                >
+                                                                    <Icons.Star className="text-amber-400 fill-amber-400" />
+                                                                </div>
+                                                            )}
+                                                        </React.Fragment>
                                                     )
                                                 })}
                                             </div>
@@ -628,7 +710,7 @@
                                                 return (
                                                     <div 
                                                         key={phase.id} 
-                                                        className="h-10 relative z-10 w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors"
+                                                        className="h-10 relative w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors"
                                                         onClick={(e) => handleGridClick(e, project.id, phase.id)}
                                                         title={!hasTimeline ? "Click to add timeline block" : "Click background to move timeline block"}
                                                     >
@@ -636,7 +718,7 @@
                                                             <div 
                                                                 onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                 onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between cursor-pointer timeline-block overflow-hidden ${isCompleted ? 'completed-block' : ''}`}
+                                                                className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between cursor-pointer timeline-block overflow-hidden z-10 ${isCompleted ? 'completed-block' : ''}`}
                                                                 style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
                                                             >
                                                                 <span className="truncate drop-shadow-md">{phase.title}</span>
@@ -648,6 +730,15 @@
 
                                                                 <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
                                                                 <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                            </div>
+                                                        )}
+
+                                                        {phase.milestone && (
+                                                            <div 
+                                                                className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
+                                                                style={{ left: `${diffDays(timelineStart, phase.milestone) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                            >
+                                                                <Icons.Star className="text-amber-400 fill-amber-400" />
                                                             </div>
                                                         )}
                                                     </div>
@@ -681,16 +772,55 @@
                                     </button>
                                 </div>
 
-                                {/* Modal Body (Tasks) */}
+                                {/* Modal Body (Tasks & Dates) */}
                                 <div className="p-5 max-h-[60vh] overflow-y-auto">
-                                    <div className="flex justify-between items-end mb-4 border-b border-slate-100 pb-2">
-                                        <div>
-                                            <h3 className="text-sm font-semibold text-slate-800">Checklist Tasks</h3>
-                                            <p className="text-xs text-slate-500 mt-1">
-                                                {formatDate(modalData.phase.start)} — {formatDate(modalData.phase.end)} 
-                                                <span className="ml-2 font-medium">({diffDays(modalData.phase.start, modalData.phase.end) + 1} days)</span>
-                                            </p>
+                                    <div className="mb-4 border-b border-slate-100 pb-4">
+                                        <div className="flex justify-between items-end">
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-slate-800">Timeline</h3>
+                                                
+                                                {/* Start / End Calendars */}
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <input 
+                                                        type="date" 
+                                                        value={toYMD(modalData.phase.start)} 
+                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))}
+                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400"
+                                                    />
+                                                    <span className="text-xs text-slate-400">to</span>
+                                                    <input 
+                                                        type="date" 
+                                                        value={toYMD(modalData.phase.end)} 
+                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)}
+                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400"
+                                                    />
+                                                    {modalData.phase.start && modalData.phase.end && (
+                                                        <span className="text-xs text-slate-500 font-medium ml-1">
+                                                            ({diffDays(modalData.phase.start, modalData.phase.end) + 1} days)
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Milestone Calendar */}
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                                                        <Icons.Star className="text-amber-400 fill-amber-400 w-3 h-3" />
+                                                        Milestone:
+                                                    </span>
+                                                    <input 
+                                                        type="date" 
+                                                        value={toYMD(modalData.phase.milestone)} 
+                                                        onChange={(e) => updatePhaseMilestone(modalData.projectId, modalData.phase.id, e.target.value)}
+                                                        className="text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400"
+                                                    />
+                                                </div>
+
+                                            </div>
                                         </div>
+                                    </div>
+
+                                    <div className="flex justify-between items-end mb-2">
+                                        <h3 className="text-sm font-semibold text-slate-800">Checklist Tasks</h3>
                                         <button onClick={addTask} className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
                                             <Icons.Plus /> Add Task
                                         </button>
