@@ -120,7 +120,7 @@
         const Icons = {
             ChevronRight: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>,
             ChevronDown: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg>,
-            Grip: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="cursor-grab text-gray-400 hover:text-gray-600"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
+            Grip: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className || "cursor-grab text-gray-400 hover:text-gray-600"}><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
             Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>,
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
             Trash: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
@@ -131,7 +131,9 @@
             Unlock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 019.9-1"></path></svg>,
             CloudUpload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 16V7"></path><path d="M8 11l4-4 4 4"></path></svg>,
             CloudDownload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 7v9"></path><path d="M8 12l4 4 4-4"></path></svg>,
-            Spinner: () => <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            Spinner: () => <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>,
+            User: () => <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
+            Calendar: () => <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>
         };
 
         const THEME_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'slate'];
@@ -147,7 +149,6 @@
 
         const getPhaseColor = (colorName, index) => {
             if (colorName && colorName.startsWith('#')) {
-                // Dynamically generate a palette shade from a custom hex using CSS color-mix
                 const p = index % 6;
                 if (p === 0) return `color-mix(in srgb, ${colorName} 40%, white)`;
                 if (p === 1) return `color-mix(in srgb, ${colorName} 70%, white)`;
@@ -187,45 +188,39 @@
         const App = () => {
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
-            const [zoomLevel, setZoomLevel] = useState(24); // pixels per day
-            const [leftColWidth, setLeftColWidth] = useState(330); // adjustable left column
+            const [zoomLevel, setZoomLevel] = useState(24);
+            const [leftColWidth, setLeftColWidth] = useState(330);
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             const [draggedPhase, setDraggedPhase] = useState(null);
-            
-            // Multi-Select State
+            const [draggedTaskIndex, setDraggedTaskIndex] = useState(null);
+            const [toast, setToast] = useState(null);
             const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
-            
-            // Modal State
             const [modalData, setModalData] = useState(null);
-            
-            // Cloud Saving/Loading States
             const [isSaving, setIsSaving] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
             
-            // Scrolling Ref
             const scrollContainerRef = useRef(null);
             const initialScrollDone = useRef(false);
 
-            // Timeline bounds: Full Year starting Jan 2026 onwards
+            const showToast = (message) => {
+                setToast(message);
+                setTimeout(() => setToast(null), 3000);
+            };
+
             const today = useMemo(() => {
                 const d = new Date();
                 d.setHours(0,0,0,0);
                 return d;
             }, []);
 
-            // Start explicitly from Jan 1, 2026
             const timelineStart = useMemo(() => new Date(2026, 0, 1), []);
-            // End 3 full years later 
             const timelineEnd = useMemo(() => new Date(2028, 11, 31), []);
-
             const totalDays = diffDays(timelineStart, timelineEnd) + 1;
 
-            // --- UNDO / REDO HISTORY SYSTEM ---
             const [past, setPast] = useState([]);
             const [future, setFuture] = useState([]);
             const dragStartProjects = useRef(null);
 
-            // Initial Mock Data
             const [projects, setProjects] = useState([
                 {
                     id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
@@ -233,16 +228,20 @@
                         id: `ph_${i}`,
                         title: t.title,
                         isLocked: false,
-                        // Provide example dates for the first two phases so the timeline isn't completely empty
                         start: i === 0 ? new Date(2026, 0, 5) : (i === 1 ? new Date(2026, 0, 25) : null),
                         end: i === 0 ? new Date(2026, 0, 20) : (i === 1 ? new Date(2026, 1, 20) : null),
-                        tasks: t.tasks.map((text, tIdx) => ({ id: `t_${i}_${tIdx}`, text, done: false })),
+                        tasks: t.tasks.map((text, tIdx) => ({ 
+                            id: `t_${i}_${tIdx}`, 
+                            text, 
+                            done: false,
+                            assignee: '',
+                            targetDate: null
+                        })),
                         milestones: []
                     }))
                 }
             ]);
 
-            // Wrapper to safely update projects and push to history
             const updateProjects = (updater) => {
                 setProjects(prev => {
                     const next = typeof updater === 'function' ? updater(prev) : updater;
@@ -270,7 +269,6 @@
                 setProjects(next);
             };
 
-            // --- Cloud Export / Import Handlers ---
             const saveToCloud = async () => {
                 setIsSaving(true);
                 try {
@@ -280,10 +278,9 @@
                         body: JSON.stringify({ projects })
                     });
                     if (!response.ok) throw new Error('Network response was not ok');
-                    alert('Successfully saved to cloud!');
+                    showToast('Successfully saved to cloud!');
                 } catch (err) {
-                    console.error("Failed to save", err);
-                    alert('Failed to save to cloud. Ensure your Vercel KV backend is setup correctly.');
+                    showToast('Failed to save to cloud. Ensure your backend is setup correctly.');
                 } finally {
                     setIsSaving(false);
                 }
@@ -293,6 +290,7 @@
                 setIsLoading(true);
                 try {
                     const response = await fetch('/api/load');
+                    if (!response.ok) throw new Error('Network response was not ok');
                     const data = await response.json();
                     
                     if (data.projects && Array.isArray(data.projects)) {
@@ -302,6 +300,10 @@
                                 ...ph,
                                 start: ph.start ? new Date(ph.start) : null,
                                 end: ph.end ? new Date(ph.end) : null,
+                                tasks: (ph.tasks || []).map(tk => ({
+                                    ...tk,
+                                    targetDate: tk.targetDate ? new Date(tk.targetDate) : null
+                                })),
                                 milestones: (ph.milestones || []).map(m => ({
                                     ...m,
                                     date: m.date ? new Date(m.date) : null
@@ -309,31 +311,27 @@
                             }))
                         }));
                         updateProjects(processedProjects);
-                        alert('Successfully loaded from cloud!');
+                        showToast('Successfully loaded from cloud!');
                     } else {
-                        alert('No saved data found in cloud.');
+                        showToast('No saved data found in cloud.');
                     }
                 } catch (err) {
-                    console.error("Failed to load", err);
-                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
+                    showToast('Failed to load from cloud. Ensure your backend is setup correctly.');
                 } finally {
                     setIsLoading(false);
                 }
             };
 
-            // --- Scroll to Today Logic ---
             const scrollToToday = () => {
                 if (scrollContainerRef.current) {
                     const daysFromStart = diffDays(timelineStart, today);
                     if (daysFromStart >= 0) {
-                        // Calculate position and offset it so 'today' is nicely visible
                         const targetScroll = (daysFromStart * zoomLevel) - 150;
                         scrollContainerRef.current.scrollLeft = Math.max(0, targetScroll);
                     }
                 }
             };
 
-            // Auto-scroll on initial load
             useEffect(() => {
                 if (!initialScrollDone.current && scrollContainerRef.current) {
                     setTimeout(() => { scrollToToday(); }, 50);
@@ -341,7 +339,6 @@
                 }
             }, [timelineStart, today, zoomLevel]);
 
-            // --- Selection & Lock Handlers ---
             const togglePhaseSelection = (phaseId) => {
                 setSelectedPhaseIds(prev => {
                     const next = new Set(prev);
@@ -376,7 +373,6 @@
                 }
             };
 
-            // --- General Handlers ---
             const toggleProjectExpand = (id) => updateProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
             const updateProjectTitle = (id, newTitle) => updateProjects(projects.map(p => p.id === id ? { ...p, title: newTitle } : p));
             const updateProjectColor = (id, newColor) => updateProjects(projects.map(p => p.id === id ? { ...p, color: newColor } : p));
@@ -393,7 +389,13 @@
                         isLocked: false,
                         start: null,
                         end: null,
-                        tasks: t.tasks.map(text => ({ id: generateId(), text, done: false })),
+                        tasks: t.tasks.map(text => ({ 
+                            id: generateId(), 
+                            text, 
+                            done: false, 
+                            assignee: '', 
+                            targetDate: null 
+                        })),
                         milestones: []
                     }))
                 }]);
@@ -426,15 +428,12 @@
             };
 
             const handleGridClick = (e, projectId, phaseId) => {
-                if (e.target !== e.currentTarget) return; // Prevent clicks falling through blocks
-
+                if (e.target !== e.currentTarget) return;
                 const clickX = e.nativeEvent.offsetX;
                 const daysFromStart = Math.floor(clickX / zoomLevel);
                 const weekIndex = Math.floor(daysFromStart / 7);
-                
                 const newStart = addDays(timelineStart, weekIndex * 7);
                 const newEnd = addDays(newStart, 6);
-
                 updateProjects(projects.map(p => {
                     if (p.id === projectId) {
                         return {
@@ -453,7 +452,7 @@
 
             // Drag and Drop Rows
             const onDragStartRow = (e, index) => {
-                dragStartProjects.current = projects; // Save state for history
+                dragStartProjects.current = projects;
                 setDraggedProjectIndex(index);
                 e.dataTransfer.effectAllowed = "move";
             };
@@ -465,7 +464,7 @@
                 newProjects.splice(draggedProjectIndex, 1);
                 newProjects.splice(index, 0, draggedItem);
                 setDraggedProjectIndex(index);
-                setProjects(newProjects); // direct, no history push yet
+                setProjects(newProjects);
             };
             const onDragEndRow = () => {
                 setDraggedProjectIndex(null);
@@ -489,7 +488,6 @@
                 e.preventDefault();
                 e.stopPropagation();
                 if (!draggedPhase || draggedPhase.projectId !== projectId || draggedPhase.phaseIndex === targetIndex) return;
-
                 setProjects(prev => prev.map(p => {
                     if (p.id === projectId) {
                         const newPhases = [...p.phases];
@@ -514,6 +512,75 @@
                 });
             };
 
+            // --- Task Checklist Logic ---
+            const toggleTask = (taskId) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const addTask = () => {
+                const updatedTasks = [...modalData.phase.tasks, { 
+                    id: generateId(), 
+                    text: 'New Task', 
+                    done: false,
+                    assignee: '',
+                    targetDate: null
+                }];
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskText = (taskId, text) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, text } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskAssignee = (taskId, assignee) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, assignee } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskTargetDate = (taskId, dateStr) => {
+                const targetDate = dateStr ? fromYMD(dateStr) : null;
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, targetDate } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const deleteTask = (taskId) => {
+                const updatedTasks = modalData.phase.tasks.filter(t => t.id !== taskId);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTasksInState = (updatedTasks) => {
+                updateProjects(projects.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: updatedTasks } : ph)
+                } : p));
+                setModalData(prev => ({ ...prev, phase: { ...prev.phase, tasks: updatedTasks } }));
+            };
+
+            // Task Rearrangement Logic
+            const onDragStartTask = (e, index) => {
+                dragStartProjects.current = projects;
+                setDraggedTaskIndex(index);
+                e.dataTransfer.effectAllowed = "move";
+            };
+
+            const onDragOverTask = (e, targetIndex) => {
+                e.preventDefault();
+                if (draggedTaskIndex === null || draggedTaskIndex === targetIndex) return;
+                
+                const newTasks = [...modalData.phase.tasks];
+                const draggedItem = newTasks[draggedTaskIndex];
+                newTasks.splice(draggedTaskIndex, 1);
+                newTasks.splice(targetIndex, 0, draggedItem);
+                
+                setDraggedTaskIndex(targetIndex);
+                updateTasksInState(newTasks);
+            };
+
+            const onDragEndTask = () => {
+                setDraggedTaskIndex(null);
+            };
+
             // Block & Column Resizing/Dragging Logic
             const [draggingBlock, setDraggingBlock] = useState(null);
             const [isResizingCol, setIsResizingCol] = useState(false);
@@ -521,28 +588,20 @@
 
             useEffect(() => {
                 const handleMouseMove = (e) => {
-                    // Handle Column Resizing
                     if (isResizingCol) {
                         setLeftColWidth(Math.max(200, Math.min(800, e.clientX)));
                         return;
                     }
-
-                    // Handle Block Resizing/Moving
                     if (!draggingBlock) return;
-                    
-                    if (Math.abs(e.clientX - draggingBlock.startX) > 3) {
-                        lastInteractionRef.current.isDragging = true;
-                    }
+                    if (Math.abs(e.clientX - draggingBlock.startX) > 3) lastInteractionRef.current.isDragging = true;
 
                     const deltaX = e.clientX - draggingBlock.startX;
                     const deltaDays = Math.round(deltaX / zoomLevel);
                     
                     if (deltaDays !== 0) {
-                        // Direct setProjects (no history save during active dragging)
                         setProjects(prev => {
                             let next = [...prev];
                             let changed = false;
-
                             draggingBlock.blocksToMove.forEach(b => {
                                 const pIndex = next.findIndex(p => p.id === b.projectId);
                                 if (pIndex > -1) {
@@ -551,7 +610,6 @@
                                         const ph = next[pIndex].phases[phIndex];
                                         let newStart = ph.start;
                                         let newEnd = ph.end;
-
                                         if (draggingBlock.type === 'move') {
                                             newStart = addDays(b.origStart, deltaDays);
                                             newEnd = addDays(b.origEnd, deltaDays);
@@ -562,7 +620,6 @@
                                             newEnd = addDays(b.origEnd, deltaDays);
                                             if (newEnd < newStart) newEnd = newStart;
                                         }
-
                                         if (newStart?.getTime() !== ph.start?.getTime() || newEnd?.getTime() !== ph.end?.getTime()) {
                                             const newPhases = [...next[pIndex].phases];
                                             newPhases[phIndex] = { ...ph, start: newStart, end: newEnd };
@@ -580,7 +637,6 @@
                 const handleMouseUp = () => {
                     if (isResizingCol) setIsResizingCol(false);
                     if (draggingBlock) {
-                        // Commit to history on drag end
                         setProjects(current => {
                             if (dragStartProjects.current && dragStartProjects.current !== current) {
                                 setPast(p => [...p, dragStartProjects.current]);
@@ -604,17 +660,11 @@
 
             const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd) => {
                 e.stopPropagation();
-                
-                // Block dragging if locked
                 const phase = projects.find(p => p.id === projectId)?.phases.find(ph => ph.id === phaseId);
                 if (phase?.isLocked) return;
-
                 lastInteractionRef.current = { isDragging: false, startX: e.clientX };
-                dragStartProjects.current = projects; // Snapshot for history
-
+                dragStartProjects.current = projects;
                 let blocksToMove = [{ projectId, phaseId, origStart, origEnd }];
-
-                // If moving a selected block, gather all selected unlocked blocks to shift together
                 if (type === 'move' && selectedPhaseIds.has(phaseId)) {
                     blocksToMove = [];
                     projects.forEach(p => {
@@ -625,13 +675,11 @@
                         });
                     });
                 }
-
                 setDraggingBlock({ blocksToMove, type, startX: e.clientX });
             };
 
             const handleBlockClick = (e, projectId, phase, colorIndex) => {
                 e.stopPropagation();
-                // Prevent opening checklist if block was just dragged
                 if (lastInteractionRef.current.isDragging) {
                     lastInteractionRef.current.isDragging = false; 
                     return; 
@@ -639,24 +687,21 @@
                 setModalData({ projectId, phase, colorIndex });
             };
 
-            // Modal & Direct Handlers
             const editPhaseTitle = (projectId, phaseId, newTitle) => {
                 updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, title: newTitle } : ph)
                 } : p));
                 if (modalData && modalData.projectId === projectId && modalData.phase.id === phaseId) {
-                    setModalData({ ...modalData, phase: { ...modalData.phase, title: newTitle } });
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, title: newTitle } }));
                 }
             };
 
             const updatePhaseDates = (projectId, phaseId, startStr, endStr) => {
                 const newStart = startStr ? fromYMD(startStr) : null;
                 const newEnd = endStr ? fromYMD(endStr) : null;
-                
                 updateProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, start: newStart, end: newEnd } : ph)
                 } : p));
-                
                 if (modalData && modalData.phase.id === phaseId) {
                     setModalData(prev => ({ ...prev, phase: { ...prev.phase, start: newStart, end: newEnd } }));
                 }
@@ -682,10 +727,7 @@
                 if (modalData && modalData.phase.id === phaseId) {
                     setModalData(prev => ({ 
                         ...prev, 
-                        phase: { 
-                            ...prev.phase, 
-                            milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, label: labelStr } : m)
-                        } 
+                        phase: { ...prev.phase, milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, label: labelStr } : m) } 
                     }));
                 }
             };
@@ -701,10 +743,7 @@
                 if (modalData && modalData.phase.id === phaseId) {
                     setModalData(prev => ({ 
                         ...prev, 
-                        phase: { 
-                            ...prev.phase, 
-                            milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m)
-                        } 
+                        phase: { ...prev.phase, milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m) } 
                     }));
                 }
             };
@@ -719,10 +758,7 @@
                 if (modalData && modalData.phase.id === phaseId) {
                     setModalData(prev => ({ 
                         ...prev, 
-                        phase: { 
-                            ...prev.phase, 
-                            milestones: (prev.phase.milestones || []).filter(m => m.id !== milestoneId)
-                        } 
+                        phase: { ...prev.phase, milestones: (prev.phase.milestones || []).filter(m => m.id !== milestoneId) } 
                     }));
                 }
             };
@@ -734,60 +770,18 @@
                 if (modalData && modalData.phase.id === phaseId) setModalData(null);
             };
 
-            const toggleTask = (taskId) => {
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
-                updateTasksInState(updatedTasks);
-            };
-
-            const addTask = () => {
-                const updatedTasks = [...modalData.phase.tasks, { id: generateId(), text: 'New Task', done: false }];
-                updateTasksInState(updatedTasks);
-            };
-
-            const updateTaskText = (taskId, text) => {
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, text } : t);
-                updateTasksInState(updatedTasks);
-            };
-
-            const deleteTask = (taskId) => {
-                const updatedTasks = modalData.phase.tasks.filter(t => t.id !== taskId);
-                updateTasksInState(updatedTasks);
-            };
-
-            const updateTasksInState = (updatedTasks) => {
-                updateProjects(projects.map(p => p.id === modalData.projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: updatedTasks } : ph)
-                } : p));
-                setModalData({ ...modalData, phase: { ...modalData.phase, tasks: updatedTasks } });
-            };
-
-            // --- Render Helpers ---
-            // Build calendar headers (Weekly)
             const months = [];
             const weeks = [];
             let currentMonth = -1;
             let weeksInMonth = 0;
-
             for (let i = 0; i < totalDays; i += 7) {
                 const weekStart = addDays(timelineStart, i);
                 const weekEnd = addDays(weekStart, 6);
-                
-                weeks.push({
-                    start: weekStart,
-                    end: weekEnd,
-                    label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`,
-                    daysFromStart: i
-                });
-
+                weeks.push({ start: weekStart, end: weekEnd, label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`, daysFromStart: i });
                 const month = weekStart.getMonth();
                 if (month !== currentMonth) {
-                    if (currentMonth !== -1) {
-                        months[months.length - 1].colSpan = weeksInMonth * 7;
-                    }
-                    months.push({
-                        name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-                        colSpan: 7
-                    });
+                    if (currentMonth !== -1) months[months.length - 1].colSpan = weeksInMonth * 7;
+                    months.push({ name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), colSpan: 7 });
                     currentMonth = month;
                     weeksInMonth = 1;
                 } else {
@@ -801,8 +795,7 @@
             const activeProject = modalData ? projects.find(p => p.id === modalData.projectId) : null;
 
             return (
-                <div className="flex flex-col h-screen bg-white">
-                    {/* Datalist for Phase dropdowns */}
+                <div className="flex flex-col h-screen bg-white relative">
                     <datalist id="standard-phases-list">
                         {STANDARD_TEMPLATE_PHASES.map((p, i) => <option key={i} value={p.title} />)}
                         <option value="Client Handover" />
@@ -821,8 +814,6 @@
                             <p className="text-slate-400 text-xs mt-1">Interior Design Timeline & Task Management</p>
                         </div>
                         <div className="flex items-center gap-4">
-                            
-                            {/* Cloud Save / Load */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
                                 <button onClick={saveToCloud} disabled={isSaving || isLoading} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-xs font-medium" title="Save to Cloud">
                                     {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} Save
@@ -832,8 +823,6 @@
                                     {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} Load
                                 </button>
                             </div>
-
-                            {/* Undo / Redo */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
                                 <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo">
                                     <Icons.Undo />
@@ -842,160 +831,60 @@
                                     <Icons.Redo />
                                 </button>
                             </div>
-
-                            <button onClick={scrollToToday} className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-3 py-1.5 transition-colors font-medium">
-                                Today
-                            </button>
+                            <button onClick={scrollToToday} className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-3 py-1.5 transition-colors font-medium">Today</button>
                             <div className="flex items-center gap-2">
                                 <span className="text-xs text-slate-400">Zoom</span>
-                                <input 
-                                    type="range" 
-                                    min="10" max="50" 
-                                    value={zoomLevel} 
-                                    onChange={(e) => setZoomLevel(Number(e.target.value))}
-                                    className="w-24 accent-blue-500"
-                                />
+                                <input type="range" min="10" max="50" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} className="w-24 accent-blue-500"/>
                             </div>
-                            <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors ml-2">
-                                <Icons.Plus /> Add Project
-                            </button>
+                            <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors ml-2"><Icons.Plus /> Add Project</button>
                         </div>
                     </div>
 
                     {/* Main Gantt Area */}
                     <div className="flex flex-1 overflow-hidden relative">
-                        
-                        {/* Scrollable Container (horizontal scrolling allowed here) */}
                         <div className="flex-1 overflow-auto relative flex" ref={scrollContainerRef}>
-                            
-                            {/* Left Sticky Column: Projects */}
                             <div 
                                 className="flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]"
                                 style={{ width: leftColWidth, minWidth: leftColWidth }}
                             >
-                                {/* Draggable Column Resizer Handle */}
                                 <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)}></div>
-                                
-                                {/* Header spacer */}
                                 <div className="h-[60px] border-b border-slate-300 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
-                                    <input 
-                                        value={leftColTitle} 
-                                        onChange={e => setLeftColTitle(e.target.value)}
-                                        className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full"
-                                    />
+                                    <input value={leftColTitle} onChange={e => setLeftColTitle(e.target.value)} className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full" />
                                 </div>
-                                
-                                {/* Project List */}
                                 <div className="pb-32">
                                     {projects.map((project, index) => {
                                         const allPhasesSelected = project.phases.length > 0 && project.phases.every(ph => selectedPhaseIds.has(ph.id));
-
                                         return (
-                                        <div 
-                                            key={project.id}
-                                            draggable
-                                            onDragStart={(e) => onDragStartRow(e, index)}
-                                            onDragOver={(e) => onDragOverRow(e, index)}
-                                            onDragEnd={onDragEndRow}
-                                            className={`border-b border-slate-100 ${draggedProjectIndex === index ? 'opacity-50 bg-slate-100' : ''}`}
-                                        >
-                                            {/* Main Project Row */}
+                                        <div key={project.id} draggable onDragStart={(e) => onDragStartRow(e, index)} onDragOver={(e) => onDragOverRow(e, index)} onDragEnd={onDragEndRow} className={`border-b border-slate-100 ${draggedProjectIndex === index ? 'opacity-50 bg-slate-100' : ''}`} >
                                             <div className="flex items-center h-12 hover:bg-slate-50 group pl-2">
-                                                <div className="w-8 flex justify-center items-center h-full">
-                                                    <div className="opacity-0 group-hover:opacity-100"><Icons.Grip /></div>
-                                                </div>
-                                                <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700">
-                                                    {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
-                                                </button>
-
-                                                {/* Color Picker Indicator */}
+                                                <div className="w-8 flex justify-center items-center h-full"><div className="opacity-0 group-hover:opacity-100"><Icons.Grip /></div></div>
+                                                <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700">{project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</button>
                                                 <div className="relative group/color mr-2 flex items-center h-full">
                                                     <div className="w-3 h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
-                                                    
-                                                    {/* Hover Dropdown with padding bridge to prevent disappearing */}
                                                     <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
                                                         <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
-                                                            {THEME_COLORS.map(c => (
-                                                                <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
-                                                            ))}
-                                                            
+                                                            {THEME_COLORS.map(c => (<div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>))}
                                                             <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
-                                                            
-                                                            {/* Native Color Wheel Input */}
                                                             <label className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 overflow-hidden relative border border-slate-300 shadow-inner flex-shrink-0" title="Custom Color">
-                                                                <input 
-                                                                    type="color" 
-                                                                    value={project.color && project.color.startsWith('#') ? project.color : '#000000'}
-                                                                    onChange={(e) => updateProjectColor(project.id, e.target.value)}
-                                                                    className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer"
-                                                                />
+                                                                <input type="color" value={project.color && project.color.startsWith('#') ? project.color : '#000000'} onChange={(e) => updateProjectColor(project.id, e.target.value)} className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer" />
                                                                 <div className="w-full h-full bg-[conic-gradient(red,yellow,lime,aqua,blue,fuchsia,red)]"></div>
                                                             </label>
                                                         </div>
                                                     </div>
                                                 </div>
-
-                                                {/* Select All Project Phases Checkbox */}
-                                                <input 
-                                                    type="checkbox" 
-                                                    checked={allPhasesSelected}
-                                                    onChange={() => toggleProjectSelection(project.id)}
-                                                    className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
-                                                    title="Select All Phases to shift timeline"
-                                                />
-
-                                                <input 
-                                                    value={project.title}
-                                                    onChange={(e) => updateProjectTitle(project.id, e.target.value)}
-                                                    className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate"
-                                                />
-                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600" title="Add Phase">
-                                                    <Icons.Plus />
-                                                </button>
-                                                <button onClick={() => deleteProject(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 mr-2" title="Delete Project">
-                                                    <Icons.Trash />
-                                                </button>
+                                                <input type="checkbox" checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500" title="Select All Phases to shift timeline" />
+                                                <input value={project.title} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate" />
+                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600" title="Add Phase"><Icons.Plus /></button>
+                                                <button onClick={() => deleteProject(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 mr-2" title="Delete Project"><Icons.Trash /></button>
                                             </div>
-
-                                            {/* Expanded Phase Sub-rows */}
                                             {project.isExpanded && project.phases.map((phase, phaseIndex) => (
-                                                <div 
-                                                    key={phase.id} 
-                                                    draggable
-                                                    onDragStart={(e) => onDragStartPhase(e, project.id, phaseIndex)}
-                                                    onDragOver={(e) => onDragOverPhase(e, project.id, phaseIndex)}
-                                                    onDragEnd={onDragEndPhase}
-                                                    className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-3 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''} ${selectedPhaseIds.has(phase.id) ? 'bg-blue-50/50' : ''}`}
-                                                >
-                                                    <div className="w-6 flex justify-center items-center h-full opacity-0 group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1">
-                                                        <Icons.Grip />
-                                                    </div>
+                                                <div key={phase.id} draggable onDragStart={(e) => onDragStartPhase(e, project.id, phaseIndex)} onDragOver={(e) => onDragOverPhase(e, project.id, phaseIndex)} onDragEnd={onDragEndPhase} className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-3 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''} ${selectedPhaseIds.has(phase.id) ? 'bg-blue-50/50' : ''}`} >
+                                                    <div className="w-6 flex justify-center items-center h-full opacity-0 group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1"><Icons.Grip /></div>
                                                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
-                                                    
-                                                    {/* Select Phase Checkbox */}
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={selectedPhaseIds.has(phase.id)}
-                                                        onChange={() => togglePhaseSelection(phase.id)}
-                                                        className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
-                                                    />
-
-                                                    <input 
-                                                        list="standard-phases-list"
-                                                        value={phase.title}
-                                                        onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)}
-                                                        className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate"
-                                                        placeholder="Phase Title"
-                                                    />
-                                                    
-                                                    {/* Lock Phase Button */}
-                                                    <button onClick={() => toggleLock(project.id, phase.id)} className={`p-1 transition-colors ml-1 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-0 group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>
-                                                        {phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}
-                                                    </button>
-                                                    
-                                                    <button onClick={() => removePhase(project.id, phase.id)} className="opacity-0 group-hover/phase:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase">
-                                                        <Icons.Trash />
-                                                    </button>
+                                                    <input type="checkbox" checked={selectedPhaseIds.has(phase.id)} onChange={() => togglePhaseSelection(phase.id)} className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500" />
+                                                    <input list="standard-phases-list" value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate" placeholder="Phase Title" />
+                                                    <button onClick={() => toggleLock(project.id, phase.id)} className={`p-1 transition-colors ml-1 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-0 group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>{phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}</button>
+                                                    <button onClick={() => removePhase(project.id, phase.id)} className="opacity-0 group-hover/phase:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase"><Icons.Trash /></button>
                                                 </div>
                                             ))}
                                         </div>
@@ -1003,120 +892,56 @@
                                 </div>
                             </div>
 
-                            {/* Right Scrolling Timeline Grid */}
                             <div className="relative" style={{ width: gridWidth }}>
-                                {/* Fixed Date Header */}
                                 <div className="sticky top-0 z-20 bg-white border-b border-slate-300">
-                                    {/* Months */}
                                     <div className="flex border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold h-8">
-                                        {months.map((m, i) => (
-                                            <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>
-                                                {m.name}
-                                            </div>
-                                        ))}
+                                        {months.map((m, i) => (<div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>{m.name}</div>))}
                                     </div>
-                                    {/* Weeks */}
                                     <div className="flex h-7 bg-white text-[10px] text-slate-500 font-medium">
-                                        {weeks.map((w, i) => (
-                                            <div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50" style={{ width: 7 * zoomLevel }}>
-                                                {w.label}
-                                            </div>
-                                        ))}
+                                        {weeks.map((w, i) => (<div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50" style={{ width: 7 * zoomLevel }}>{w.label}</div>))}
                                     </div>
                                 </div>
-
-                                {/* Timeline Background Grid & Data Rows */}
                                 <div className="relative pb-32">
-                                    {/* Vertical Grid Lines (Weekly thick + subtle days) */}
                                     <div className="absolute top-0 bottom-0 left-0 right-0 flex pointer-events-none z-0">
                                          {weeks.map((w, i) => (
                                             <div key={i} className="h-full border-r border-slate-300 relative" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
-                                                {/* Sub-day dashed lines inside the week */}
                                                 <div className="absolute inset-0 flex">
-                                                    {[...Array(7)].map((_, dayIdx) => (
-                                                        <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>
-                                                    ))}
+                                                    {[...Array(7)].map((_, dayIdx) => (<div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>))}
                                                 </div>
                                             </div>
                                         ))}
                                     </div>
-
-                                    {/* Live Today Line */}
                                     {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
-                                        <div 
-                                            className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 opacity-70" 
-                                            style={{ left: diffDays(timelineStart, today) * zoomLevel }}
-                                        >
-                                            <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
-                                        </div>
+                                        <div className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 opacity-70" style={{ left: diffDays(timelineStart, today) * zoomLevel }}><div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div></div>
                                     )}
-
-                                    {/* Data Rows Content */}
                                     {projects.map(project => {
                                         const chronoIndices = getChronologicalIndices(project.phases);
-                                        
                                         return (
                                         <div key={project.id} className="relative border-b border-slate-200">
-                                            {/* Main Project Row Space (Empty if expanded, holds collapsed blocks if not) */}
                                             <div className="h-12 relative w-full bg-slate-50/10">
                                                 {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
                                                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                                                     const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
                                                     const hasTimeline = phase.start && phase.end;
                                                     const isSelected = selectedPhaseIds.has(phase.id);
-
                                                     return (
                                                         <React.Fragment key={phase.id}>
                                                             {hasTimeline && (() => {
                                                                 const left = diffDays(timelineStart, phase.start) * zoomLevel;
                                                                 const width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
                                                                 if (left + width < 0 || left > gridWidth) return null; 
-                                                                
                                                                 return (
-                                                                    <div 
-                                                                        onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
-                                                                        onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                        className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block 
-                                                                            ${isCompleted ? 'completed-block' : ''} 
-                                                                            ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
-                                                                            ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
-                                                                        `}
-                                                                        style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
-                                                                    >
-                                                                        <div className="truncate drop-shadow-md flex items-center gap-1">
-                                                                            {phase.isLocked && <Icons.Lock />}
-                                                                            {phase.title}
-                                                                        </div>
-                                                                        {!phase.isLocked && (
-                                                                            <>
-                                                                                <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                                                <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
-                                                                            </>
-                                                                        )}
+                                                                    <div onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)} onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)} className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`} style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }} >
+                                                                        <div className="truncate drop-shadow-md flex items-center gap-1">{phase.isLocked && <Icons.Lock />}{phase.title}</div>
+                                                                        {!phase.isLocked && (<><div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div><div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div></>)}
                                                                     </div>
                                                                 );
                                                             })()}
-                                                            
-                                                            {(phase.milestones || []).map(milestone => {
-                                                                if (!milestone.date) return null;
-                                                                return (
-                                                                    <div 
-                                                                        key={milestone.id}
-                                                                        className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
-                                                                        style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
-                                                                        title={milestone.label}
-                                                                    >
-                                                                        <Icons.Flag className="text-amber-400" />
-                                                                        {milestone.label && <span className="text-[8px] font-bold text-amber-700 mt-0.5 bg-white/80 px-1 rounded shadow-sm whitespace-nowrap">{milestone.label}</span>}
-                                                                    </div>
-                                                                )
-                                                            })}
+                                                            {(phase.milestones || []).map(milestone => milestone.date && (<div key={milestone.id} className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }} title={milestone.label}><Icons.Flag className="text-amber-400" />{milestone.label && <span className="text-[8px] font-bold text-amber-700 mt-0.5 bg-white/80 px-1 rounded shadow-sm whitespace-nowrap">{milestone.label}</span>}</div>))}
                                                         </React.Fragment>
                                                     )
                                                 })}
                                             </div>
-
-                                            {/* Expanded Sub-rows */}
                                             {project.isExpanded && project.phases.map((phase, phaseIndex) => {
                                                 const hasTimeline = phase.start && phase.end;
                                                 const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
@@ -1129,58 +954,16 @@
                                                 const doneCount = phase.tasks.filter(t => t.done).length;
                                                 const isCompleted = taskCount > 0 && doneCount === taskCount;
                                                 const isSelected = selectedPhaseIds.has(phase.id);
-                                                
                                                 return (
-                                                    <div 
-                                                        key={phase.id} 
-                                                        className="h-10 relative w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors"
-                                                        onClick={(e) => handleGridClick(e, project.id, phase.id)}
-                                                        title={!hasTimeline ? "Click to add timeline block" : (phase.isLocked ? "Locked" : "Click background to move timeline block")}
-                                                    >
+                                                    <div key={phase.id} className="h-10 relative w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors" onClick={(e) => handleGridClick(e, project.id, phase.id)} title={!hasTimeline ? "Click to add timeline block" : (phase.isLocked ? "Locked" : "Click background to move timeline block")} >
                                                         {hasTimeline && (
-                                                            <div 
-                                                                onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
-                                                                onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block 
-                                                                    ${isCompleted ? 'completed-block' : ''}
-                                                                    ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
-                                                                    ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
-                                                                `}
-                                                                style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
-                                                            >
-                                                                <span className="truncate drop-shadow-md flex items-center gap-1">
-                                                                    {phase.isLocked && <Icons.Lock />}
-                                                                    {phase.title}
-                                                                </span>
-                                                                {taskCount > 0 && width > 100 && (
-                                                                    <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">
-                                                                        {doneCount}/{taskCount}
-                                                                    </span>
-                                                                )}
-
-                                                                {!phase.isLocked && (
-                                                                    <>
-                                                                        <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                                                                        <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
-                                                                    </>
-                                                                )}
+                                                            <div onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)} onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)} className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`} style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }} >
+                                                                <span className="truncate drop-shadow-md flex items-center gap-1">{phase.isLocked && <Icons.Lock />}{phase.title}</span>
+                                                                {taskCount > 0 && width > 100 && (<span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>)}
+                                                                {!phase.isLocked && (<><div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div><div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div></>)}
                                                             </div>
                                                         )}
-
-                                                        {(phase.milestones || []).map(milestone => {
-                                                            if (!milestone.date) return null;
-                                                            return (
-                                                                <div 
-                                                                    key={milestone.id}
-                                                                    className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
-                                                                    style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
-                                                                    title={milestone.label}
-                                                                >
-                                                                    <Icons.Flag className="text-amber-400" />
-                                                                    {milestone.label && <span className="text-[8px] font-bold text-amber-700 mt-0.5 bg-white/80 px-1 rounded shadow-sm whitespace-nowrap">{milestone.label}</span>}
-                                                                </div>
-                                                            )
-                                                        })}
+                                                        {(phase.milestones || []).map(milestone => milestone.date && (<div key={milestone.id} className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }} title={milestone.label}><Icons.Flag className="text-amber-400" />{milestone.label && <span className="text-[8px] font-bold text-amber-700 mt-0.5 bg-white/80 px-1 rounded shadow-sm whitespace-nowrap">{milestone.label}</span>}</div>))}
                                                     </div>
                                                 )
                                             })}
@@ -1194,8 +977,7 @@
                     {/* Task Checklist Modal */}
                     {modalData && activeProject && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center" onMouseDown={() => setModalData(null)}>
-                            <div className="bg-white rounded-xl shadow-2xl w-[450px] max-w-full m-4 overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
-                                {/* Modal Header */}
+                            <div className="bg-white rounded-xl shadow-2xl w-[600px] max-w-full m-4 overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
                                 <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(activeProject.color, modalData.colorIndex) }}>
                                     <div className="flex-1 mr-4 flex items-center">
                                         <div className="flex-1">
@@ -1203,138 +985,112 @@
                                                 {activeProject.title} 
                                                 {modalData.phase.isLocked && <span className="bg-black/20 px-1.5 rounded-sm flex items-center gap-1"><Icons.Lock /> Locked</span>}
                                             </p>
-                                            <input 
-                                                list="standard-phases-list"
-                                                value={modalData.phase.title}
-                                                onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)}
-                                                className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50"
-                                            />
+                                            <input list="standard-phases-list" value={modalData.phase.title} onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)} className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50" />
                                         </div>
                                     </div>
-                                    <button onClick={() => setModalData(null)} className="p-1 hover:bg-black/10 rounded-full transition-colors">
-                                        <Icons.X />
-                                    </button>
+                                    <button onClick={() => setModalData(null)} className="p-1 hover:bg-black/10 rounded-full transition-colors"><Icons.X /></button>
                                 </div>
 
-                                {/* Modal Body (Tasks & Dates) */}
-                                <div className="p-5 max-h-[60vh] overflow-y-auto">
-                                    <div className="mb-4 border-b border-slate-100 pb-4">
-                                        <div className="flex justify-between items-end">
-                                            <div>
-                                                <h3 className="text-sm font-semibold text-slate-800">Timeline</h3>
-                                                
-                                                {/* Start / End Calendars */}
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <input 
-                                                        type="date" 
-                                                        value={toYMD(modalData.phase.start)} 
-                                                        disabled={modalData.phase.isLocked}
-                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))}
-                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
-                                                    />
-                                                    <span className="text-xs text-slate-400">to</span>
-                                                    <input 
-                                                        type="date" 
-                                                        value={toYMD(modalData.phase.end)} 
-                                                        disabled={modalData.phase.isLocked}
-                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)}
-                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
-                                                    />
-                                                    {modalData.phase.start && modalData.phase.end && (
-                                                        <span className="text-xs text-slate-500 font-medium ml-1">
-                                                            ({diffDays(modalData.phase.start, modalData.phase.end) + 1} days)
-                                                        </span>
-                                                    )}
-                                                </div>
+                                <div className="p-5 max-h-[70vh] overflow-y-auto">
+                                    <div className="mb-6 border-b border-slate-100 pb-4">
+                                        <h3 className="text-sm font-bold text-slate-800 mb-3">Phase Timeline & Milestones</h3>
+                                        <div className="flex items-center gap-2 mb-4">
+                                            <input type="date" value={toYMD(modalData.phase.start)} disabled={modalData.phase.isLocked} onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))} className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70' : ''}`} />
+                                            <span className="text-xs text-slate-400">to</span>
+                                            <input type="date" value={toYMD(modalData.phase.end)} disabled={modalData.phase.isLocked} onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)} className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70' : ''}`} />
+                                            {modalData.phase.start && modalData.phase.end && (<span className="text-xs text-slate-500 font-medium ml-1">({diffDays(modalData.phase.start, modalData.phase.end) + 1} days)</span>)}
+                                        </div>
 
-                                                {/* Milestones List */}
-                                                <div className="mt-4 pt-3 border-t border-slate-100">
-                                                    <div className="flex justify-between items-center mb-2">
-                                                        <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                                            <Icons.Flag className="text-amber-400 w-3 h-3" />
-                                                            Milestones
-                                                        </span>
-                                                        <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} disabled={modalData.phase.isLocked} className={`text-[10px] font-medium flex items-center gap-1 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed' : 'text-amber-600 hover:text-amber-800'}`}>
-                                                            <Icons.Plus /> Add Milestone
-                                                        </button>
-                                                    </div>
-                                                    
-                                                    <div className="space-y-2">
-                                                        {(!modalData.phase.milestones || modalData.phase.milestones.length === 0) ? (
-                                                            <p className="text-xs text-slate-400 italic">No milestones added.</p>
-                                                        ) : (
-                                                            modalData.phase.milestones.map(m => (
-                                                                <div key={m.id} className="flex items-center gap-2">
-                                                                    <input 
-                                                                        type="text" 
-                                                                        value={m.label || ''} 
-                                                                        disabled={modalData.phase.isLocked}
-                                                                        onChange={(e) => updatePhaseMilestoneLabel(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
-                                                                        placeholder="Milestone Name"
-                                                                        className={`flex-1 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
-                                                                    />
-                                                                    <input 
-                                                                        type="date" 
-                                                                        value={toYMD(m.date)} 
-                                                                        disabled={modalData.phase.isLocked}
-                                                                        onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
-                                                                        className={`w-32 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
-                                                                    />
-                                                                    <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={modalData.phase.isLocked} className={`p-0.5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500 transition-colors'}`}>
-                                                                        <Icons.Trash />
-                                                                    </button>
-                                                                </div>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </div>
-
+                                        <div className="pt-3 border-t border-slate-100">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-semibold text-slate-600 flex items-center gap-1"><Icons.Flag className="text-amber-400 w-3 h-3" /> Milestones</span>
+                                                <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} disabled={modalData.phase.isLocked} className={`text-[10px] font-bold flex items-center gap-1 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed' : 'text-amber-600 hover:text-amber-800'}`}><Icons.Plus /> Add Milestone</button>
+                                            </div>
+                                            <div className="space-y-2">
+                                                {(!modalData.phase.milestones || modalData.phase.milestones.length === 0) ? (<p className="text-xs text-slate-400 italic">No milestones added.</p>) : (
+                                                    modalData.phase.milestones.map(m => (
+                                                        <div key={m.id} className="flex items-center gap-2">
+                                                            <input type="text" value={m.label || ''} disabled={modalData.phase.isLocked} onChange={(e) => updatePhaseMilestoneLabel(modalData.projectId, modalData.phase.id, m.id, e.target.value)} placeholder="Milestone Name" className={`flex-1 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70' : ''}`} />
+                                                            <input type="date" value={toYMD(m.date)} disabled={modalData.phase.isLocked} onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)} className={`w-32 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70' : ''}`} />
+                                                            <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={modalData.phase.isLocked} className={`p-0.5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500'}`}><Icons.Trash /></button>
+                                                        </div>
+                                                    ))
+                                                )}
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-between items-end mb-2">
-                                        <h3 className="text-sm font-semibold text-slate-800">Checklist Tasks</h3>
-                                        <button onClick={addTask} className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
-                                            <Icons.Plus /> Add Task
-                                        </button>
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="text-sm font-bold text-slate-800">Checklist Tasks</h3>
+                                        <button onClick={addTask} className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"><Icons.Plus /> Add Task</button>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        {modalData.phase.tasks.length === 0 ? (
-                                            <p className="text-center text-sm text-slate-400 py-4 italic">No tasks added yet.</p>
-                                        ) : (
-                                            modalData.phase.tasks.map(task => (
-                                                <div key={task.id} className="flex items-center gap-3 group">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={task.done} 
-                                                        onChange={() => toggleTask(task.id)}
-                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
-                                                    />
-                                                    <input 
-                                                        value={task.text}
-                                                        onChange={(e) => updateTaskText(task.id, e.target.value)}
-                                                        className={`flex-1 text-sm bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'}`}
-                                                    />
-                                                    <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity">
-                                                        <Icons.Trash />
-                                                    </button>
+                                    <div className="space-y-3">
+                                        {modalData.phase.tasks.length === 0 ? (<p className="text-center text-sm text-slate-400 py-4 italic">No tasks added yet.</p>) : (
+                                            modalData.phase.tasks.map((task, idx) => (
+                                                <div 
+                                                    key={task.id} 
+                                                    draggable
+                                                    onDragStart={(e) => onDragStartTask(e, idx)}
+                                                    onDragOver={(e) => onDragOverTask(e, idx)}
+                                                    onDragEnd={onDragEndTask}
+                                                    className={`flex flex-col p-2 bg-slate-50 border border-slate-200 rounded-lg group/task hover:bg-white hover:border-slate-300 transition-all ${draggedTaskIndex === idx ? 'opacity-40 grayscale' : ''}`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-6 flex justify-center cursor-grab active:cursor-grabbing text-slate-300 hover:text-slate-500"><Icons.Grip className="w-4 h-4" /></div>
+                                                        <input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} className="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-500" />
+                                                        <input 
+                                                            value={task.text} 
+                                                            onChange={(e) => updateTaskText(task.id, e.target.value)} 
+                                                            placeholder="What needs to be done?"
+                                                            className={`flex-1 text-sm bg-transparent border-b border-transparent focus:border-blue-200 focus:outline-none py-1 font-medium ${task.done ? 'text-slate-400 line-through' : 'text-slate-800'}`} 
+                                                        />
+                                                        <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-red-500 transition-opacity"><Icons.Trash /></button>
+                                                    </div>
+                                                    
+                                                    {/* Task Meta: Assignee and Target Date */}
+                                                    <div className="flex items-center gap-4 ml-14 mt-1.5">
+                                                        <div className="flex items-center gap-1.5 text-slate-400">
+                                                            <Icons.User />
+                                                            <input 
+                                                                type="text" 
+                                                                value={task.assignee || ''} 
+                                                                onChange={(e) => updateTaskAssignee(task.id, e.target.value)} 
+                                                                placeholder="Assignee"
+                                                                className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-600 w-24 focus:outline-none focus:border-blue-300"
+                                                            />
+                                                        </div>
+                                                        <div className="flex items-center gap-1.5 text-slate-400">
+                                                            <Icons.Calendar />
+                                                            <input 
+                                                                type="date" 
+                                                                value={toYMD(task.targetDate)} 
+                                                                onChange={(e) => updateTaskTargetDate(task.id, e.target.value)} 
+                                                                className="text-[10px] bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-600 outline-none focus:border-blue-300"
+                                                            />
+                                                        </div>
+                                                    </div>
                                                 </div>
                                             ))
                                         )}
                                     </div>
                                 </div>
                                 
-                                {/* Modal Footer */}
                                 <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between">
-                                    <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete Phase</button>
-                                    <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded shadow-sm">Done</button>
+                                    <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-xs text-red-500 hover:text-red-700 font-bold">Delete Phase</button>
+                                    <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-4 py-2 rounded shadow-sm">Done</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className="fixed bottom-6 right-6 bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-xl z-[100] flex items-center gap-2 text-sm font-medium animate-bounce">
+                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>
+                            {toast}
+                        </div>
+                    )}
                 </div>
             );
         };
