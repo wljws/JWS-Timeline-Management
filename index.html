@@ -11,7 +11,7 @@
     <style>
         body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background-color: #f8fafc; overflow: hidden; }
         
-        /* Custom Scrollbar ensures scrolling visibility */
+        /* Custom Scrollbar */
         ::-webkit-scrollbar { width: 12px; height: 12px; }
         ::-webkit-scrollbar-track { background: #f8fafc; border-top: 1px solid #e2e8f0; }
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; border: 3px solid #f8fafc; }
@@ -65,6 +65,18 @@
             box-shadow: inset 0 0 0 2px rgba(255,255,255,0.4) !important;
         }
 
+        .unscheduled-block {
+            background-image: repeating-linear-gradient(
+                -45deg,
+                rgba(0, 0, 0, 0.1),
+                rgba(0, 0, 0, 0.1) 10px,
+                transparent 10px,
+                transparent 20px
+            );
+            opacity: 0.75;
+            border: 1px dashed rgba(255,255,255,0.6);
+        }
+
         .col-resizer {
             position: absolute;
             right: 0;
@@ -79,21 +91,8 @@
             background-color: #60a5fa; /* Tailwind blue-400 */
         }
 
-        .task-bubble {
-            cursor: grab;
-            transition: transform 0.1s, box-shadow 0.1s;
-        }
-        .task-bubble:active {
-            cursor: grabbing;
-            transform: scale(0.95);
-        }
-        .drop-slot {
-            transition: background-color 0.2s;
-        }
-        .drop-slot.drag-over {
-            background-color: #dbeafe !important;
-            border-color: #3b82f6 !important;
-        }
+        /* Drag over state for Team View Grid */
+        .drop-zone-active { background-color: rgba(59, 130, 246, 0.1); }
     </style>
 </head>
 <body>
@@ -104,15 +103,15 @@
 
         // --- Utility Functions ---
         const addDays = (date, days) => {
-            const result = new Date(date);
-            result.setDate(result.getDate() + days);
-            return result;
+            return new Date(date.getTime() + days * 24 * 60 * 60 * 1000);
         };
         const diffDays = (date1, date2) => {
             const d1 = new Date(date1); d1.setHours(0,0,0,0);
             const d2 = new Date(date2); d2.setHours(0,0,0,0);
-            const diffTime = d2.getTime() - d1.getTime();
-            return Math.round(diffTime / (1000 * 60 * 60 * 24));
+            return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+        };
+        const diffExactDays = (date1, date2) => {
+            return (date2.getTime() - date1.getTime()) / (1000 * 60 * 60 * 24);
         };
         const formatDate = (date) => {
             if (!date) return '';
@@ -120,7 +119,6 @@
         };
         const generateId = () => Math.random().toString(36).substr(2, 9);
         
-        // Date Input Formatters (Local Timezone safe)
         const toYMD = (d) => {
             if (!d) return '';
             const dt = new Date(d);
@@ -132,11 +130,32 @@
             return new Date(y, m-1, d);
         };
 
+        // Prevents Assignees from doing overlapping tasks
+        const checkTeamOverlap = (projectsData, assigneeName, start, end, excludeAllocId) => {
+            if (!assigneeName || !start || !end) return false;
+            for (const p of projectsData) {
+                for (const ph of p.phases) {
+                    for (const t of ph.tasks) {
+                        if (t.assignee === assigneeName) {
+                            for (const a of (t.allocations || [])) {
+                                if (a.id === excludeAllocId) continue;
+                                if (start < new Date(a.end) && end > new Date(a.start)) {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return false;
+        };
+
         // --- SVG Icons ---
         const Icons = {
             ChevronRight: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>,
             ChevronDown: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg>,
-            Grip: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className || "cursor-grab text-gray-400 hover:text-gray-600"}><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
+            ChevronLeft: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>,
+            Grip: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="cursor-grab text-gray-400 hover:text-gray-600"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
             Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>,
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
             Trash: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
@@ -148,10 +167,8 @@
             CloudUpload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 16V7"></path><path d="M8 11l4-4 4 4"></path></svg>,
             CloudDownload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 7v9"></path><path d="M8 12l4 4 4-4"></path></svg>,
             Spinner: () => <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>,
-            User: ({ className }) => <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
-            Calendar: () => <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><path d="M16 2v4M8 2v4M3 10h18"></path></svg>,
-            Users: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 00-3-3.87"></path><path d="M16 3.13a4 4 0 010 7.75"></path></svg>,
-            Layout: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            Users: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 00-3-3.87"></path><path d="M16 3.13a4 4 0 010 7.75"></path></svg>,
+            Layout: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
         };
 
         const THEME_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'slate'];
@@ -194,121 +211,186 @@
         };
 
         const STANDARD_TEMPLATE_PHASES = [
-            { title: 'Feasibility Studies', tasks: ['Site Analysis', 'Initial Consultation', 'Budget Review'] },
-            { title: 'Concept Design', tasks: ['Space Planning', 'Moodboards', 'Concept Presentation'] },
-            { title: 'Schematic Design', tasks: ['Initial Floor Plans', 'Material Palettes', 'Client Feedback'] },
-            { title: 'Design Development', tasks: ['Detailed Drawings', 'Custom Millwork Design', 'Finalize Materials'] },
-            { title: 'Tender Stage', tasks: ['Issue Tender Packages', 'Review Bids', 'Contractor Selection'] },
-            { title: 'Construction Admin', tasks: ['Site Visits', 'RFI Responses', 'Snagging/Defect List'] }
+            { title: 'Feasibility Studies', tasks: [{ text: 'Site Analysis', start: null, end: null }, { text: 'Initial Consultation', start: null, end: null }, { text: 'Budget Review', start: null, end: null }] },
+            { title: 'Concept Design', tasks: [{ text: 'Space Planning', start: null, end: null }, { text: 'Moodboards', start: null, end: null }, { text: 'Concept Presentation', start: null, end: null }] },
+            { title: 'Schematic Design', tasks: [{ text: 'Initial Floor Plans', start: null, end: null }, { text: 'Material Palettes', start: null, end: null }, { text: 'Client Feedback', start: null, end: null }] },
+            { title: 'Design Development', tasks: [{ text: 'Detailed Drawings', start: null, end: null }, { text: 'Custom Millwork Design', start: null, end: null }, { text: 'Finalize Materials', start: null, end: null }] },
+            { title: 'Tender Stage', tasks: [{ text: 'Issue Tender Packages', start: null, end: null }, { text: 'Review Bids', start: null, end: null }, { text: 'Contractor Selection', start: null, end: null }] },
+            { title: 'Construction Admin', tasks: [{ text: 'Site Visits', start: null, end: null }, { text: 'RFI Responses', start: null, end: null }, { text: 'Snagging/Defect List', start: null, end: null }] }
         ];
 
         // --- Main Application Component ---
         const App = () => {
-            const [viewMode, setViewMode] = useState('gantt'); // 'gantt' or 'team'
+            const [viewMode, setViewMode] = useState('projects'); // 'projects' or 'team'
+            
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
-            const [zoomLevel, setZoomLevel] = useState(24);
-            const [leftColWidth, setLeftColWidth] = useState(330);
+            const [zoomLevel, setZoomLevel] = useState(40); 
+            const [leftColWidth, setLeftColWidth] = useState(330); 
+            
+            // Drag states
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             const [draggedPhase, setDraggedPhase] = useState(null);
             const [draggedTaskIndex, setDraggedTaskIndex] = useState(null);
-            const [toast, setToast] = useState(null);
+            const [draggedMilestoneIndex, setDraggedMilestoneIndex] = useState(null);
+            
+            // Team View Specific Drag State
+            const [draggedTeamItem, setDraggedTeamItem] = useState(null);
+            
+            // Multi-Select State
             const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
+            
+            // Modal States
             const [modalData, setModalData] = useState(null);
+            const [teamModalData, setTeamModalData] = useState(null); 
+            
+            // Cloud Saving/Loading States
             const [isSaving, setIsSaving] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
             
-            // Weekly Team Assignments: Map of TaskID to { date, slot }
-            const [teamAssignments, setTeamAssignments] = useState({});
-            
+            // Scrolling Refs
             const scrollContainerRef = useRef(null);
             const initialScrollDone = useRef(false);
 
-            const showToast = (message) => {
-                setToast(message);
-                setTimeout(() => setToast(null), 3000);
-            };
-
+            // Timeline bounds
             const today = useMemo(() => {
                 const d = new Date();
                 d.setHours(0,0,0,0);
                 return d;
             }, []);
-
+            
             const timelineStart = useMemo(() => new Date(2026, 0, 1), []);
             const timelineEnd = useMemo(() => new Date(2028, 11, 31), []);
             const totalDays = diffDays(timelineStart, timelineEnd) + 1;
 
+            // Team View bounds
+            const [currentTeamWeekStart, setCurrentTeamWeekStart] = useState(() => {
+                const d = new Date(today);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+                return new Date(d.setDate(diff));
+            });
+
+            const prevWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, -7));
+            const nextWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, 7));
+
+            // Undo/Redo
             const [past, setPast] = useState([]);
             const [future, setFuture] = useState([]);
             const dragStartProjects = useRef(null);
-            const dragStartAssignments = useRef(null);
 
+            // Initial Mock Data
             const [projects, setProjects] = useState([
                 {
-                    id: 'p1', title: 'Example Residence', color: 'blue', isExpanded: true,
+                    id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
                     phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
                         id: `ph_${i}`,
                         title: t.title,
                         isLocked: false,
-                        start: i === 0 ? new Date(2026, 3, 6) : (i === 1 ? new Date(2026, 3, 20) : null),
-                        end: i === 0 ? new Date(2026, 3, 17) : (i === 1 ? new Date(2026, 4, 1) : null),
-                        tasks: t.tasks.map((text, tIdx) => ({ 
-                            id: `t_${i}_${tIdx}`, 
-                            text, 
-                            done: false,
-                            assignee: tIdx === 0 ? 'Alex' : (tIdx === 1 ? 'Sarah' : ''),
-                            targetDate: null
-                        })),
+                        start: i === 0 ? new Date(2026, 0, 5) : (i === 1 ? new Date(2026, 0, 25) : null),
+                        end: i === 0 ? new Date(2026, 0, 20) : (i === 1 ? new Date(2026, 1, 20) : null),
+                        tasks: t.tasks.map((taskTemplate, tIdx) => {
+                            const isAllocated = i === 0 && tIdx === 0;
+                            const tStart = isAllocated ? new Date(2026, 0, 6) : null;
+                            const tEnd = isAllocated ? new Date(2026, 0, 8) : null;
+                            return { 
+                                id: `t_${i}_${tIdx}`, 
+                                text: taskTemplate.text, 
+                                done: false, 
+                                assignee: isAllocated ? 'Alice Design' : '',
+                                start: tStart,
+                                end: tEnd,
+                                allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
+                            }
+                        }),
                         milestones: []
                     }))
                 }
             ]);
 
-            // Derived Personnel list
-            const personnel = useMemo(() => {
-                const names = new Set();
-                projects.forEach(p => p.phases.forEach(ph => ph.tasks.forEach(t => {
-                    if (t.assignee && t.assignee.trim()) names.add(t.assignee.trim());
-                })));
-                return Array.from(names).sort();
-            }, [projects]);
-
-            // Current Week calculation for Team View
-            const currentWeek = useMemo(() => {
-                const monday = new Date(today);
-                const day = today.getDay();
-                const diff = today.getDate() - day + (day === 0 ? -6 : 1);
-                monday.setDate(diff);
-                
-                const days = [];
-                for(let i=0; i<7; i++) {
-                    days.push(addDays(monday, i));
+            // Sync helper to keep task overall start/end in sync with its granular team allocations
+            const syncTaskDates = (task) => {
+                if (!task.allocations || task.allocations.length === 0) {
+                    return { ...task, start: null, end: null };
                 }
-                return days;
-            }, [today]);
+                let min = task.allocations[0].start;
+                let max = task.allocations[0].end;
+                task.allocations.forEach(a => {
+                    if (a.start < min) min = a.start;
+                    if (a.end > max) max = a.end;
+                });
+                return { ...task, start: min, end: max };
+            };
 
             const updateProjects = (updater) => {
                 setProjects(prev => {
                     const next = typeof updater === 'function' ? updater(prev) : updater;
                     if (next !== prev) {
-                        setPast(p => [...p, projects]);
+                        setPast(p => [...p, prev]);
                         setFuture([]);
                     }
                     return next;
                 });
             };
 
-            const updateAssignments = (updater) => {
-                setTeamAssignments(prev => {
-                    const next = typeof updater === 'function' ? updater(prev) : updater;
-                    if (JSON.stringify(next) !== JSON.stringify(prev)) {
-                        setPast(p => [...p, projects]); // History usually takes project snapshots, but for simple undo we treat assignments same
-                        setFuture([]);
-                    }
-                    return next;
+            // --- DATA PREP FOR TEAM VIEW ---
+            const teamViewData = useMemo(() => {
+                if (viewMode !== 'team') return [];
+                
+                const assigneesMap = new Map();
+                const weekEnd = addDays(currentTeamWeekStart, 5); // Sat 00:00:00
+
+                projects.forEach(p => {
+                    p.phases.forEach(ph => {
+                        ph.tasks.forEach(t => {
+                            const name = (t.assignee || '').trim() || 'Unassigned';
+                            if (!assigneesMap.has(name)) assigneesMap.set(name, { name, scheduled: [], pool: [] });
+                            
+                            const assignee = assigneesMap.get(name);
+                            
+                            // Pool always holds a reference to the task so it can be dragged repeatedly
+                            assignee.pool.push({ project: p, phase: ph, task: t });
+                            
+                            (t.allocations || []).forEach(alloc => {
+                                const tStart = alloc.start;
+                                const tEnd = alloc.end;
+                                
+                                if (tStart && tEnd && tEnd > currentTeamWeekStart && tStart < weekEnd) {
+                                    const renderStart = Math.max(tStart.getTime(), currentTeamWeekStart.getTime());
+                                    const renderEnd = Math.min(tEnd.getTime(), weekEnd.getTime() - 1);
+                                    
+                                    const startHourDiff = (renderStart - currentTeamWeekStart.getTime()) / (1000 * 60 * 60);
+                                    let startCol = Math.floor(startHourDiff / 12);
+                                    
+                                    const endHourDiff = (renderEnd - currentTeamWeekStart.getTime()) / (1000 * 60 * 60);
+                                    let endCol = Math.ceil(endHourDiff / 12);
+                                    
+                                    startCol = Math.max(0, Math.min(9, startCol));
+                                    endCol = Math.max(1, Math.min(10, endCol));
+                                    const span = Math.max(1, endCol - startCol);
+                                    
+                                    assignee.scheduled.push({ project: p, phase: ph, task: t, allocation: alloc, startCol, span });
+                                }
+                            });
+                        });
+                    });
                 });
-            };
+
+                const result = Array.from(assigneesMap.values()).sort((a, b) => {
+                    if (a.name === 'Unassigned') return 1;
+                    if (b.name === 'Unassigned') return -1;
+                    return a.name.localeCompare(b.name);
+                });
+                
+                // Layout processing (Single row per assignee since overlaps are prevented)
+                result.forEach(assignee => {
+                    assignee.scheduled.sort((a, b) => a.allocation.start.getTime() - b.allocation.start.getTime());
+                    assignee.scheduled.forEach(item => { item.level = 0; });
+                    assignee.rowHeight = 60; 
+                });
+
+                return result;
+            }, [projects, viewMode, currentTeamWeekStart]);
 
             const undo = () => {
                 if (past.length === 0) return;
@@ -316,7 +398,6 @@
                 setPast(past.slice(0, -1));
                 setFuture(f => [projects, ...f]);
                 setProjects(previous);
-                // Note: In a production app we'd snapshot assignments separately, here we assume they evolve together
             };
 
             const redo = () => {
@@ -327,18 +408,20 @@
                 setProjects(next);
             };
 
+            // --- Cloud Export / Import Handlers ---
             const saveToCloud = async () => {
                 setIsSaving(true);
                 try {
                     const response = await fetch('/api/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ projects, teamAssignments })
+                        body: JSON.stringify({ projects })
                     });
                     if (!response.ok) throw new Error('Network response was not ok');
-                    showToast('Successfully saved to cloud!');
+                    alert('Successfully saved to cloud!');
                 } catch (err) {
-                    showToast('Failed to save. Backend required.');
+                    console.error("Failed to save", err);
+                    alert('Failed to save to cloud. Ensure your Vercel KV backend is setup correctly.');
                 } finally {
                     setIsSaving(false);
                 }
@@ -349,28 +432,44 @@
                 try {
                     const response = await fetch('/api/load');
                     const data = await response.json();
-                    if (data.projects) {
-                        setProjects(data.projects.map(p => ({
-                            ...p, phases: p.phases.map(ph => ({
+                    
+                    if (data.projects && Array.isArray(data.projects)) {
+                        const processedProjects = data.projects.map(p => ({
+                            ...p,
+                            phases: p.phases.map(ph => ({
                                 ...ph,
                                 start: ph.start ? new Date(ph.start) : null,
                                 end: ph.end ? new Date(ph.end) : null,
-                                tasks: ph.tasks.map(tk => ({ ...tk, targetDate: tk.targetDate ? new Date(tk.targetDate) : null })),
-                                milestones: ph.milestones.map(m => ({ ...m, date: m.date ? new Date(m.date) : null }))
+                                milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                                tasks: (ph.tasks || []).map(t => {
+                                    const safeAllocations = (t.allocations || []).length > 0 
+                                        ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                        : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                        
+                                    return { 
+                                        ...t, 
+                                        start: t.start ? new Date(t.start) : null, 
+                                        end: t.end ? new Date(t.end) : null,
+                                        allocations: safeAllocations
+                                    }
+                                })
                             }))
-                        })));
-                        if (data.teamAssignments) setTeamAssignments(data.teamAssignments);
-                        showToast('Successfully loaded!');
+                        }));
+                        updateProjects(processedProjects);
+                        alert('Successfully loaded from cloud!');
+                    } else {
+                        alert('No saved data found in cloud.');
                     }
                 } catch (err) {
-                    showToast('Load failed. Backend required.');
+                    console.error("Failed to load", err);
+                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
                 } finally {
                     setIsLoading(false);
                 }
             };
 
             const scrollToToday = () => {
-                if (scrollContainerRef.current && viewMode === 'gantt') {
+                if (scrollContainerRef.current && viewMode === 'projects') {
                     const daysFromStart = diffDays(timelineStart, today);
                     if (daysFromStart >= 0) {
                         const targetScroll = (daysFromStart * zoomLevel) - 150;
@@ -380,13 +479,46 @@
             };
 
             useEffect(() => {
-                if (!initialScrollDone.current && scrollContainerRef.current && viewMode === 'gantt') {
+                if (!initialScrollDone.current && scrollContainerRef.current && viewMode === 'projects') {
                     setTimeout(() => { scrollToToday(); }, 50);
                     initialScrollDone.current = true;
                 }
             }, [timelineStart, today, zoomLevel, viewMode]);
 
-            // Gantt View Event Handlers (Project based)
+            const togglePhaseSelection = (phaseId) => {
+                setSelectedPhaseIds(prev => {
+                    const next = new Set(prev);
+                    if (next.has(phaseId)) next.delete(phaseId);
+                    else next.add(phaseId);
+                    return next;
+                });
+            };
+
+            const toggleProjectSelection = (projectId) => {
+                const project = projects.find(p => p.id === projectId);
+                if (!project) return;
+                const allPhaseIds = project.phases.map(ph => ph.id);
+                const allSelected = allPhaseIds.every(id => selectedPhaseIds.has(id));
+                setSelectedPhaseIds(prev => {
+                    const next = new Set(prev);
+                    if (allSelected) {
+                        allPhaseIds.forEach(id => next.delete(id));
+                    } else {
+                        allPhaseIds.forEach(id => next.add(id));
+                    }
+                    return next;
+                });
+            };
+
+            const toggleLock = (projectId, phaseId) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, isLocked: !ph.isLocked } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, isLocked: !prev.phase.isLocked } }));
+                }
+            };
+
             const toggleProjectExpand = (id) => updateProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
             const updateProjectTitle = (id, newTitle) => updateProjects(projects.map(p => p.id === id ? { ...p, title: newTitle } : p));
             const updateProjectColor = (id, newColor) => updateProjects(projects.map(p => p.id === id ? { ...p, color: newColor } : p));
@@ -398,121 +530,345 @@
                     color: THEME_COLORS[Math.floor(Math.random() * THEME_COLORS.length)],
                     isExpanded: true,
                     phases: STANDARD_TEMPLATE_PHASES.map(t => ({
-                        id: generateId(), title: t.title, isLocked: false, start: null, end: null, milestones: [],
-                        tasks: t.tasks.map(text => ({ id: generateId(), text, done: false, assignee: '', targetDate: null }))
+                        id: generateId(),
+                        title: t.title,
+                        isLocked: false,
+                        start: null,
+                        end: null,
+                        tasks: t.tasks.map(taskTemplate => ({ id: generateId(), text: taskTemplate.text, done: false, assignee: '', start: null, end: null, allocations: [] })),
+                        milestones: []
                     }))
                 }]);
             };
 
             const addPhase = (projectId) => {
-                 updateProjects(projects.map(p => p.id === projectId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', isLocked: false, start: null, end: null, tasks: [], milestones: [] }] } : p));
+                 updateProjects(projects.map(p => {
+                    if (p.id === projectId) {
+                        return {
+                            ...p,
+                            isExpanded: true,
+                            phases: [...p.phases, {
+                                id: generateId(),
+                                title: 'New Phase',
+                                isLocked: false,
+                                start: null,
+                                end: null,
+                                tasks: [],
+                                milestones: []
+                            }]
+                        }
+                    }
+                    return p;
+                 }));
             };
 
-            const deleteProject = (projectId) => updateProjects(projects.filter(p => p.id !== projectId));
+            const deleteProject = (projectId) => {
+                updateProjects(projects.filter(p => p.id !== projectId));
+                if (modalData && modalData.projectId === projectId) setModalData(null);
+            };
 
             const handleGridClick = (e, projectId, phaseId) => {
-                if (e.target !== e.currentTarget) return;
+                if (e.target !== e.currentTarget || viewMode !== 'projects') return;
                 const clickX = e.nativeEvent.offsetX;
                 const daysFromStart = Math.floor(clickX / zoomLevel);
                 const weekIndex = Math.floor(daysFromStart / 7);
                 const newStart = addDays(timelineStart, weekIndex * 7);
                 const newEnd = addDays(newStart, 6);
-                updateProjects(projects.map(p => p.id === projectId ? { ...p, phases: p.phases.map(ph => (ph.id === phaseId && !ph.isLocked) ? { ...ph, start: newStart, end: newEnd } : ph) } : p));
+
+                updateProjects(projects.map(p => {
+                    if (p.id === projectId) {
+                        return {
+                            ...p,
+                            phases: p.phases.map(ph => {
+                                if (ph.id === phaseId && !ph.isLocked) return { ...ph, start: newStart, end: newEnd };
+                                return ph;
+                            })
+                        }
+                    }
+                    return p;
+                }));
             };
 
-            // Task Handlers (Modal & Inline)
-            const toggleTask = (taskId) => {
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
-                updateTasksInState(updatedTasks);
+            // --- Drag and Drop Logic (Rows & Phases - Projects View) ---
+            const onDragStartRow = (e, index) => {
+                dragStartProjects.current = projects;
+                setDraggedProjectIndex(index);
+                e.dataTransfer.effectAllowed = "move";
             };
-            const updateTaskText = (taskId, text) => {
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, text } : t);
-                updateTasksInState(updatedTasks);
-            };
-            const updateTaskAssignee = (taskId, assignee) => {
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, assignee } : t);
-                updateTasksInState(updatedTasks);
-            };
-            const updateTaskTargetDate = (taskId, dateStr) => {
-                const targetDate = dateStr ? fromYMD(dateStr) : null;
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, targetDate } : t);
-                updateTasksInState(updatedTasks);
-            };
-            const deleteTask = (taskId) => {
-                const updatedTasks = modalData.phase.tasks.filter(t => t.id !== taskId);
-                updateTasksInState(updatedTasks);
-                setTeamAssignments(prev => {
-                    const next = {...prev};
-                    delete next[taskId];
-                    return next;
-                });
-            };
-            const updateTasksInState = (updatedTasks) => {
-                updateProjects(projects.map(p => p.id === modalData.projectId ? { ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: updatedTasks } : ph) } : p));
-                setModalData(prev => ({ ...prev, phase: { ...prev.phase, tasks: updatedTasks } }));
-            };
-
-            // Drag Handlers for Project/Phase Rows
-            const onDragStartRow = (e, index) => { dragStartProjects.current = projects; setDraggedProjectIndex(index); };
             const onDragOverRow = (e, index) => {
                 e.preventDefault();
                 if (draggedProjectIndex === null || draggedProjectIndex === index) return;
                 const newProjects = [...projects];
-                const [item] = newProjects.splice(draggedProjectIndex, 1);
-                newProjects.splice(index, 0, item);
+                const draggedItem = newProjects[draggedProjectIndex];
+                newProjects.splice(draggedProjectIndex, 1);
+                newProjects.splice(index, 0, draggedItem);
                 setDraggedProjectIndex(index);
                 setProjects(newProjects);
             };
-            const onDragEndRow = () => { setDraggedProjectIndex(null); setProjects(curr => { if(dragStartProjects.current !== curr) setPast(p=>[...p, dragStartProjects.current]); return curr; }); };
+            const onDragEndRow = () => {
+                setDraggedProjectIndex(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
+            };
 
-            const onDragStartPhase = (e, projectId, phaseIndex) => { e.stopPropagation(); dragStartProjects.current = projects; setDraggedPhase({ projectId, phaseIndex }); };
+            const onDragStartPhase = (e, projectId, phaseIndex) => {
+                e.stopPropagation();
+                dragStartProjects.current = projects;
+                setDraggedPhase({ projectId, phaseIndex });
+                e.dataTransfer.effectAllowed = "move";
+            };
             const onDragOverPhase = (e, projectId, targetIndex) => {
-                e.preventDefault(); e.stopPropagation();
+                e.preventDefault();
+                e.stopPropagation();
                 if (!draggedPhase || draggedPhase.projectId !== projectId || draggedPhase.phaseIndex === targetIndex) return;
+
                 setProjects(prev => prev.map(p => {
                     if (p.id === projectId) {
                         const newPhases = [...p.phases];
-                        const [item] = newPhases.splice(draggedPhase.phaseIndex, 1);
-                        newPhases.splice(targetIndex, 0, item);
+                        const draggedItem = newPhases[draggedPhase.phaseIndex];
+                        newPhases.splice(draggedPhase.phaseIndex, 1);
+                        newPhases.splice(targetIndex, 0, draggedItem);
                         return { ...p, phases: newPhases };
                     }
                     return p;
                 }));
                 setDraggedPhase({ projectId, phaseIndex: targetIndex });
             };
-            const onDragEndPhase = () => { setDraggedPhase(null); setProjects(curr => { if(dragStartProjects.current !== curr) setPast(p=>[...p, dragStartProjects.current]); return curr; }); };
+            const onDragEndPhase = (e) => {
+                e.stopPropagation();
+                setDraggedPhase(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
+            };
 
-            // Block & Column Resizing/Dragging Logic (Gantt)
+            // --- Drag and Drop Logic (Team View: Allocations between Grids / Pools) ---
+            const onDragStartTeamItem = (e, projectId, phaseId, task, allocationId, origStart, origEnd) => {
+                e.stopPropagation();
+                dragStartProjects.current = projects;
+                setDraggedTeamItem({ projectId, phaseId, taskId: task.id, allocationId, origStart, origEnd });
+                e.dataTransfer.effectAllowed = "move";
+            };
+
+            const onDropTeamGrid = (e, targetAssignee, colIndex) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!draggedTeamItem) return;
+
+                const dayOffset = Math.floor(colIndex / 2);
+                const isPM = colIndex % 2 !== 0;
+                
+                let newStart = addDays(currentTeamWeekStart, dayOffset);
+                newStart.setHours(isPM ? 12 : 0, 0, 0, 0);
+                
+                let newEnd;
+                if (draggedTeamItem.origStart && draggedTeamItem.origEnd) {
+                     const duration = draggedTeamItem.origEnd.getTime() - draggedTeamItem.origStart.getTime();
+                     newEnd = new Date(newStart.getTime() + duration);
+                } else {
+                     newEnd = new Date(newStart);
+                     newEnd.setHours(isPM ? 23 : 11, 59, 59, 999);
+                }
+
+                const finalAssignee = targetAssignee === 'Unassigned' ? '' : targetAssignee;
+
+                // PREVENT OVERLAP
+                if (finalAssignee) {
+                    if (checkTeamOverlap(projects, finalAssignee, newStart, newEnd, draggedTeamItem.allocationId)) {
+                        alert(`Cannot assign task here. ${finalAssignee} already has a task in this time slot.`);
+                        setDraggedTeamItem(null);
+                        return;
+                    }
+                }
+
+                setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                        ...ph, tasks: ph.tasks.map(t => {
+                            if (t.id === draggedTeamItem.taskId) {
+                                let newAllocations = [...(t.allocations || [])];
+                                if (draggedTeamItem.allocationId) {
+                                    newAllocations = newAllocations.map(a => a.id === draggedTeamItem.allocationId ? { ...a, start: newStart, end: newEnd } : a);
+                                } else {
+                                    newAllocations.push({ id: generateId(), start: newStart, end: newEnd, subTasks: [] });
+                                }
+                                const updatedTask = { ...t, assignee: finalAssignee, allocations: newAllocations };
+                                return syncTaskDates(updatedTask);
+                            }
+                            return t;
+                        })
+                    } : ph)
+                } : p));
+
+                setDraggedTeamItem(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
+            };
+
+            const onDropTeamPool = (e, targetAssignee) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!draggedTeamItem) return;
+
+                const finalAssignee = targetAssignee === 'Unassigned' ? '' : targetAssignee;
+
+                setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                        ...ph, tasks: ph.tasks.map(t => {
+                            if (t.id === draggedTeamItem.taskId && draggedTeamItem.allocationId) {
+                                const newAllocations = (t.allocations || []).filter(a => a.id !== draggedTeamItem.allocationId);
+                                return syncTaskDates({ ...t, assignee: finalAssignee, allocations: newAllocations });
+                            }
+                            if (t.id === draggedTeamItem.taskId) {
+                                return { ...t, assignee: finalAssignee };
+                            }
+                            return t;
+                        })
+                    } : ph)
+                } : p));
+
+                setDraggedTeamItem(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
+            };
+
+            // Block & Column Resizing/Dragging Logic
             const [draggingBlock, setDraggingBlock] = useState(null);
             const [isResizingCol, setIsResizingCol] = useState(false);
             const lastInteractionRef = useRef({ isDragging: false, startX: 0 });
 
             useEffect(() => {
                 const handleMouseMove = (e) => {
-                    if (isResizingCol) { setLeftColWidth(Math.max(200, Math.min(800, e.clientX))); return; }
+                    if (isResizingCol) {
+                        setLeftColWidth(Math.max(200, Math.min(800, e.clientX)));
+                        return;
+                    }
                     if (!draggingBlock) return;
-                    if (Math.abs(e.clientX - draggingBlock.startX) > 3) lastInteractionRef.current.isDragging = true;
+                    
+                    if (Math.abs(e.clientX - draggingBlock.startX) > 3) {
+                        lastInteractionRef.current.isDragging = true;
+                    }
+
                     const deltaX = e.clientX - draggingBlock.startX;
-                    const deltaDays = Math.round(deltaX / zoomLevel);
+                    const ppd = draggingBlock.pixelsPerDay || zoomLevel;
+                    const deltaDays = Math.round((deltaX / ppd) * 2) / 2;
+                    
                     if (deltaDays !== 0) {
                         setProjects(prev => {
                             let next = [...prev];
                             let changed = false;
+
                             draggingBlock.blocksToMove.forEach(b => {
                                 const pIndex = next.findIndex(p => p.id === b.projectId);
                                 if (pIndex > -1) {
                                     const phIndex = next[pIndex].phases.findIndex(ph => ph.id === b.phaseId);
                                     if (phIndex > -1) {
-                                        const ph = next[pIndex].phases[phIndex];
-                                        let newStart = ph.start, newEnd = ph.end;
-                                        if (draggingBlock.type === 'move') { newStart = addDays(b.origStart, deltaDays); newEnd = addDays(b.origEnd, deltaDays); }
-                                        else if (draggingBlock.type === 'resize-left') { newStart = addDays(b.origStart, deltaDays); if (newStart > newEnd) newStart = newEnd; }
-                                        else if (draggingBlock.type === 'resize-right') { newEnd = addDays(b.origEnd, deltaDays); if (newEnd < newStart) newEnd = newStart; }
-                                        if (newStart?.getTime() !== ph.start?.getTime() || newEnd?.getTime() !== ph.end?.getTime()) {
-                                            const newPhases = [...next[pIndex].phases];
-                                            newPhases[phIndex] = { ...ph, start: newStart, end: newEnd };
-                                            next[pIndex] = { ...next[pIndex], phases: newPhases };
-                                            changed = true;
+                                        
+                                        // RESIZING/MOVING A TEAM ALLOCATION
+                                        if (b.allocationId) {
+                                            const tIndex = next[pIndex].phases[phIndex].tasks.findIndex(t => t.id === b.taskId);
+                                            if (tIndex > -1) {
+                                                const task = next[pIndex].phases[phIndex].tasks[tIndex];
+                                                const aIndex = (task.allocations || []).findIndex(a => a.id === b.allocationId);
+                                                if (aIndex > -1) {
+                                                    const alloc = task.allocations[aIndex];
+                                                    let newStart = alloc.start;
+                                                    let newEnd = alloc.end;
+                                                    
+                                                    if (draggingBlock.type === 'move-alloc') {
+                                                        newStart = addDays(b.origStart, deltaDays);
+                                                        newEnd = addDays(b.origEnd, deltaDays);
+                                                    } else if (draggingBlock.type === 'resize-alloc-left') {
+                                                        newStart = addDays(b.origStart, deltaDays);
+                                                        if (newStart > newEnd) newStart = newEnd;
+                                                    } else if (draggingBlock.type === 'resize-alloc-right') {
+                                                        newEnd = addDays(b.origEnd, deltaDays);
+                                                        if (newEnd < newStart) newEnd = newStart;
+                                                    }
+                                                    
+                                                    // PREVENT OVERLAP DURING DRAG
+                                                    const finalAssignee = task.assignee;
+                                                    let isColliding = false;
+                                                    if (finalAssignee) {
+                                                        isColliding = checkTeamOverlap(next, finalAssignee, newStart, newEnd, b.allocationId);
+                                                    }
+                                                    
+                                                    if (!isColliding && (newStart.getTime() !== alloc.start.getTime() || newEnd.getTime() !== alloc.end.getTime())) {
+                                                        const newAllocations = [...task.allocations];
+                                                        newAllocations[aIndex] = { ...alloc, start: newStart, end: newEnd };
+                                                        
+                                                        const newTasks = [...next[pIndex].phases[phIndex].tasks];
+                                                        newTasks[tIndex] = syncTaskDates({ ...task, allocations: newAllocations });
+                                                        
+                                                        const newPhases = [...next[pIndex].phases];
+                                                        newPhases[phIndex] = { ...newPhases[phIndex], tasks: newTasks };
+                                                        
+                                                        next[pIndex] = { ...next[pIndex], phases: newPhases };
+                                                        changed = true;
+                                                    }
+                                                }
+                                            }
+                                        } 
+                                        // RESIZING/MOVING A WHOLE PHASE (Project View)
+                                        else {
+                                            const ph = next[pIndex].phases[phIndex];
+                                            let newStart = ph.start;
+                                            let newEnd = ph.end;
+                                            let newTasks = ph.tasks; 
+                                            let anyCollision = false;
+
+                                            if (draggingBlock.type === 'move') {
+                                                newStart = addDays(b.origStart, deltaDays);
+                                                newEnd = addDays(b.origEnd, deltaDays);
+                                                
+                                                if (b.origTasks) {
+                                                    newTasks = b.origTasks.map(t => {
+                                                        const shiftedAllocations = (t.allocations || []).map(a => {
+                                                            const shiftStart = a.start ? addDays(a.start, deltaDays) : null;
+                                                            const shiftEnd = a.end ? addDays(a.end, deltaDays) : null;
+                                                            if (t.assignee && shiftStart && shiftEnd) {
+                                                                if (checkTeamOverlap(next, t.assignee, shiftStart, shiftEnd, a.id)) {
+                                                                    anyCollision = true;
+                                                                }
+                                                            }
+                                                            return { ...a, start: shiftStart, end: shiftEnd };
+                                                        });
+                                                        return syncTaskDates({ ...t, allocations: shiftedAllocations });
+                                                    });
+                                                }
+                                            } else if (draggingBlock.type === 'resize-left') {
+                                                newStart = addDays(b.origStart, deltaDays);
+                                                if (newStart > newEnd) newStart = newEnd;
+                                            } else if (draggingBlock.type === 'resize-right') {
+                                                newEnd = addDays(b.origEnd, deltaDays);
+                                                if (newEnd < newStart) newEnd = newStart;
+                                            }
+
+                                            // Only apply phase movement if NO tasks inside it will collide with existing team schedules
+                                            if (!anyCollision && (newStart?.getTime() !== ph.start?.getTime() || newEnd?.getTime() !== ph.end?.getTime() || newTasks !== ph.tasks)) {
+                                                const newPhases = [...next[pIndex].phases];
+                                                newPhases[phIndex] = { ...ph, start: newStart, end: newEnd, tasks: newTasks };
+                                                next[pIndex] = { ...next[pIndex], phases: newPhases };
+                                                changed = true;
+                                            }
                                         }
                                     }
                                 }
@@ -521,119 +877,404 @@
                         });
                     }
                 };
+
                 const handleMouseUp = () => {
                     if (isResizingCol) setIsResizingCol(false);
-                    if (draggingBlock) { setProjects(curr => { if(dragStartProjects.current !== curr) setPast(p=>[...p, dragStartProjects.current]); return curr; }); setDraggingBlock(null); }
+                    if (draggingBlock) {
+                        setProjects(current => {
+                            if (dragStartProjects.current && dragStartProjects.current !== current) {
+                                setPast(p => [...p, dragStartProjects.current]);
+                                setFuture([]);
+                            }
+                            return current;
+                        });
+                        setDraggingBlock(null);
+                    }
                 };
-                if (draggingBlock || isResizingCol) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); }
-                return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+
+                if (draggingBlock || isResizingCol) {
+                    window.addEventListener('mousemove', handleMouseMove);
+                    window.addEventListener('mouseup', handleMouseUp);
+                }
+                return () => {
+                    window.removeEventListener('mousemove', handleMouseMove);
+                    window.removeEventListener('mouseup', handleMouseUp);
+                };
             }, [draggingBlock, zoomLevel, isResizingCol]);
 
-            const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd) => {
+            const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd, taskId = null, allocationId = null) => {
+                e.preventDefault();
                 e.stopPropagation();
+                
                 const phase = projects.find(p => p.id === projectId)?.phases.find(ph => ph.id === phaseId);
                 if (phase?.isLocked) return;
+
                 lastInteractionRef.current = { isDragging: false, startX: e.clientX };
                 dragStartProjects.current = projects;
-                let blocksToMove = [{ projectId, phaseId, origStart, origEnd }];
-                if (type === 'move' && selectedPhaseIds.has(phaseId)) {
-                    blocksToMove = [];
-                    projects.forEach(p => p.phases.forEach(ph => { if (selectedPhaseIds.has(ph.id) && !ph.isLocked) blocksToMove.push({ projectId: p.id, phaseId: ph.id, origStart: ph.start, origEnd: ph.end }); }));
-                }
-                setDraggingBlock({ blocksToMove, type, startX: e.clientX });
-            };
 
-            const toggleLock = (projectId, phaseId) => updateProjects(projects.map(p => p.id === projectId ? { ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, isLocked: !ph.isLocked } : ph) } : p));
-
-            const editPhaseTitle = (projectId, phaseId, newTitle) => {
-                updateProjects(projects.map(p => p.id === projectId ? { ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, title: newTitle } : ph) } : p));
-                if (modalData?.phase.id === phaseId) setModalData(prev => ({ ...prev, phase: { ...prev.phase, title: newTitle } }));
-            };
-
-            const months = [];
-            const weeks = [];
-            let currentMonth = -1;
-            let weeksInMonth = 0;
-            for (let i = 0; i < totalDays; i += 7) {
-                const weekStart = addDays(timelineStart, i);
-                const weekEnd = addDays(weekStart, 6);
-                weeks.push({ start: weekStart, end: weekEnd, label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`, daysFromStart: i });
-                const month = weekStart.getMonth();
-                if (month !== currentMonth) {
-                    if (currentMonth !== -1) months[months.length - 1].colSpan = weeksInMonth * 7;
-                    months.push({ name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), colSpan: 7 });
-                    currentMonth = month; weeksInMonth = 1;
-                } else { weeksInMonth++; months[months.length - 1].colSpan = weeksInMonth * 7; }
-            }
-            if (months.length > 0) months[months.length - 1].colSpan = weeksInMonth * 7;
-
-            // --- Team View Rendering Logic ---
-            const allTasksWithAssignees = useMemo(() => {
-                const list = [];
-                projects.forEach(p => p.phases.forEach(ph => ph.tasks.forEach(t => {
-                    if (t.assignee && t.assignee.trim()) {
-                        list.push({ ...t, projectId: p.id, projectTitle: p.title, phaseId: ph.id, projectColor: p.color });
+                let blocksToMove = [];
+                if (allocationId && taskId) {
+                    blocksToMove = [{ projectId, phaseId, taskId, allocationId, origStart, origEnd }];
+                } else {
+                    blocksToMove = [{ projectId, phaseId, origStart, origEnd, origTasks: phase.tasks }];
+                    if (type === 'move' && selectedPhaseIds.has(phaseId)) {
+                        blocksToMove = [];
+                        projects.forEach(p => {
+                            p.phases.forEach(ph => {
+                                if (selectedPhaseIds.has(ph.id) && !ph.isLocked) {
+                                    blocksToMove.push({ projectId: p.id, phaseId: ph.id, origStart: ph.start, origEnd: ph.end, origTasks: ph.tasks });
+                                }
+                            });
+                        });
                     }
-                })));
-                // Sort by target date (nulls last) then project title
-                return list.sort((a, b) => {
-                    if (a.targetDate && b.targetDate) return a.targetDate - b.targetDate;
-                    if (a.targetDate) return -1;
-                    if (b.targetDate) return 1;
-                    return a.projectTitle.localeCompare(b.projectTitle);
-                });
-            }, [projects]);
+                }
 
-            const onDragStartAssignment = (e, taskId) => {
-                e.dataTransfer.setData("taskId", taskId);
+                let pixelsPerDay = zoomLevel;
+                if (type.includes('alloc')) {
+                    const rowElem = e.currentTarget.closest('.team-row-container');
+                    if (rowElem) {
+                        pixelsPerDay = (rowElem.getBoundingClientRect().width / 10) * 2;
+                    }
+                }
+
+                setDraggingBlock({ blocksToMove, type, startX: e.clientX, pixelsPerDay });
             };
 
-            const onDropAssignment = (e, dateStr, slot) => {
-                e.preventDefault();
-                const taskId = e.dataTransfer.getData("taskId");
-                if (!taskId) return;
+            const handleBlockClick = (e, projectId, phase, colorIndex) => {
+                e.stopPropagation();
+                if (lastInteractionRef.current.isDragging) {
+                    lastInteractionRef.current.isDragging = false; 
+                    return; 
+                }
+                setModalData({ projectId, phase, colorIndex });
+            };
+            
+            const handleTeamBlockClick = (e, projectId, phaseId, taskId, allocationId) => {
+                e.stopPropagation();
+                if (lastInteractionRef.current.isDragging) {
+                    lastInteractionRef.current.isDragging = false; 
+                    return; 
+                }
+                setTeamModalData({ projectId, phaseId, taskId, allocationId });
+            };
+
+            // --- Modal Editing Handlers ---
+            const editPhaseTitle = (projectId, phaseId, newTitle) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, title: newTitle } : ph)
+                } : p));
+                if (modalData && modalData.projectId === projectId && modalData.phase.id === phaseId) {
+                    setModalData({ ...modalData, phase: { ...modalData.phase, title: newTitle } });
+                }
+            };
+
+            const updatePhaseDates = (projectId, phaseId, startStr, endStr) => {
+                const newStart = startStr ? fromYMD(startStr) : null;
+                const newEnd = endStr ? fromYMD(endStr) : null;
                 
-                setTeamAssignments(prev => ({
-                    ...prev,
-                    [taskId]: { date: dateStr, slot: slot }
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, start: newStart, end: newEnd } : ph)
+                } : p));
+                
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, start: newStart, end: newEnd } }));
+                }
+            };
+
+            const addPhaseMilestone = (projectId, phaseId) => {
+                const newMilestone = { id: generateId(), date: new Date(), label: 'New Milestone' };
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { ...ph, milestones: [...(ph.milestones || []), newMilestone] } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ ...prev, phase: { ...prev.phase, milestones: [...(prev.phase.milestones || []), newMilestone] } }));
+                }
+            };
+
+            const updatePhaseMilestoneLabel = (projectId, phaseId, milestoneId, labelStr) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
+                        ...ph, 
+                        milestones: (ph.milestones || []).map(m => m.id === milestoneId ? { ...m, label: labelStr } : m)
+                    } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ 
+                        ...prev, 
+                        phase: { 
+                            ...prev.phase, 
+                            milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, label: labelStr } : m)
+                        } 
+                    }));
+                }
+            };
+
+            const updatePhaseMilestoneDate = (projectId, phaseId, milestoneId, dateStr) => {
+                const newDate = dateStr ? fromYMD(dateStr) : null;
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
+                        ...ph, 
+                        milestones: (ph.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m)
+                    } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ 
+                        ...prev, 
+                        phase: { 
+                            ...prev.phase, 
+                            milestones: (prev.phase.milestones || []).map(m => m.id === milestoneId ? { ...m, date: newDate } : m)
+                        } 
+                    }));
+                }
+            };
+
+            const removePhaseMilestone = (projectId, phaseId, milestoneId) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? { 
+                        ...ph, 
+                        milestones: (ph.milestones || []).filter(m => m.id !== milestoneId)
+                    } : ph)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(prev => ({ 
+                        ...prev, 
+                        phase: { 
+                            ...prev.phase, 
+                            milestones: (prev.phase.milestones || []).filter(m => m.id !== milestoneId)
+                        } 
+                    }));
+                }
+            };
+
+            const removePhase = (projectId, phaseId) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.filter(ph => ph.id !== phaseId)
+                } : p));
+                if (modalData && modalData.phase.id === phaseId) setModalData(null);
+            };
+
+            // Main Modal Checklist Handlers
+            const onDragStartTask = (e, index) => {
+                e.stopPropagation();
+                dragStartProjects.current = projects;
+                setDraggedTaskIndex(index);
+                e.dataTransfer.effectAllowed = "move";
+            };
+            
+            const onDragOverTask = (e, targetIndex) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (draggedTaskIndex === null || draggedTaskIndex === targetIndex) return;
+                
+                const newTasks = [...modalData.phase.tasks];
+                const [draggedItem] = newTasks.splice(draggedTaskIndex, 1);
+                newTasks.splice(targetIndex, 0, draggedItem);
+                
+                setModalData(prev => ({ ...prev, phase: { ...prev.phase, tasks: newTasks }}));
+                setProjects(prev => prev.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: newTasks } : ph)
+                } : p));
+                
+                setDraggedTaskIndex(targetIndex);
+            };
+            
+            const onDragEndTask = (e) => {
+                e.stopPropagation();
+                setDraggedTaskIndex(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
+            };
+
+            const toggleTask = (taskId) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const addTask = () => {
+                const updatedTasks = [...modalData.phase.tasks, { id: generateId(), text: 'New Task', done: false, assignee: '', start: null, end: null, allocations: [] }];
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskText = (taskId, text) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, text } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskAssignee = (taskId, assignee) => {
+                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, assignee } : t);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTaskDates = (taskId, startStr, endStr) => {
+                const newStart = startStr ? fromYMD(startStr) : null;
+                const newEnd = endStr ? fromYMD(endStr) : null;
+                if (newEnd) newEnd.setHours(23, 59, 59, 999);
+
+                // Prevent overlapping assignment when manually setting via modal
+                let taskToUpdate = null;
+                modalData.phase.tasks.forEach(t => { if(t.id === taskId) taskToUpdate = t; });
+                
+                if (taskToUpdate && taskToUpdate.assignee && newStart && newEnd) {
+                    const allocId = taskToUpdate.allocations?.[0]?.id; 
+                    if (checkTeamOverlap(projects, taskToUpdate.assignee, newStart, newEnd, allocId)) {
+                        alert(`Cannot set dates. ${taskToUpdate.assignee} already has a task overlapping this range.`);
+                        return;
+                    }
+                }
+
+                const updatedTasks = modalData.phase.tasks.map(t => {
+                    if (t.id === taskId) {
+                        const task = { ...t, start: newStart, end: newEnd };
+                        if (newStart && newEnd) {
+                            task.allocations = [{ id: generateId(), start: newStart, end: newEnd, subTasks: [] }];
+                        } else {
+                            task.allocations = [];
+                        }
+                        return task;
+                    }
+                    return t;
+                });
+                updateTasksInState(updatedTasks);
+            };
+
+            const deleteTask = (taskId) => {
+                const updatedTasks = modalData.phase.tasks.filter(t => t.id !== taskId);
+                updateTasksInState(updatedTasks);
+            };
+
+            const updateTasksInState = (updatedTasks) => {
+                updateProjects(projects.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks: updatedTasks } : ph)
+                } : p));
+                setModalData({ ...modalData, phase: { ...modalData.phase, tasks: updatedTasks } });
+            };
+
+            // --- Team Allocation Modal Handlers (Sub-Tasks) ---
+            const updateAllocation = (projectId, phaseId, taskId, allocId, updaterFn) => {
+                updateProjects(projects.map(p => p.id === projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? {
+                        ...ph, tasks: ph.tasks.map(t => {
+                            if (t.id === taskId) {
+                                const newAllocations = t.allocations.map(a => a.id === allocId ? updaterFn(a) : a);
+                                return { ...t, allocations: newAllocations };
+                            }
+                            return t;
+                        })
+                    } : ph)
+                } : p));
+            };
+
+            const toggleSubTask = (allocId, subId) => {
+                updateAllocation(teamModalData.projectId, teamModalData.phaseId, teamModalData.taskId, allocId, a => ({
+                    ...a, subTasks: (a.subTasks || []).map(s => s.id === subId ? { ...s, done: !s.done } : s)
                 }));
             };
 
-            const unassignTask = (e, taskId) => {
-                e.preventDefault();
-                setTeamAssignments(prev => {
-                    const next = {...prev};
-                    delete next[taskId];
-                    return next;
-                });
+            const addSubTask = (allocId) => {
+                updateAllocation(teamModalData.projectId, teamModalData.phaseId, teamModalData.taskId, allocId, a => ({
+                    ...a, subTasks: [...(a.subTasks || []), { id: generateId(), text: 'New Sub-task', done: false }]
+                }));
             };
 
+            const updateSubTaskText = (allocId, subId, text) => {
+                updateAllocation(teamModalData.projectId, teamModalData.phaseId, teamModalData.taskId, allocId, a => ({
+                    ...a, subTasks: (a.subTasks || []).map(s => s.id === subId ? { ...s, text } : s)
+                }));
+            };
+
+            const deleteSubTask = (allocId, subId) => {
+                updateAllocation(teamModalData.projectId, teamModalData.phaseId, teamModalData.taskId, allocId, a => ({
+                    ...a, subTasks: (a.subTasks || []).filter(s => s.id !== subId)
+                }));
+            };
+
+
+            // --- Render Helpers ---
+            const months = [];
+            const weeks = [];
+            const daysList = [];
+            let currentMonth = -1;
+            let weeksInMonth = 0;
+
+            for (let i = 0; i < totalDays; i++) {
+                const d = addDays(timelineStart, i);
+                daysList.push({
+                    date: d,
+                    label: d.getDate(),
+                    dayName: d.toLocaleDateString('en-US', { weekday: 'narrow' }),
+                    isWeekend: d.getDay() === 0 || d.getDay() === 6
+                });
+            }
+
+            for (let i = 0; i < totalDays; i += 7) {
+                const weekStart = addDays(timelineStart, i);
+                const weekEnd = addDays(weekStart, 6);
+                
+                weeks.push({
+                    start: weekStart,
+                    end: weekEnd,
+                    label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`,
+                    daysFromStart: i
+                });
+
+                const month = weekStart.getMonth();
+                if (month !== currentMonth) {
+                    if (currentMonth !== -1) {
+                        months[months.length - 1].colSpan = weeksInMonth * 7;
+                    }
+                    months.push({
+                        name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                        colSpan: 7
+                    });
+                    currentMonth = month;
+                    weeksInMonth = 1;
+                } else {
+                    weeksInMonth++;
+                    months[months.length - 1].colSpan = weeksInMonth * 7;
+                }
+            }
+            if (months.length > 0) months[months.length - 1].colSpan = weeksInMonth * 7;
+
+            const gridWidth = totalDays * zoomLevel;
+            const activeProject = modalData ? projects.find(p => p.id === modalData.projectId) : null;
+
             return (
-                <div className="flex flex-col h-screen bg-white relative">
+                <div className="flex flex-col h-screen bg-slate-50">
                     <datalist id="standard-phases-list">
                         {STANDARD_TEMPLATE_PHASES.map((p, i) => <option key={i} value={p.title} />)}
+                        <option value="Client Handover" />
+                        <option value="Post-Project Support" />
                     </datalist>
 
                     {/* Header */}
                     <div className="flex-shrink-0 bg-slate-900 text-white p-4 shadow-md flex justify-between items-center z-50 relative">
-                        <div className="flex items-center gap-6">
-                            <div>
-                                <input type="text" value={appTitle} onChange={(e) => setAppTitle(e.target.value)} className="bg-transparent text-xl font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-72" />
-                                <p className="text-slate-400 text-xs mt-1">Personnel & Project Planning Hub</p>
-                            </div>
-
-                            {/* View Switcher */}
-                            <div className="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
-                                <button onClick={() => setViewMode('gantt')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'gantt' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
-                                    <Icons.Layout /> Project Timeline
-                                </button>
-                                <button onClick={() => setViewMode('team')} className={`flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'team' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
-                                    <Icons.Users /> Team Management
-                                </button>
-                            </div>
+                        <div>
+                            <input 
+                                type="text" 
+                                value={appTitle} 
+                                onChange={(e) => setAppTitle(e.target.value)}
+                                className="bg-transparent text-xl font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-96"
+                            />
+                            <p className="text-slate-400 text-xs mt-1">Interior Design Timeline & Task Management</p>
                         </div>
-
                         <div className="flex items-center gap-4">
+                            
+                            {/* View Toggle */}
+                            <div className="flex bg-slate-800 rounded p-1 mr-2">
+                                <button onClick={() => setViewMode('projects')} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'projects' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+                                    <Icons.Layout className="w-3 h-3"/> Projects
+                                </button>
+                                <button onClick={() => setViewMode('team')} className={`px-3 py-1.5 rounded text-xs font-medium transition-colors flex items-center gap-1.5 ${viewMode === 'team' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+                                    <Icons.Users className="w-3 h-3"/> Team View
+                                </button>
+                            </div>
+
+                            {/* Cloud Save / Load */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
                                 <button onClick={saveToCloud} disabled={isSaving || isLoading} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-xs font-medium" title="Save to Cloud">
                                     {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} Save
@@ -643,92 +1284,208 @@
                                     {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} Load
                                 </button>
                             </div>
+
+                            {/* Undo / Redo */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-2 py-1 mr-2">
-                                <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo"><Icons.Undo /></button>
-                                <button onClick={redo} disabled={future.length === 0} className={`p-1 rounded ${future.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Redo"><Icons.Redo /></button>
+                                <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo">
+                                    <Icons.Undo />
+                                </button>
+                                <button onClick={redo} disabled={future.length === 0} className={`p-1 rounded ${future.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Redo">
+                                    <Icons.Redo />
+                                </button>
                             </div>
-                            {viewMode === 'gantt' && (
+
+                            {viewMode === 'projects' && (
                                 <>
-                                    <button onClick={scrollToToday} className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-3 py-1.5 transition-colors font-medium">Today</button>
+                                    <button onClick={scrollToToday} className="text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-3 py-1.5 transition-colors font-medium">
+                                        Today
+                                    </button>
                                     <div className="flex items-center gap-2">
                                         <span className="text-xs text-slate-400">Zoom</span>
-                                        <input type="range" min="10" max="50" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))} className="w-24 accent-blue-500"/>
+                                        <input 
+                                            type="range" min="20" max="100" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))}
+                                            className="w-24 accent-blue-500"
+                                        />
                                     </div>
+                                    <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors ml-2">
+                                        <Icons.Plus /> Add Project
+                                    </button>
                                 </>
                             )}
-                            <button onClick={addProject} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-medium transition-colors ml-2"><Icons.Plus /> Add Project</button>
                         </div>
                     </div>
 
-                    {/* Main Content Area */}
-                    <div className="flex-1 overflow-hidden relative">
-                        {viewMode === 'gantt' ? (
-                            /* Gantt View Implementation */
-                            <div className="flex h-full overflow-auto relative flex" ref={scrollContainerRef}>
-                                <div className="flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth, minWidth: leftColWidth }}>
+                    {/* --- MAIN CONTENT AREA --- */}
+                    {viewMode === 'projects' ? (
+                        /* ========================================= */
+                        /* PROJECTS VIEW               */
+                        /* ========================================= */
+                        <div className="flex flex-1 overflow-hidden relative bg-white">
+                            <div className="flex-1 overflow-auto relative flex" ref={scrollContainerRef}>
+                                {/* Left Sticky Column */}
+                                <div 
+                                    className="flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)] flex flex-col"
+                                    style={{ width: leftColWidth, minWidth: leftColWidth }}
+                                >
                                     <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)}></div>
-                                    <div className="h-[60px] border-b border-slate-300 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
-                                        <input value={leftColTitle} onChange={e => setLeftColTitle(e.target.value)} className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full" />
+                                    <div className="h-[61px] border-b border-slate-300 bg-slate-50 flex flex-col justify-end p-2 sticky top-0 z-40">
+                                        <input 
+                                            value={leftColTitle} 
+                                            onChange={e => setLeftColTitle(e.target.value)}
+                                            className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full"
+                                        />
                                     </div>
-                                    <div className="pb-32">
+                                    
+                                    <div className="pb-32 flex-1 relative">
                                         {projects.map((project, index) => {
                                             const allPhasesSelected = project.phases.length > 0 && project.phases.every(ph => selectedPhaseIds.has(ph.id));
+
                                             return (
-                                            <div key={project.id} draggable onDragStart={(e) => onDragStartRow(e, index)} onDragOver={(e) => onDragOverRow(e, index)} onDragEnd={onDragEndRow} className={`border-b border-slate-100 ${draggedProjectIndex === index ? 'opacity-50 bg-slate-100' : ''}`} >
+                                            <div 
+                                                key={project.id}
+                                                draggable
+                                                onDragStart={(e) => onDragStartRow(e, index)}
+                                                onDragOver={(e) => onDragOverRow(e, index)}
+                                                onDragEnd={onDragEndRow}
+                                                className={`border-b border-slate-100 ${draggedProjectIndex === index ? 'opacity-50 bg-slate-100' : ''}`}
+                                            >
                                                 <div className="flex items-center h-12 hover:bg-slate-50 group pl-2">
-                                                    <div className="w-8 flex justify-center items-center h-full"><div className="opacity-0 group-hover:opacity-100"><Icons.Grip /></div></div>
-                                                    <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700">{project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}</button>
+                                                    <div className="w-8 flex justify-center items-center h-full">
+                                                        <div className="opacity-0 group-hover:opacity-100"><Icons.Grip /></div>
+                                                    </div>
+                                                    <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700">
+                                                        {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+                                                    </button>
+
                                                     <div className="relative group/color mr-2 flex items-center h-full">
                                                         <div className="w-3 h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
                                                         <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
                                                             <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
-                                                                {THEME_COLORS.map(c => (<div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>))}
+                                                                {THEME_COLORS.map(c => (
+                                                                    <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
+                                                                ))}
                                                                 <div className="w-px h-4 bg-slate-200 mx-0.5"></div>
                                                                 <label className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 overflow-hidden relative border border-slate-300 shadow-inner flex-shrink-0" title="Custom Color">
-                                                                    <input type="color" value={project.color && project.color.startsWith('#') ? project.color : '#000000'} onChange={(e) => updateProjectColor(project.id, e.target.value)} className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer" />
+                                                                    <input 
+                                                                        type="color" 
+                                                                        value={project.color && project.color.startsWith('#') ? project.color : '#000000'}
+                                                                        onChange={(e) => updateProjectColor(project.id, e.target.value)}
+                                                                        className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer"
+                                                                    />
                                                                     <div className="w-full h-full bg-[conic-gradient(red,yellow,lime,aqua,blue,fuchsia,red)]"></div>
                                                                 </label>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    <input type="checkbox" checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500" title="Select All Phases to shift timeline" />
-                                                    <input value={project.title} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate" />
-                                                    <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600" title="Add Phase"><Icons.Plus /></button>
-                                                    <button onClick={() => deleteProject(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 mr-2" title="Delete Project"><Icons.Trash /></button>
+
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={allPhasesSelected}
+                                                        onChange={() => toggleProjectSelection(project.id)}
+                                                        className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
+                                                        title="Select All Phases to shift timeline"
+                                                    />
+
+                                                    <input 
+                                                        value={project.title}
+                                                        onChange={(e) => updateProjectTitle(project.id, e.target.value)}
+                                                        className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate"
+                                                    />
+                                                    <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600" title="Add Phase">
+                                                        <Icons.Plus />
+                                                    </button>
+                                                    <button onClick={() => deleteProject(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 mr-2" title="Delete Project">
+                                                        <Icons.Trash />
+                                                    </button>
                                                 </div>
+
                                                 {project.isExpanded && project.phases.map((phase, phaseIndex) => (
-                                                    <div key={phase.id} draggable onDragStart={(e) => onDragStartPhase(e, project.id, phaseIndex)} onDragOver={(e) => onDragOverPhase(e, project.id, phaseIndex)} onDragEnd={onDragEndPhase} className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-3 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''} ${selectedPhaseIds.has(phase.id) ? 'bg-blue-50/50' : ''}`} >
-                                                        <div className="w-6 flex justify-center items-center h-full opacity-0 group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1"><Icons.Grip /></div>
+                                                    <div 
+                                                        key={phase.id} 
+                                                        draggable
+                                                        onDragStart={(e) => onDragStartPhase(e, project.id, phaseIndex)}
+                                                        onDragOver={(e) => onDragOverPhase(e, project.id, phaseIndex)}
+                                                        onDragEnd={onDragEndPhase}
+                                                        className={`flex items-center h-10 bg-slate-50/50 pl-8 pr-3 border-t border-slate-100/50 group/phase ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : ''} ${selectedPhaseIds.has(phase.id) ? 'bg-blue-50/50' : ''}`}
+                                                    >
+                                                        <div className="w-6 flex justify-center items-center h-full opacity-0 group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1">
+                                                            <Icons.Grip />
+                                                        </div>
                                                         <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
-                                                        <input type="checkbox" checked={selectedPhaseIds.has(phase.id)} onChange={() => togglePhaseSelection(phase.id)} className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500" />
-                                                        <input list="standard-phases-list" value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate" placeholder="Phase Title" />
-                                                        <button onClick={() => toggleLock(project.id, phase.id)} className={`p-1 transition-colors ml-1 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-0 group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>{phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}</button>
-                                                        <button onClick={() => removePhase(project.id, phase.id)} className="opacity-0 group-hover/phase:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase"><Icons.Trash /></button>
+                                                        
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={selectedPhaseIds.has(phase.id)}
+                                                            onChange={() => togglePhaseSelection(phase.id)}
+                                                            className="mr-2 w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
+                                                        />
+
+                                                        <input 
+                                                            list="standard-phases-list"
+                                                            value={phase.title}
+                                                            onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)}
+                                                            className="flex-1 bg-transparent text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate"
+                                                            placeholder="Phase Title"
+                                                        />
+                                                        
+                                                        <button onClick={() => toggleLock(project.id, phase.id)} className={`p-1 transition-colors ml-1 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-0 group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>
+                                                            {phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}
+                                                        </button>
+                                                        
+                                                        <button onClick={() => removePhase(project.id, phase.id)} className="opacity-0 group-hover/phase:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase">
+                                                            <Icons.Trash />
+                                                        </button>
                                                     </div>
                                                 ))}
                                             </div>
                                         )})}
+
+                                        <div className="p-3 border-t border-slate-100">
+                                            <button onClick={addProject} className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg p-2 text-sm font-medium transition-colors">
+                                                <Icons.Plus /> New Project
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
+
+                                {/* Right Scrolling Timeline Grid */}
                                 <div className="relative" style={{ width: gridWidth }}>
-                                    <div className="sticky top-0 z-20 bg-white border-b border-slate-300">
+                                    <div className="h-[61px] sticky top-0 z-20 bg-white border-b border-slate-300">
                                         <div className="flex border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold h-8">
-                                            {months.map((m, i) => (<div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>{m.name}</div>))}
+                                            {months.map((m, i) => (
+                                                <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>
+                                                    {m.name}
+                                                </div>
+                                            ))}
                                         </div>
                                         <div className="flex h-7 bg-white text-[10px] text-slate-500 font-medium">
-                                            {weeks.map((w, i) => (<div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50" style={{ width: 7 * zoomLevel }}>{w.label}</div>))}
+                                            {weeks.map((w, i) => (
+                                                <div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50" style={{ width: 7 * zoomLevel }}>
+                                                    {w.label}
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
+
                                     <div className="relative pb-32">
                                         <div className="absolute top-0 bottom-0 left-0 right-0 flex pointer-events-none z-0">
-                                             {weeks.map((w, i) => (
+                                            {weeks.map((w, i) => (
                                                 <div key={i} className="h-full border-r border-slate-300 relative" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
                                                     <div className="absolute inset-0 flex">
-                                                        {[...Array(7)].map((_, dayIdx) => (<div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>))}
+                                                        {[...Array(7)].map((_, dayIdx) => (
+                                                            <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             ))}
                                         </div>
+
+                                        {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
+                                            <div className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-10 opacity-70" style={{ left: diffDays(timelineStart, today) * zoomLevel }}>
+                                                <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
+                                            </div>
+                                        )}
+
                                         {projects.map(project => {
                                             const chronoIndices = getChronologicalIndices(project.phases);
                                             return (
@@ -738,33 +1495,157 @@
                                                         const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                                                         const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
                                                         const hasTimeline = phase.start && phase.end;
-                                                        return hasTimeline && (() => {
-                                                            const left = diffDays(timelineStart, phase.start) * zoomLevel;
-                                                            const width = (diffDays(phase.start, phase.end) + 1) * zoomLevel;
-                                                            if (left + width < 0 || left > gridWidth) return null; 
-                                                            return (
-                                                                <div onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)} onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)} className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block ${isCompleted ? 'completed-block' : ''} ${selectedPhaseIds.has(phase.id) ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`} style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }} >
-                                                                    <div className="truncate drop-shadow-md flex items-center gap-1">{phase.isLocked && <Icons.Lock />}{phase.title}</div>
-                                                                    {!phase.isLocked && (<><div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div><div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div></>)}
-                                                                </div>
-                                                            );
-                                                        })()
+                                                        const isSelected = selectedPhaseIds.has(phase.id);
+
+                                                        let left = 0, width = 0, isVisible = false;
+                                                        if (hasTimeline) {
+                                                            left = diffExactDays(timelineStart, phase.start) * zoomLevel;
+                                                            width = (diffExactDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                            isVisible = left + width >= 0 && left <= gridWidth;
+                                                        }
+
+                                                        return (
+                                                            <React.Fragment key={phase.id}>
+                                                                {isVisible && (
+                                                                    <div 
+                                                                        onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
+                                                                        onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
+                                                                        className={`absolute top-2 h-8 rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block 
+                                                                            ${isCompleted ? 'completed-block' : ''} 
+                                                                            ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
+                                                                            ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                                                                        `}
+                                                                        style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel/2)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
+                                                                    >
+                                                                        <div className="truncate drop-shadow-md flex items-center gap-1">
+                                                                            {phase.isLocked && <Icons.Lock />}
+                                                                            {phase.title}
+                                                                        </div>
+                                                                        {!phase.isLocked && (
+                                                                            <>
+                                                                                <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                                <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                            </>
+                                                                        )}
+                                                                        
+                                                                        {/* Very subtle display of individual task allocations inside the Project Phase block */}
+                                                                        <div className="absolute bottom-0 left-0 right-0 h-2 pointer-events-none">
+                                                                            {(phase.tasks || []).flatMap((task, tIdx) => {
+                                                                                return (task.allocations || []).map((alloc, aIdx) => {
+                                                                                    if (!alloc.start || !alloc.end) return null;
+                                                                                    const allocLeft = diffExactDays(phase.start, alloc.start) * zoomLevel;
+                                                                                    const durationDays = (alloc.end.getTime() - alloc.start.getTime()) / (1000 * 60 * 60 * 24);
+                                                                                    const allocWidth = durationDays * zoomLevel;
+                                                                                    return (
+                                                                                        <div 
+                                                                                            key={`${task.id}_${alloc.id}`} 
+                                                                                            className="absolute h-[2px] bg-white/70 shadow-sm rounded-full" 
+                                                                                            style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} 
+                                                                                        />
+                                                                                    )
+                                                                                });
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {(phase.milestones || []).map(milestone => {
+                                                                    if (!milestone.date) return null;
+                                                                    return (
+                                                                        <div 
+                                                                            key={milestone.id}
+                                                                            className="absolute top-2 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
+                                                                            style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                            title={milestone.label}
+                                                                        >
+                                                                            <Icons.Flag className="text-amber-400" />
+                                                                        </div>
+                                                                    )
+                                                                })}
+                                                            </React.Fragment>
+                                                        )
                                                     })}
                                                 </div>
+
                                                 {project.isExpanded && project.phases.map((phase, phaseIndex) => {
                                                     const hasTimeline = phase.start && phase.end;
                                                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                                                     let left = 0, width = 0;
-                                                    if (hasTimeline) { left = diffDays(timelineStart, phase.start) * zoomLevel; width = (diffDays(phase.start, phase.end) + 1) * zoomLevel; }
-                                                    const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
+                                                    if (hasTimeline) {
+                                                        left = diffExactDays(timelineStart, phase.start) * zoomLevel;
+                                                        width = (diffExactDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                    }
+                                                    const taskCount = phase.tasks.length;
+                                                    const doneCount = phase.tasks.filter(t => t.done).length;
+                                                    const isCompleted = taskCount > 0 && doneCount === taskCount;
+                                                    const isSelected = selectedPhaseIds.has(phase.id);
+                                                    
                                                     return (
-                                                        <div key={phase.id} className="h-10 relative w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors" onClick={(e) => handleGridClick(e, project.id, phase.id)}>
+                                                        <div 
+                                                            key={phase.id} 
+                                                            className="h-10 relative w-full bg-transparent border-t border-transparent hover:bg-slate-50/40 cursor-crosshair transition-colors"
+                                                            onClick={(e) => handleGridClick(e, project.id, phase.id)}
+                                                        >
                                                             {hasTimeline && (
-                                                                <div onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)} onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)} className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block ${isCompleted ? 'completed-block' : ''} ${selectedPhaseIds.has(phase.id) ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`} style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }} >
-                                                                    <span className="truncate drop-shadow-md flex items-center gap-1">{phase.isLocked && <Icons.Lock />}{phase.title}</span>
-                                                                    {!phase.isLocked && (<><div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div><div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div></>)}
+                                                                <div 
+                                                                    onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
+                                                                    onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
+                                                                    className={`absolute top-1.5 h-7 rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block 
+                                                                        ${isCompleted ? 'completed-block' : ''}
+                                                                        ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
+                                                                        ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                                                                    `}
+                                                                    style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel/2)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
+                                                                >
+                                                                    <span className="truncate drop-shadow-md flex items-center gap-1">
+                                                                        {phase.isLocked && <Icons.Lock />}
+                                                                        {phase.title}
+                                                                    </span>
+                                                                    {taskCount > 0 && width > 100 && (
+                                                                        <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">
+                                                                            {doneCount}/{taskCount}
+                                                                        </span>
+                                                                    )}
+
+                                                                    {!phase.isLocked && (
+                                                                        <>
+                                                                            <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                                                                            <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                                                                        </>
+                                                                    )}
+                                                                    
+                                                                    <div className="absolute bottom-0 left-0 right-0 h-2 pointer-events-none">
+                                                                        {(phase.tasks || []).flatMap((task, tIdx) => {
+                                                                            return (task.allocations || []).map((alloc, aIdx) => {
+                                                                                if (!alloc.start || !alloc.end) return null;
+                                                                                const allocLeft = diffExactDays(phase.start, alloc.start) * zoomLevel;
+                                                                                const durationDays = (alloc.end.getTime() - alloc.start.getTime()) / (1000 * 60 * 60 * 24);
+                                                                                const allocWidth = durationDays * zoomLevel;
+                                                                                return (
+                                                                                    <div 
+                                                                                        key={`${task.id}_${alloc.id}`} 
+                                                                                        className="absolute h-[2px] bg-white/70 shadow-sm rounded-full" 
+                                                                                        style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} 
+                                                                                    />
+                                                                                )
+                                                                            });
+                                                                        })}
+                                                                    </div>
                                                                 </div>
                                                             )}
+
+                                                            {(phase.milestones || []).map(milestone => {
+                                                                if (!milestone.date) return null;
+                                                                return (
+                                                                    <div 
+                                                                        key={milestone.id}
+                                                                        className="absolute top-1.5 z-20 flex flex-col items-center pointer-events-none drop-shadow-md"
+                                                                        style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}
+                                                                    >
+                                                                        <Icons.Flag className="text-amber-400" />
+                                                                    </div>
+                                                                )
+                                                            })}
                                                         </div>
                                                     )
                                                 })}
@@ -773,118 +1654,197 @@
                                     </div>
                                 </div>
                             </div>
-                        ) : (
-                            /* Team Management Implementation */
-                            <div className="flex flex-col h-full bg-slate-50 overflow-auto">
-                                <div className="p-6">
-                                    <div className="mb-6 flex justify-between items-center">
-                                        <h2 className="text-xl font-bold text-slate-800">Weekly Personnel Capacity</h2>
-                                        <div className="text-sm text-slate-500 bg-white border px-3 py-1.5 rounded-lg">
-                                            {formatDate(currentWeek[0])} — {formatDate(currentWeek[6])}
+                        </div>
+
+                    ) : (
+                        /* ========================================= */
+                        /* TEAM VIEW                 */
+                        /* ========================================= */
+                        <div className="flex-1 flex flex-col overflow-hidden bg-slate-100/50">
+                            {/* Team Planner Header Bar */}
+                            <div className="flex-shrink-0 flex justify-between items-center bg-white border-b border-slate-200 p-3 shadow-sm z-10">
+                                <div className="text-sm font-bold text-slate-700 w-64">Team Weekly Task Planner</div>
+                                <div className="flex items-center gap-4 bg-slate-50 border border-slate-200 rounded px-2 py-1 shadow-sm">
+                                    <button onClick={prevWeek} className="p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronLeft /></button>
+                                    <div className="font-semibold text-sm text-slate-800 w-48 text-center uppercase tracking-wide">
+                                        {formatDate(currentTeamWeekStart)} - {formatDate(addDays(currentTeamWeekStart, 4))}
+                                    </div>
+                                    <button onClick={nextWeek} className="p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronRight /></button>
+                                </div>
+                                <div className="w-64 text-right text-[11px] text-slate-400">Drag to schedule. Snap to Half-Days. Click to add sub-tasks.</div>
+                            </div>
+
+                            {/* Scrollable Assignees List */}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-8 relative">
+                                {teamViewData.map((assignee) => (
+                                    <div key={assignee.name} className="bg-white border border-slate-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+                                        
+                                        {/* Assignee Header */}
+                                        <div className="bg-slate-100/80 border-b border-slate-200 p-3 flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner">
+                                                    {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
+                                                </div>
+                                                <h3 className={`font-bold text-base ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`}>
+                                                    {assignee.name}
+                                                </h3>
+                                            </div>
+                                            <div className="text-xs font-semibold text-slate-500 bg-white px-2 py-1 rounded shadow-sm border border-slate-200">
+                                                {assignee.scheduled.length} Scheduled Instances
+                                            </div>
+                                        </div>
+
+                                        {/* Assignee Weekly Grid */}
+                                        <div className="relative border-b border-slate-200 bg-slate-50">
+                                            {/* Days Header */}
+                                            <div className="grid grid-cols-5 border-b border-slate-200 bg-white">
+                                                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((day, i) => {
+                                                    const date = addDays(currentTeamWeekStart, i);
+                                                    const isTodayStr = toYMD(date) === toYMD(today);
+                                                    return (
+                                                        <div key={day} className={`text-center py-1.5 border-r border-slate-200 last:border-r-0 ${isTodayStr ? 'bg-blue-50' : ''}`}>
+                                                            <div className={`text-xs font-bold ${isTodayStr ? 'text-blue-600' : 'text-slate-700'}`}>{day}</div>
+                                                            <div className={`text-[10px] ${isTodayStr ? 'text-blue-500 font-semibold' : 'text-slate-500'}`}>{date.getDate()}</div>
+                                                        </div>
+                                                    )
+                                                })}
+                                            </div>
+                                            {/* AM/PM Header */}
+                                            <div className="grid grid-cols-10 border-b border-slate-200 bg-slate-50/50">
+                                                {[...Array(10)].map((_, i) => (
+                                                    <div key={i} className="text-center text-[9px] text-slate-400 py-0.5 border-r border-slate-200 last:border-r-0 font-medium">
+                                                        {i % 2 === 0 ? 'AM' : 'PM'}
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            {/* Drag & Drop Calendar Area */}
+                                            <div 
+                                                className="relative min-h-[80px] team-row-container"
+                                                onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/20'); }}
+                                                onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/20')}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    e.currentTarget.classList.remove('bg-blue-50/20');
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const x = e.clientX - rect.left;
+                                                    const colWidth = rect.width / 10;
+                                                    let colIndex = Math.floor(x / colWidth);
+                                                    colIndex = Math.max(0, Math.min(9, colIndex)); // safety bounds
+                                                    onDropTeamGrid(e, assignee.name, colIndex);
+                                                }}
+                                            >
+                                                {/* Background Lines */}
+                                                <div className="absolute inset-0 grid grid-cols-10 pointer-events-none">
+                                                    {[...Array(10)].map((_, colIndex) => (
+                                                        <div key={colIndex} className={`border-r border-slate-200 last:border-r-0 transition-colors ${colIndex % 2 === 0 ? 'border-dashed border-r-slate-100' : ''}`}></div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Foreground Scheduled Allocations (Auto-Stacking CSS Grid) */}
+                                                <div className="relative grid grid-cols-10 gap-1 p-1 pointer-events-none min-h-[80px]" style={{ height: assignee.rowHeight }}>
+                                                    {assignee.scheduled.map(item => {
+                                                        const bgColor = getPhaseColor(item.project.color, 1);
+                                                        const totalSub = item.allocation.subTasks?.length || 0;
+                                                        const doneSub = item.allocation.subTasks?.filter(s => s.done).length || 0;
+                                                        
+                                                        return (
+                                                            <div 
+                                                                key={`${item.project.id}_${item.phase.id}_${item.task.id}_${item.allocation.id}`}
+                                                                className={`absolute rounded shadow-sm text-white px-2 py-1 flex flex-col justify-center overflow-hidden z-10 pointer-events-auto cursor-grab border border-white/20 hover:scale-[1.02] transition-transform
+                                                                    ${item.task.done ? 'completed-block' : ''}
+                                                                `}
+                                                                style={{ 
+                                                                    left: `calc(${(item.startCol / 10) * 100}% + 2px)`,
+                                                                    width: `calc(${(item.span / 10) * 100}% - 4px)`,
+                                                                    top: `${item.level * 44 + 4}px`,
+                                                                    backgroundColor: bgColor,
+                                                                    height: '40px'
+                                                                }}
+                                                                draggable
+                                                                onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, item.allocation.id, item.allocation.start, item.allocation.end)}
+                                                                onDragEnd={() => setDraggedTeamItem(null)}
+                                                                onClick={(e) => handleTeamBlockClick(e, item.project.id, item.phase.id, item.task.id, item.allocation.id)}
+                                                            >
+                                                                <div className="flex justify-between items-start gap-1">
+                                                                    <div className="truncate drop-shadow-md text-[11px] font-bold">
+                                                                        {item.task.text}
+                                                                    </div>
+                                                                    {totalSub > 0 && (
+                                                                        <div className="text-[8px] bg-black/30 px-1 rounded-sm font-semibold shrink-0">
+                                                                            {doneSub}/{totalSub} sub
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="truncate drop-shadow-md font-medium text-[9px] opacity-90 mt-0.5">
+                                                                    {item.project.title} <span className="mx-0.5 opacity-60">/</span> {item.phase.title}
+                                                                </div>
+                                                                
+                                                                {!item.phase.isLocked && (
+                                                                    <>
+                                                                        <div className="resize-handle resize-handle-left" onMouseDown={(e) => handleBlockMouseDown(e, item.project.id, item.phase.id, 'resize-alloc-left', item.allocation.start, item.allocation.end, item.task.id, item.allocation.id)}></div>
+                                                                        <div className="resize-handle resize-handle-right" onMouseDown={(e) => handleBlockMouseDown(e, item.project.id, item.phase.id, 'resize-alloc-right', item.allocation.start, item.allocation.end, item.task.id, item.allocation.id)}></div>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        )
+                                                    })}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Task Pool */}
+                                        <div 
+                                            className="p-4 bg-slate-50 min-h-[80px] transition-colors"
+                                            onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/30'); }}
+                                            onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/30')}
+                                            onDrop={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                e.currentTarget.classList.remove('bg-blue-50/30');
+                                                onDropTeamPool(e, assignee.name);
+                                            }}
+                                        >
+                                            <div className="text-[10px] font-bold text-slate-400 uppercase mb-3 tracking-wider flex justify-between">
+                                                <span>Task Pool (Drag multiple times to calendar)</span>
+                                                <span>Drop here to un-schedule a block</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {assignee.pool.length === 0 ? (
+                                                    <div className="text-xs text-slate-400 italic py-2">No tasks available in pool.</div>
+                                                ) : (
+                                                    assignee.pool.map(item => (
+                                                        <div 
+                                                            key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
+                                                            className="bg-white border border-slate-300 text-slate-700 text-xs rounded px-2.5 py-1.5 cursor-grab hover:border-blue-400 hover:shadow-md transition-shadow shadow-sm flex items-center gap-1.5 max-w-sm"
+                                                            draggable
+                                                            onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
+                                                            onDragEnd={() => setDraggedTeamItem(null)}
+                                                        >
+                                                            <div className="w-2 h-2 rounded-full shrink-0" style={{backgroundColor: getIndicatorColor(item.project.color)}}></div>
+                                                            <div className="truncate">
+                                                                <span className="font-bold mr-1">{item.task.text}</span> 
+                                                                <span className="text-slate-400">({item.project.title})</span>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
-
-                                    {personnel.length === 0 ? (
-                                        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-12 text-center">
-                                            <div className="bg-slate-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                                                <Icons.Users />
-                                            </div>
-                                            <p className="text-slate-500">No personnel assigned to tasks yet.</p>
-                                            <p className="text-xs text-slate-400 mt-1">Assign names to tasks in the Project Timeline view to see them here.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead className="bg-slate-50 border-b border-slate-200">
-                                                    <tr>
-                                                        <th className="p-4 w-64 text-xs font-bold text-slate-500 uppercase">Personnel / Backlog</th>
-                                                        {currentWeek.map((day, idx) => (
-                                                            <th key={idx} className="p-4 text-center border-l border-slate-200">
-                                                                <div className="text-xs font-bold text-slate-600">{day.toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                                                                <div className="text-[10px] text-slate-400">{formatDate(day)}</div>
-                                                            </th>
-                                                        ))}
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    {personnel.map(person => (
-                                                        <tr key={person} className="border-b border-slate-100 hover:bg-slate-50/30">
-                                                            {/* Assignee and Backlog Column */}
-                                                            <td className="p-4 align-top">
-                                                                <div className="flex items-center gap-2 mb-3">
-                                                                    <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
-                                                                        {person.charAt(0)}
-                                                                    </div>
-                                                                    <span className="font-bold text-slate-800">{person}</span>
-                                                                </div>
-                                                                <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1" onDragOver={e => e.preventDefault()} onDrop={e => unassignTask(e, e.dataTransfer.getData("taskId"))}>
-                                                                    <div className="text-[9px] uppercase font-bold text-slate-400 mb-2 tracking-wider">Unscheduled Tasks</div>
-                                                                    {allTasksWithAssignees
-                                                                        .filter(t => t.assignee === person && !teamAssignments[t.id])
-                                                                        .map(task => (
-                                                                            <div key={task.id} draggable onDragStart={e => onDragStartAssignment(e, task.id)} className="p-2 bg-white border border-slate-200 rounded-lg shadow-sm task-bubble hover:border-blue-400 hover:shadow-md">
-                                                                                <div className="text-[10px] font-bold text-slate-800 mb-0.5 line-clamp-1">{task.text}</div>
-                                                                                <div className="flex items-center justify-between">
-                                                                                    <span className="text-[8px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-medium" style={{ color: getIndicatorColor(task.projectColor), backgroundColor: `${getIndicatorColor(task.projectColor)}15` }}>
-                                                                                        {task.projectTitle}
-                                                                                    </span>
-                                                                                    {task.targetDate && <span className="text-[8px] text-slate-400 flex items-center gap-0.5"><Icons.Calendar />{formatDate(task.targetDate)}</span>}
-                                                                                </div>
-                                                                            </div>
-                                                                        ))}
-                                                                </div>
-                                                            </td>
-                                                            
-                                                            {/* Daily 1/2 Day Slots */}
-                                                            {currentWeek.map((day, dIdx) => {
-                                                                const dayStr = toYMD(day);
-                                                                return (
-                                                                    <td key={dIdx} className="p-2 border-l border-slate-200 w-32 align-top">
-                                                                        <div className="grid grid-rows-2 gap-2 h-full min-h-[160px]">
-                                                                            {['am', 'pm'].map(slot => {
-                                                                                const assignedTask = allTasksWithAssignees.find(t => teamAssignments[t.id]?.date === dayStr && teamAssignments[t.id]?.slot === slot && t.assignee === person);
-                                                                                
-                                                                                return (
-                                                                                    <div 
-                                                                                        key={slot} 
-                                                                                        className={`p-1.5 rounded-lg border-2 border-dashed border-slate-100 bg-slate-50/50 flex flex-col items-center justify-center drop-slot relative group/slot ${assignedTask ? 'border-solid border-slate-200 bg-white' : 'hover:border-blue-300 hover:bg-blue-50/50'}`}
-                                                                                        onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
-                                                                                        onDragLeave={e => e.currentTarget.classList.remove('drag-over')}
-                                                                                        onDrop={e => { e.currentTarget.classList.remove('drag-over'); onDropAssignment(e, dayStr, slot); }}
-                                                                                    >
-                                                                                        <span className="absolute top-1 left-1 text-[8px] font-bold text-slate-300 uppercase tracking-tighter">{slot}</span>
-                                                                                        {assignedTask ? (
-                                                                                            <div draggable onDragStart={e => onDragStartAssignment(e, assignedTask.id)} className="w-full h-full p-1.5 flex flex-col justify-between task-bubble bg-white rounded-md shadow-sm border border-slate-200 relative overflow-hidden">
-                                                                                                <div className="absolute top-0 left-0 w-1 h-full" style={{ backgroundColor: getIndicatorColor(assignedTask.projectColor) }}></div>
-                                                                                                <div className="text-[9px] font-bold text-slate-800 line-clamp-2 leading-tight mb-1">{assignedTask.text}</div>
-                                                                                                <div className="text-[8px] text-slate-400 font-medium truncate">{assignedTask.projectTitle}</div>
-                                                                                                <button onClick={(e) => unassignTask(e, assignedTask.id)} className="absolute top-1 right-1 opacity-0 group-hover/slot:opacity-100 text-slate-300 hover:text-red-500 transition-opacity"><Icons.X /></button>
-                                                                                            </div>
-                                                                                        ) : (
-                                                                                            <span className="opacity-0 group-hover/slot:opacity-100 text-slate-300 pointer-events-none"><Icons.Plus /></span>
-                                                                                        )}
-                                                                                    </div>
-                                                                                );
-                                                                            })}
-                                                                        </div>
-                                                                    </td>
-                                                                );
-                                                            })}
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
+                                ))}
                             </div>
-                        )}
-                    </div>
+                        </div>
+                    )}
 
-                    {/* Task Checklist Modal (Shared across views) */}
-                    {modalData && activeProject && (
+                    {/* --- MODALS --- */}
+                    
+                    {/* Project View Task Checklist Modal */}
+                    {modalData && activeProject && !teamModalData && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center" onMouseDown={() => setModalData(null)}>
-                            <div className="bg-white rounded-xl shadow-2xl w-[600px] max-w-full m-4 overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
+                            <div className="bg-white rounded-xl shadow-2xl w-[700px] max-w-full m-4 overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
+                                {/* Modal Header */}
                                 <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(activeProject.color, modalData.colorIndex) }}>
                                     <div className="flex-1 mr-4 flex items-center">
                                         <div className="flex-1">
@@ -892,55 +1852,267 @@
                                                 {activeProject.title} 
                                                 {modalData.phase.isLocked && <span className="bg-black/20 px-1.5 rounded-sm flex items-center gap-1"><Icons.Lock /> Locked</span>}
                                             </p>
-                                            <input list="standard-phases-list" value={modalData.phase.title} onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)} className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50" />
+                                            <input 
+                                                list="standard-phases-list"
+                                                value={modalData.phase.title}
+                                                onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)}
+                                                className="bg-transparent text-lg font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50"
+                                            />
                                         </div>
                                     </div>
-                                    <button onClick={() => setModalData(null)} className="p-1 hover:bg-black/10 rounded-full transition-colors"><Icons.X /></button>
+                                    <button onClick={() => setModalData(null)} className="p-1 hover:bg-black/10 rounded-full transition-colors">
+                                        <Icons.X />
+                                    </button>
                                 </div>
 
-                                <div className="p-5 max-h-[70vh] overflow-y-auto">
-                                    <div className="mb-4 space-y-3">
-                                        <div className="flex justify-between items-center">
-                                            <h3 className="text-sm font-bold text-slate-800">Checklist Tasks</h3>
-                                            <button onClick={addTask} className="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"><Icons.Plus /> Add Task</button>
-                                        </div>
+                                {/* Modal Body (Tasks & Dates) */}
+                                <div className="p-5 max-h-[60vh] overflow-y-auto">
+                                    <div className="mb-4 border-b border-slate-100 pb-4">
+                                        <div className="flex justify-between items-end">
+                                            <div className="w-full">
+                                                <h3 className="text-sm font-semibold text-slate-800">Timeline</h3>
+                                                
+                                                {/* Start / End Calendars */}
+                                                <div className="flex items-center gap-2 mt-2">
+                                                    <input 
+                                                        type="date" 
+                                                        value={toYMD(modalData.phase.start)} 
+                                                        disabled={modalData.phase.isLocked}
+                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))}
+                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
+                                                    />
+                                                    <span className="text-xs text-slate-400">to</span>
+                                                    <input 
+                                                        type="date" 
+                                                        value={toYMD(modalData.phase.end)} 
+                                                        disabled={modalData.phase.isLocked}
+                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)}
+                                                        className={`text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
+                                                    />
+                                                    {modalData.phase.start && modalData.phase.end && (
+                                                        <span className="text-xs text-slate-500 font-medium ml-1">
+                                                            ({diffDays(modalData.phase.start, modalData.phase.end) + 1} days)
+                                                        </span>
+                                                    )}
+                                                </div>
 
-                                        <div className="space-y-2">
-                                            {modalData.phase.tasks.map((task, idx) => (
-                                                <div key={task.id} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg group/task">
-                                                    <div className="flex items-center gap-3">
-                                                        <input type="checkbox" checked={task.done} onChange={() => toggleTask(task.id)} className="w-4 h-4 rounded border-slate-300 text-blue-600 accent-blue-500" />
-                                                        <input value={task.text} onChange={(e) => updateTaskText(task.id, e.target.value)} placeholder="Task details..." className={`flex-1 text-sm bg-transparent focus:outline-none font-medium ${task.done ? 'text-slate-400 line-through' : 'text-slate-800'}`} />
-                                                        <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover/task:opacity-100 text-slate-300 hover:text-red-500"><Icons.Trash /></button>
+                                                {/* Milestones List */}
+                                                <div className="mt-4 pt-3 border-t border-slate-100">
+                                                    <div className="flex justify-between items-center mb-2">
+                                                        <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+                                                            <Icons.Flag className="text-amber-400 w-3 h-3" />
+                                                            Milestones
+                                                        </span>
+                                                        <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} disabled={modalData.phase.isLocked} className={`text-[10px] font-medium flex items-center gap-1 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed' : 'text-amber-600 hover:text-amber-800'}`}>
+                                                            <Icons.Plus /> Add Milestone
+                                                        </button>
                                                     </div>
-                                                    <div className="flex items-center gap-4 ml-7 mt-2">
-                                                        <div className="flex items-center gap-1.5 text-slate-400">
-                                                            <Icons.User className="w-3 h-3" />
-                                                            <input type="text" value={task.assignee || ''} onChange={(e) => updateTaskAssignee(task.id, e.target.value)} placeholder="Assign To..." className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-600 w-24 focus:border-blue-300" />
-                                                        </div>
-                                                        <div className="flex items-center gap-1.5 text-slate-400">
-                                                            <Icons.Calendar className="w-3 h-3" />
-                                                            <input type="date" value={toYMD(task.targetDate)} onChange={(e) => updateTaskTargetDate(task.id, e.target.value)} className="text-[10px] bg-white border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:border-blue-300" />
-                                                        </div>
+                                                    
+                                                    <div className="space-y-1">
+                                                        {(!modalData.phase.milestones || modalData.phase.milestones.length === 0) ? (
+                                                            <p className="text-xs text-slate-400 italic">No milestones added.</p>
+                                                        ) : (
+                                                            modalData.phase.milestones.map((m, mIdx) => (
+                                                                <div 
+                                                                    key={m.id} 
+                                                                    draggable={!modalData.phase.isLocked}
+                                                                    onDragStart={(e) => onDragStartMilestone(e, mIdx)}
+                                                                    onDragOver={(e) => onDragOverMilestone(e, mIdx)}
+                                                                    onDragEnd={onDragEndMilestone}
+                                                                    className={`flex items-center gap-2 group py-1 ${draggedMilestoneIndex === mIdx ? 'opacity-50' : ''}`}
+                                                                >
+                                                                    <div className={`w-4 flex justify-center text-slate-400 ${modalData.phase.isLocked ? 'opacity-0' : 'cursor-grab opacity-0 group-hover:opacity-100 hover:text-slate-600'}`}>
+                                                                        <Icons.Grip />
+                                                                    </div>
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={m.label || ''} 
+                                                                        disabled={modalData.phase.isLocked}
+                                                                        onChange={(e) => updatePhaseMilestoneLabel(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
+                                                                        placeholder="Milestone Name"
+                                                                        className={`flex-1 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
+                                                                    />
+                                                                    <input 
+                                                                        type="date" 
+                                                                        value={toYMD(m.date)} 
+                                                                        disabled={modalData.phase.isLocked}
+                                                                        onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)}
+                                                                        className={`w-32 text-xs border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
+                                                                    />
+                                                                    <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={modalData.phase.isLocked} className={`p-0.5 w-5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity'}`}>
+                                                                        <Icons.Trash />
+                                                                    </button>
+                                                                </div>
+                                                            ))
+                                                        )}
                                                     </div>
                                                 </div>
-                                            ))}
+
+                                            </div>
                                         </div>
                                     </div>
+
+                                    <div className="flex justify-between items-end mb-2 border-b border-slate-100 pb-1">
+                                        <div className="flex gap-2 w-full pr-7">
+                                            <span className="w-4"></span>
+                                            <span className="w-4"></span>
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-1">Description</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-24">Responsibility</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[180px] pl-2 text-center" title="Overall task span. Schedule specifics in Team View.">Overall Span</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1 pb-4">
+                                        {modalData.phase.tasks.length === 0 ? (
+                                            <p className="text-center text-sm text-slate-400 py-4 italic">No tasks added yet.</p>
+                                        ) : (
+                                            modalData.phase.tasks.map((task, tIdx) => (
+                                                <div 
+                                                    key={task.id} 
+                                                    draggable={!modalData.phase.isLocked}
+                                                    onDragStart={(e) => onDragStartTask(e, tIdx)}
+                                                    onDragOver={(e) => onDragOverTask(e, tIdx)}
+                                                    onDragEnd={onDragEndTask}
+                                                    className={`flex items-center gap-2 group py-1 hover:bg-slate-50 ${draggedTaskIndex === tIdx ? 'opacity-50' : ''}`}
+                                                >
+                                                    <div className={`w-4 flex justify-center text-slate-400 ${modalData.phase.isLocked ? 'opacity-0' : 'cursor-grab opacity-0 group-hover:opacity-100 hover:text-slate-600'}`}>
+                                                        <Icons.Grip />
+                                                    </div>
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={task.done} 
+                                                        disabled={modalData.phase.isLocked}
+                                                        onChange={() => toggleTask(task.id)}
+                                                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-50 cursor-pointer accent-blue-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                    />
+                                                    <input 
+                                                        value={task.text}
+                                                        disabled={modalData.phase.isLocked}
+                                                        onChange={(e) => updateTaskText(task.id, e.target.value)}
+                                                        placeholder="Task Description"
+                                                        className={`flex-1 text-sm bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                    />
+                                                    <input 
+                                                        value={task.assignee || ''}
+                                                        disabled={modalData.phase.isLocked}
+                                                        onChange={(e) => updateTaskAssignee(task.id, e.target.value)}
+                                                        placeholder="Unassigned"
+                                                        className={`w-24 text-xs bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none py-1 ${task.done ? 'text-slate-400' : 'text-slate-600'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                    />
+                                                    <div className="w-[180px] flex items-center justify-between pl-2 border-l border-slate-100" title="Auto-synced from Team View Allocations. Edit to overwrite all.">
+                                                        <input 
+                                                            type="date" 
+                                                            value={toYMD(task.start)} 
+                                                            disabled={modalData.phase.isLocked}
+                                                            onChange={(e) => updateTaskDates(task.id, e.target.value, toYMD(task.end))}
+                                                            className={`w-[80px] text-[10px] bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none text-slate-500 ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                        />
+                                                        <span className="text-[10px] text-slate-300 mx-0.5">-</span>
+                                                        <input 
+                                                            type="date" 
+                                                            value={toYMD(task.end)} 
+                                                            disabled={modalData.phase.isLocked}
+                                                            onChange={(e) => updateTaskDates(task.id, toYMD(task.start), e.target.value)}
+                                                            className={`w-[80px] text-[10px] bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none text-slate-500 ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                        />
+                                                    </div>
+                                                    <button onClick={() => deleteTask(task.id)} disabled={modalData.phase.isLocked} className={`w-5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity'}`}>
+                                                        <Icons.Trash />
+                                                    </button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                    <button onClick={addTask} disabled={modalData.phase.isLocked} className={`text-xs font-medium flex items-center gap-1 mt-2 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed' : 'text-blue-600 hover:text-blue-800'}`}>
+                                        <Icons.Plus /> Add Task
+                                    </button>
                                 </div>
-                                <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
-                                    <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold px-5 py-2 rounded-lg shadow-sm">Close Phase</button>
+                                
+                                {/* Modal Footer */}
+                                <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between">
+                                    <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-xs text-red-500 hover:text-red-700 font-medium">Delete Phase</button>
+                                    <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded shadow-sm">Done</button>
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    {/* Toast Notification */}
-                    {toast && (
-                        <div className="fixed bottom-6 right-6 bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-xl z-[100] flex items-center gap-2 text-sm font-medium animate-bounce">
-                            <span className="w-2 h-2 rounded-full bg-blue-400"></span>{toast}
-                        </div>
-                    )}
+                    {/* Team View Specific Modal (Sub-Tasks per Allocation Block) */}
+                    {teamModalData && (() => {
+                        const project = projects.find(p => p.id === teamModalData.projectId);
+                        const phase = project?.phases.find(ph => ph.id === teamModalData.phaseId);
+                        const task = phase?.tasks.find(t => t.id === teamModalData.taskId);
+                        const allocation = task?.allocations?.find(a => a.id === teamModalData.allocationId);
+                        
+                        if (!allocation) return null;
+
+                        return (
+                            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex justify-center items-center" onMouseDown={() => setTeamModalData(null)}>
+                                <div className="bg-white rounded-xl shadow-2xl w-[450px] max-w-full m-4 overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
+                                    {/* Header */}
+                                    <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(project.color, 1) }}>
+                                        <div>
+                                            <p className="text-xs opacity-80 font-medium uppercase mb-0.5 tracking-wider">{project.title} / {phase.title}</p>
+                                            <h2 className="text-lg font-bold">{task.text}</h2>
+                                        </div>
+                                        <button onClick={() => setTeamModalData(null)} className="p-1 hover:bg-black/10 rounded-full transition-colors"><Icons.X /></button>
+                                    </div>
+                                    
+                                    {/* Body */}
+                                    <div className="p-5 max-h-[60vh] overflow-y-auto">
+                                        <div className="text-xs text-slate-600 mb-5 bg-blue-50 border border-blue-100 p-3 rounded shadow-sm flex items-center justify-between">
+                                            <div>
+                                                <strong>Scheduled Block: </strong>
+                                                {formatDate(allocation.start)} ({allocation.start.getHours() < 12 ? 'AM' : 'PM'}) 
+                                                {" - "} 
+                                                {formatDate(allocation.end)} ({allocation.end.getHours() < 12 ? 'AM' : 'PM'})
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-between items-end mb-2 border-b border-slate-100 pb-2">
+                                            <h3 className="text-sm font-semibold text-slate-800">Daily Sub-Tasks</h3>
+                                            <span className="text-[10px] text-slate-400">Hidden from main project view</span>
+                                        </div>
+                                        
+                                        <div className="space-y-2">
+                                            {(!allocation.subTasks || allocation.subTasks.length === 0) ? (
+                                                <p className="text-sm text-slate-400 italic py-2 text-center">No sub-tasks added.</p>
+                                            ) : (
+                                                allocation.subTasks.map(sub => (
+                                                    <div key={sub.id} className="flex items-center gap-3 group border-b border-slate-50 pb-1">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={sub.done} 
+                                                            onChange={() => toggleSubTask(allocation.id, sub.id)} 
+                                                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
+                                                        />
+                                                        <input 
+                                                            value={sub.text} 
+                                                            onChange={(e) => updateSubTaskText(allocation.id, sub.id, e.target.value)} 
+                                                            className={`flex-1 text-sm bg-transparent border-b border-transparent focus:border-slate-300 focus:outline-none py-1 ${sub.done ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+                                                            placeholder="Sub-task details..."
+                                                        />
+                                                        <button onClick={() => deleteSubTask(allocation.id, sub.id)} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity">
+                                                            <Icons.Trash />
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                        <button onClick={() => addSubTask(allocation.id)} className="text-xs font-medium text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-4">
+                                            <Icons.Plus /> Add Sub-Task
+                                        </button>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-end">
+                                        <button onClick={() => setTeamModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-sm font-medium px-4 py-2 rounded shadow-sm">Done</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )
+                    })()}
+
                 </div>
             );
         };
