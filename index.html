@@ -256,6 +256,13 @@
                  }));
             };
 
+            const deleteProject = (projectId) => {
+                setProjects(projects.filter(p => p.id !== projectId));
+                if (modalData && modalData.projectId === projectId) {
+                    setModalData(null);
+                }
+            };
+
             const handleGridClick = (e, projectId, phaseId) => {
                 if (e.target !== e.currentTarget) return; // Prevent clicks falling through blocks
 
@@ -595,8 +602,11 @@
                                                     onChange={(e) => updateProjectTitle(project.id, e.target.value)}
                                                     className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate"
                                                 />
-                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600 mr-4" title="Add Phase">
+                                                <button onClick={() => addPhase(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-600" title="Add Phase">
                                                     <Icons.Plus />
+                                                </button>
+                                                <button onClick={() => deleteProject(project.id)} className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 mr-2" title="Delete Project">
+                                                    <Icons.Trash />
                                                 </button>
                                             </div>
 
