@@ -9,7 +9,18 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body { font-family: 'Inter', sans-serif; margin: 0; padding: 0; background-color: #f8fafc; overflow: hidden; overscroll-behavior-y: none; }
+        /* Mobile Viewport Lock: Prevents whole-page bouncing and lost headers on iOS/Android */
+        html, body { 
+            font-family: 'Inter', sans-serif; 
+            margin: 0; 
+            padding: 0; 
+            background-color: #f8fafc; 
+            overflow: hidden; 
+            width: 100%;
+            height: 100%;
+            position: fixed; 
+            overscroll-behavior-y: none;
+        }
         
         /* Mobile DnD & Touch Action */
         [draggable="true"] { touch-action: pan-y; } /* Allow scrolling on draggable items... */
@@ -269,6 +280,7 @@
             const [draggedPhase, setDraggedPhase] = useState(null);
             const [draggedTaskIndex, setDraggedTaskIndex] = useState(null);
             const [draggedMilestoneIndex, setDraggedMilestoneIndex] = useState(null);
+            const [draggedTeamMemberName, setDraggedTeamMemberName] = useState(null);
             
             // Team View Specific Drag State
             const [draggedTeamItem, setDraggedTeamItem] = useState(null);
@@ -426,6 +438,14 @@
                 const result = Array.from(assigneesMap.values()).sort((a, b) => {
                     if (a.name === 'Unassigned') return 1;
                     if (b.name === 'Unassigned') return -1;
+                    
+                    const indexA = teamMembers.indexOf(a.name);
+                    const indexB = teamMembers.indexOf(b.name);
+
+                    if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+                    if (indexA !== -1) return -1;
+                    if (indexB !== -1) return 1;
+
                     return a.name.localeCompare(b.name);
                 });
                 
@@ -437,7 +457,7 @@
                 });
 
                 return result;
-            }, [projects, viewMode, currentTeamWeekStart]);
+            }, [projects, viewMode, currentTeamWeekStart, teamMembers]);
 
             const undo = () => {
                 if (past.length === 0) return;
@@ -739,6 +759,40 @@
                 });
             };
 
+            // --- Drag and Drop Logic (Team View: Team Member Row Rearrangement) ---
+            const onDragStartTeamMember = (e, memberName) => {
+                e.stopPropagation();
+                if (memberName === 'Unassigned') {
+                    e.preventDefault();
+                    return;
+                }
+                setDraggedTeamMemberName(memberName);
+                e.dataTransfer.effectAllowed = "move";
+            };
+
+            const onDragOverTeamMember = (e, targetMemberName) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!draggedTeamMemberName || draggedTeamMemberName === targetMemberName || targetMemberName === 'Unassigned') return;
+
+                setTeamMembers(prev => {
+                    const newMembers = [...prev];
+                    const draggedIdx = newMembers.indexOf(draggedTeamMemberName);
+                    const targetIdx = newMembers.indexOf(targetMemberName);
+                    
+                    if (draggedIdx === -1 || targetIdx === -1) return prev;
+
+                    const [draggedItem] = newMembers.splice(draggedIdx, 1);
+                    newMembers.splice(targetIdx, 0, draggedItem);
+                    return newMembers;
+                });
+            };
+
+            const onDragEndTeamMember = (e) => {
+                e.stopPropagation();
+                setDraggedTeamMemberName(null);
+            };
+
             // --- Drag and Drop Logic (Team View: Allocations between Grids / Pools) ---
             const onDragStartTeamItem = (e, projectId, phaseId, task, allocationId, origStart, origEnd) => {
                 e.stopPropagation();
@@ -841,19 +895,41 @@
             // Block & Column Resizing/Dragging Logic
             const [draggingBlock, setDraggingBlock] = useState(null);
             const [isResizingCol, setIsResizingCol] = useState(false);
-            const lastInteractionRef = useRef({ isDragging: false, startX: 0 });
+            const lastInteractionRef = useRef({ isDragging: false, startX: 0, startY: 0 });
 
             useEffect(() => {
                 const handleMouseMove = (e) => {
                     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                    
                     if (isResizingCol) {
                         setLeftColWidth(Math.max(120, Math.min(800, clientX)));
                         return;
                     }
                     if (!draggingBlock) return;
                     
-                    if (Math.abs(clientX - draggingBlock.startX) > 3) {
-                        lastInteractionRef.current.isDragging = true;
+                    // Smart Intent Detection: Differentiate between "I want to scroll" and "I want to drag a block"
+                    if (!lastInteractionRef.current.isDragging) {
+                        const deltaX = clientX - draggingBlock.startX;
+                        const deltaY = clientY - draggingBlock.startY;
+                        
+                        // If moving mostly vertically, cancel block drag to allow native page scroll
+                        if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
+                            setDraggingBlock(null);
+                            return;
+                        }
+                        
+                        // If moving mostly horizontally, lock into custom drag mode
+                        if (Math.abs(deltaX) > 5) {
+                            lastInteractionRef.current.isDragging = true;
+                        } else {
+                            return; // Wait for further movement
+                        }
+                    }
+
+                    // Prevent native scroll/refresh events only when actively dragging left/right
+                    if (lastInteractionRef.current.isDragging && e.cancelable) {
+                        e.preventDefault();
                     }
 
                     const deltaX = clientX - draggingBlock.startX;
@@ -994,16 +1070,16 @@
                     window.removeEventListener('touchend', handleMouseUp);
                 };
             }, [draggingBlock, zoomLevel, isResizingCol]);
-
-            const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd, taskId = null, allocationId = null) => {
-                if(!e.touches) e.preventDefault(); // Prevent default only for mouse to avoid selecting text, allow touch to pass slightly
+                const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd, taskId = null, allocationId = null) => {
+                if(!e.touches) e.preventDefault(); // Prevent default only for mouse to avoid selecting text
                 e.stopPropagation();
                 
                 const phase = projects.find(p => p.id === projectId)?.phases.find(ph => ph.id === phaseId);
                 if (phase?.isLocked) return;
 
                 const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-                lastInteractionRef.current = { isDragging: false, startX: clientX };
+                const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+                lastInteractionRef.current = { isDragging: false, startX: clientX, startY: clientY };
                 dragStartProjects.current = projects;
 
                 let blocksToMove = [];
@@ -1338,7 +1414,7 @@
             const activeProject = modalData ? projects.find(p => p.id === modalData.projectId) : null;
 
             return (
-                <div className="flex flex-col h-screen bg-slate-50">
+                <div className="flex flex-col h-[100dvh] w-full absolute inset-0 overflow-hidden bg-slate-50">
                     <datalist id="standard-phases-list">
                         {STANDARD_TEMPLATE_PHASES.map((p, i) => <option key={i} value={p.title} />)}
                         <option value="Client Handover" />
@@ -1414,7 +1490,7 @@
                         /* ========================================= */
                         /* PROJECTS VIEW               */
                         /* ========================================= */
-                        <div className="flex-1 overflow-auto bg-white relative" ref={scrollContainerRef}>
+                        <div className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
                             <div className="relative min-w-full w-max min-h-full">
                                 
                                 {/* Grid Background */}
@@ -1558,7 +1634,7 @@
                                                                         onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                         onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                         onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                        className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block touch-none 
+                                                                        className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block 
                                                                             ${isCompleted ? 'completed-block' : ''} 
                                                                             ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
                                                                             ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
@@ -1681,7 +1757,7 @@
                                                                     onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                     onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                     onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                    className={`absolute top-[8px] md:top-[6px] h-[32px] md:h-[28px] rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block touch-none 
+                                                                    className={`absolute top-[8px] md:top-[6px] h-[32px] md:h-[28px] rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block 
                                                                         ${isCompleted ? 'completed-block' : ''}
                                                                         ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
                                                                         ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
@@ -1776,7 +1852,7 @@
                             </div>
 
                             {/* TEAM GRID AREA */}
-                            <div className="flex-1 overflow-auto bg-white relative" ref={scrollContainerRef}>
+                            <div className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
                                 <div className="relative min-w-full w-max min-h-full flex flex-col">
                                     
                                     {/* HEADER ROW */}
@@ -1814,7 +1890,14 @@
                                     {/* CONTENT ROWS */}
                                     <div className="flex-1 pb-32">
                                         {teamViewData.map((assignee) => (
-                                            <div key={assignee.name} className="flex w-full border-b border-slate-200 group/teamrow items-stretch">
+                                            <div 
+                                                key={assignee.name} 
+                                                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
+                                                draggable={assignee.name !== 'Unassigned'}
+                                                onDragStart={(e) => onDragStartTeamMember(e, assignee.name)}
+                                                onDragOver={(e) => onDragOverTeamMember(e, assignee.name)}
+                                                onDragEnd={onDragEndTeamMember}
+                                            >
                                                 {/* Left Cell: Assignee & Pool */}
                                                 <div 
                                                     className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-colors border-r border-slate-300 flex flex-col p-3 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" 
@@ -1829,7 +1912,10 @@
                                                     }}
                                                 >
                                                     <div className="flex items-center justify-between mb-3 w-full gap-2">
-                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                        <div className="flex items-center gap-2 overflow-hidden">
+                                                            <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 ${assignee.name === 'Unassigned' ? 'hidden' : ''}`}>
+                                                                <Icons.Grip />
+                                                            </div>
                                                             <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
                                                                 {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
                                                             </div>
