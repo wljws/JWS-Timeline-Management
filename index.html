@@ -463,6 +463,35 @@
                 }
             };
 
+            const handleRemoveTeamMember = (memberName) => {
+                // Remove from explicit list
+                setTeamMembers(prev => prev.filter(m => m !== memberName));
+                
+                // Unassign their tasks
+                let hasChanges = false;
+                const nextProjects = projects.map(p => {
+                    let pChanged = false;
+                    const nextPhases = p.phases.map(ph => {
+                        let phChanged = false;
+                        const nextTasks = ph.tasks.map(t => {
+                            if (t.assignee === memberName) {
+                                phChanged = true;
+                                return { ...t, assignee: '' }; // '' maps to 'Unassigned'
+                            }
+                            return t;
+                        });
+                        if (phChanged) pChanged = true;
+                        return phChanged ? { ...ph, tasks: nextTasks } : ph;
+                    });
+                    if (pChanged) hasChanges = true;
+                    return pChanged ? { ...p, phases: nextPhases } : p;
+                });
+
+                if (hasChanges) {
+                    updateProjects(nextProjects);
+                }
+            };
+
             // --- Cloud Export / Import Handlers ---
             const saveToCloud = async () => {
                 setIsSaving(true);
@@ -470,7 +499,7 @@
                     const response = await fetch('/api/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ projects })
+                        body: JSON.stringify({ projects, teamMembers })
                     });
                     if (!response.ok) throw new Error('Network response was not ok');
                     alert('Successfully saved to cloud!');
@@ -488,6 +517,10 @@
                     const response = await fetch('/api/load');
                     const data = await response.json();
                     
+                    if (data.teamMembers && Array.isArray(data.teamMembers)) {
+                        setTeamMembers(data.teamMembers);
+                    }
+
                     if (data.projects && Array.isArray(data.projects)) {
                         const processedProjects = data.projects.map(p => ({
                             ...p,
@@ -1795,13 +1828,20 @@
                                                         onDropTeamPool(e, assignee.name);
                                                     }}
                                                 >
-                                                    <div className="flex items-center gap-3 mb-3">
-                                                        <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
-                                                            {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
+                                                    <div className="flex items-center justify-between mb-3 w-full gap-2">
+                                                        <div className="flex items-center gap-3 overflow-hidden">
+                                                            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
+                                                                {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <h3 className={`font-bold text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
+                                                                {assignee.name}
+                                                            </h3>
                                                         </div>
-                                                        <h3 className={`font-bold text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
-                                                            {assignee.name}
-                                                        </h3>
+                                                        {assignee.name !== 'Unassigned' && (
+                                                            <button onClick={() => handleRemoveTeamMember(assignee.name)} className="opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity shrink-0" title="Remove Team Member & Unassign Tasks">
+                                                                <Icons.Trash />
+                                                            </button>
+                                                        )}
                                                     </div>
 
                                                     <div className="flex flex-col gap-1.5 flex-1">
@@ -2100,13 +2140,21 @@
                                                         />
                                                     </div>
                                                     <div className="flex items-center justify-between w-full md:w-auto pl-12 md:pl-0 mt-2 md:mt-0 gap-2">
-                                                        <input 
+                                                        <select 
                                                             value={task.assignee || ''}
                                                             disabled={modalData.phase.isLocked}
                                                             onChange={(e) => updateTaskAssignee(task.id, e.target.value)}
-                                                            placeholder="Assignee"
-                                                            className={`w-32 md:w-24 text-sm md:text-xs bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent focus:border-slate-300 rounded md:rounded-none px-2 py-1 md:p-1 focus:outline-none ${task.done ? 'text-slate-400' : 'text-slate-600'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                                        />
+                                                            className={`w-32 md:w-28 text-sm md:text-xs bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent focus:border-slate-300 rounded md:rounded-none px-2 py-1 md:p-1 focus:outline-none ${task.done ? 'text-slate-400' : 'text-slate-600'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                                        >
+                                                            <option value="">Unassigned</option>
+                                                            {teamMembers.map(member => (
+                                                                <option key={member} value={member}>{member}</option>
+                                                            ))}
+                                                            {/* Fallback for existing manually typed assignees not in the master list */}
+                                                            {task.assignee && !teamMembers.includes(task.assignee) && (
+                                                                <option value={task.assignee}>{task.assignee}</option>
+                                                            )}
+                                                        </select>
                                                         <div className="flex-1 md:w-[180px] flex flex-col md:flex-row items-center md:justify-between md:pl-2 md:border-l border-slate-100 gap-1 md:gap-0" title="Auto-synced from Team View Allocations. Edit to overwrite all.">
                                                             <div className="flex items-center w-full justify-between">
                                                                 <input 
