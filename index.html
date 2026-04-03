@@ -144,6 +144,16 @@
 <body>
     <div id="root"></div>
 
+    <script type="module">
+        // Load Firebase using native modules to bypass Babel standalone 'require' transpilation errors
+        window.importFirebase = async function() {
+            const app = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
+            const auth = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
+            const firestore = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            return Object.assign({}, app, auth, firestore);
+        };
+    </script>
+
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -201,6 +211,7 @@
             ChevronRight: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"></path></svg>,
             ChevronDown: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"></path></svg>,
             ChevronLeft: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"></path></svg>,
+            Target: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>,
             Grip: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="text-slate-400 hover:text-slate-600"><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="5" r="1"></circle><circle cx="9" cy="19" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="5" r="1"></circle><circle cx="15" cy="19" r="1"></circle></svg>,
             Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>,
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
@@ -300,6 +311,44 @@
             // Cloud Saving/Loading States
             const [isSaving, setIsSaving] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
+
+            // Firebase State
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [user, setUser] = useState(null);
+
+            useEffect(() => {
+                const setupFirebase = async () => {
+                    try {
+                        if (!window.importFirebase) return;
+                        const fb = await window.importFirebase();
+                        
+                        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+                        const app = fb.initializeApp(firebaseConfig);
+                        const authInstance = fb.getAuth(app);
+                        const dbInstance = fb.getFirestore(app);
+                        
+                        // Store in global window variable for save/load functions to securely access without Babel issues
+                        window.fbTools = fb; 
+                        
+                        setDb(dbInstance);
+                        setAuth(authInstance);
+
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await fb.signInWithCustomToken(authInstance, __initial_auth_token);
+                        } else {
+                            await fb.signInAnonymously(authInstance);
+                        }
+
+                        fb.onAuthStateChanged(authInstance, (u) => {
+                            setUser(u);
+                        });
+                    } catch (e) {
+                        console.error("Firebase init error", e);
+                    }
+                };
+                setupFirebase();
+            }, []);
             
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
@@ -318,7 +367,7 @@
 
             // Team View bounds
             const [currentTeamWeekStart, setCurrentTeamWeekStart] = useState(() => {
-                const d = new Date(today);
+                const d = new Date(timelineStart); // Default to timelineStart so loaded tasks are immediately visible
                 const day = d.getDay();
                 const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
                 return new Date(d.setDate(diff));
@@ -326,6 +375,21 @@
 
             const prevWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, -7));
             const nextWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, 7));
+            
+            const jumpToEarliestTask = () => {
+                let earliest = null;
+                projects.forEach(p => p.phases.forEach(ph => ph.tasks.forEach(t => {
+                    if (t.allocations) {
+                        t.allocations.forEach(a => {
+                            if (a.start && (!earliest || a.start < earliest)) earliest = a.start;
+                        });
+                    }
+                })));
+                const d = new Date(earliest || timelineStart);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+                setCurrentTeamWeekStart(new Date(d.setDate(diff)));
+            };
 
             // Undo/Redo
             const [past, setPast] = useState([]);
@@ -514,63 +578,73 @@
 
             // --- Cloud Export / Import Handlers ---
             const saveToCloud = async () => {
+                if (!user || !db || !window.fbTools) return alert("Storage connection not ready yet.");
                 setIsSaving(true);
                 try {
-                    const response = await fetch('/api/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ projects, teamMembers })
+                    const { doc, setDoc } = window.fbTools;
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
+                    
+                    await setDoc(docRef, { 
+                        projects: JSON.stringify(projects), 
+                        teamMembers: teamMembers 
                     });
-                    if (!response.ok) throw new Error('Network response was not ok');
                     alert('Successfully saved to cloud!');
                 } catch (err) {
                     console.error("Failed to save", err);
-                    alert('Failed to save to cloud. Ensure your Vercel KV backend is setup correctly.');
+                    alert("Failed to save: " + err.message);
                 } finally {
                     setIsSaving(false);
                 }
             };
 
             const loadFromCloud = async () => {
+                if (!user || !db || !window.fbTools) return alert("Storage connection not ready yet.");
                 setIsLoading(true);
                 try {
-                    const response = await fetch('/api/load');
-                    const data = await response.json();
+                    const { doc, getDoc } = window.fbTools;
+                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
+                    const snap = await getDoc(docRef);
                     
-                    if (data.teamMembers && Array.isArray(data.teamMembers)) {
-                        setTeamMembers(data.teamMembers);
-                    }
+                    if (snap.exists()) {
+                        const data = snap.data();
+                        if (data.teamMembers && Array.isArray(data.teamMembers)) {
+                            setTeamMembers(data.teamMembers);
+                        }
 
-                    if (data.projects && Array.isArray(data.projects)) {
-                        const processedProjects = data.projects.map(p => ({
-                            ...p,
-                            phases: p.phases.map(ph => ({
-                                ...ph,
-                                start: ph.start ? new Date(ph.start) : null,
-                                end: ph.end ? new Date(ph.end) : null,
-                                milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
-                                tasks: (ph.tasks || []).map(t => {
-                                    const safeAllocations = (t.allocations || []).length > 0 
-                                        ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-                                        : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-                                        
-                                    return { 
-                                        ...t, 
-                                        start: t.start ? new Date(t.start) : null, 
-                                        end: t.end ? new Date(t.end) : null,
-                                        allocations: safeAllocations
-                                    }
-                                })
-                            }))
-                        }));
-                        updateProjects(processedProjects);
-                        alert('Successfully loaded from cloud!');
+                        if (data.projects) {
+                            const parsedProjects = JSON.parse(data.projects);
+                            const processedProjects = parsedProjects.map(p => ({
+                                ...p,
+                                phases: p.phases.map(ph => ({
+                                    ...ph,
+                                    start: ph.start ? new Date(ph.start) : null,
+                                    end: ph.end ? new Date(ph.end) : null,
+                                    milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                                    tasks: (ph.tasks || []).map(t => {
+                                        const safeAllocations = (t.allocations || []).length > 0 
+                                            ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                            : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                            
+                                        return { 
+                                            ...t, 
+                                            start: t.start ? new Date(t.start) : null, 
+                                            end: t.end ? new Date(t.end) : null,
+                                            allocations: safeAllocations
+                                        }
+                                    })
+                                }))
+                            }));
+                            updateProjects(processedProjects);
+                            alert('Successfully loaded from cloud!');
+                        }
                     } else {
                         alert('No saved data found in cloud.');
                     }
                 } catch (err) {
                     console.error("Failed to load", err);
-                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
+                    alert("Failed to load: " + err.message);
                 } finally {
                     setIsLoading(false);
                 }
@@ -1070,7 +1144,8 @@
                     window.removeEventListener('touchend', handleMouseUp);
                 };
             }, [draggingBlock, zoomLevel, isResizingCol]);
-                const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd, taskId = null, allocationId = null) => {
+
+            const handleBlockMouseDown = (e, projectId, phaseId, type, origStart, origEnd, taskId = null, allocationId = null) => {
                 if(!e.touches) e.preventDefault(); // Prevent default only for mouse to avoid selecting text
                 e.stopPropagation();
                 
@@ -1260,6 +1335,42 @@
                 });
             };
 
+            const onDragStartMilestone = (e, index) => {
+                e.stopPropagation();
+                dragStartProjects.current = projects;
+                setDraggedMilestoneIndex(index);
+                e.dataTransfer.effectAllowed = "move";
+            };
+            
+            const onDragOverMilestone = (e, targetIndex) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (draggedMilestoneIndex === null || draggedMilestoneIndex === targetIndex) return;
+                
+                const newMilestones = [...(modalData.phase.milestones || [])];
+                const [draggedItem] = newMilestones.splice(draggedMilestoneIndex, 1);
+                newMilestones.splice(targetIndex, 0, draggedItem);
+                
+                setModalData(prev => ({ ...prev, phase: { ...prev.phase, milestones: newMilestones }}));
+                setProjects(prev => prev.map(p => p.id === modalData.projectId ? {
+                    ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, milestones: newMilestones } : ph)
+                } : p));
+                
+                setDraggedMilestoneIndex(targetIndex);
+            };
+            
+            const onDragEndMilestone = (e) => {
+                e.stopPropagation();
+                setDraggedMilestoneIndex(null);
+                setProjects(current => {
+                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                        setPast(p => [...p, dragStartProjects.current]);
+                        setFuture([]);
+                    }
+                    return current;
+                });
+            };
+
             const toggleTask = (taskId) => {
                 const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
                 updateTasksInState(updatedTasks);
@@ -1422,41 +1533,41 @@
                     </datalist>
 
                     {/* Header */}
-                    <div className="flex-shrink-0 bg-slate-900 text-white p-3 md:p-4 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-3">
-                        <div className="w-full text-center lg:text-left">
+                    <div className="flex-shrink-0 bg-slate-900 text-white px-2 py-1.5 md:px-4 md:py-2 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-1.5 md:gap-2">
+                        <div className="w-full text-center lg:text-left flex flex-col justify-center">
                             <input 
                                 type="text" 
                                 value={appTitle} 
                                 onChange={(e) => setAppTitle(e.target.value)}
-                                className="bg-transparent text-lg md:text-xl font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-full md:w-96 text-center lg:text-left"
+                                className="bg-transparent text-base md:text-lg font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-full md:w-80 text-center lg:text-left leading-tight"
                             />
-                            <p className="text-slate-400 text-xs mt-1">Interior Design Timeline & Task Management</p>
+                            <p className="text-slate-400 text-[9px] md:text-[10px] hidden md:block">Interior Design Timeline & Task Management</p>
                         </div>
-                        <div className="flex flex-wrap items-center justify-center lg:justify-end gap-2 w-full">
+                        <div className="flex flex-wrap items-center justify-center lg:justify-end gap-1.5 w-full">
                             
                             {/* View Toggle */}
-                            <div className="flex bg-slate-800 rounded p-1">
-                                <button onClick={() => setViewMode('projects')} className={`px-2 md:px-3 py-1 md:py-1.5 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 md:gap-1.5 ${viewMode === 'projects' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+                            <div className="flex bg-slate-800 rounded p-0.5">
+                                <button onClick={() => setViewMode('projects')} className={`px-2 py-1 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 ${viewMode === 'projects' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
                                     <Icons.Layout className="w-3 h-3"/> Projects
                                 </button>
-                                <button onClick={() => setViewMode('team')} className={`px-2 md:px-3 py-1 md:py-1.5 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 md:gap-1.5 ${viewMode === 'team' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+                                <button onClick={() => setViewMode('team')} className={`px-2 py-1 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 ${viewMode === 'team' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
                                     <Icons.Users className="w-3 h-3"/> Team View
                                 </button>
                             </div>
 
                             {/* Cloud Save / Load */}
-                            <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 md:px-2 py-1">
+                            <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
                                 <button onClick={saveToCloud} disabled={isSaving || isLoading} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Save to Cloud">
                                     {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} <span className="hidden md:inline">Save</span>
                                 </button>
-                                <div className="w-px h-4 bg-slate-600 mx-0.5 md:mx-1"></div>
+                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
                                 <button onClick={loadFromCloud} disabled={isSaving || isLoading} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Load from Cloud">
                                     {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} <span className="hidden md:inline">Load</span>
                                 </button>
                             </div>
 
                             {/* Undo / Redo */}
-                            <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 md:px-2 py-1">
+                            <div className="flex items-center gap-0.5 bg-slate-800 rounded px-1 py-0.5">
                                 <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo">
                                     <Icons.Undo />
                                 </button>
@@ -1466,18 +1577,18 @@
                             </div>
 
                             {viewMode === 'projects' && (
-                                <div className="flex items-center gap-2 mt-2 lg:mt-0">
-                                    <button onClick={scrollToToday} className="text-[10px] md:text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-2 md:px-3 py-1 md:py-1.5 transition-colors font-medium">
+                                <div className="flex items-center gap-1.5 md:gap-2">
+                                    <button onClick={scrollToToday} className="text-[10px] md:text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-2 py-1 transition-colors font-medium">
                                         Today
                                     </button>
-                                    <div className="flex items-center gap-1 md:gap-2">
-                                        <span className="text-[10px] md:text-xs text-slate-400 hidden md:inline">Zoom</span>
+                                    <div className="flex items-center gap-1">
+                                        <span className="text-[9px] md:text-[10px] text-slate-400 hidden md:inline uppercase font-bold tracking-wider">Zoom</span>
                                         <input 
-                                            type="range" min="20" max="100" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))}
-                                            className="w-16 md:w-24 accent-blue-500"
+                                            type="range" min="5" max="100" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))}
+                                            className="w-16 md:w-20 accent-blue-500"
                                         />
                                     </div>
-                                    <button onClick={addProject} className="flex items-center gap-1 md:gap-2 bg-blue-600 hover:bg-blue-500 px-2 md:px-4 py-1 md:py-2 rounded text-[10px] md:text-sm font-medium transition-colors ml-1 md:ml-2">
+                                    <button onClick={addProject} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-2 md:px-3 py-1 rounded text-[10px] md:text-xs font-medium transition-colors">
                                         <Icons.Plus /> Add Project
                                     </button>
                                 </div>
@@ -1536,8 +1647,8 @@
                                         </div>
                                         <div className="flex h-[28px] bg-white text-[10px] text-slate-500 font-medium">
                                             {weeks.map((w, i) => (
-                                                <div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50" style={{ width: 7 * zoomLevel }}>
-                                                    {w.label}
+                                                <div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1" style={{ width: 7 * zoomLevel }}>
+                                                    <span className="truncate">{w.label}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -1634,7 +1745,7 @@
                                                                         onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                         onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                         onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                        className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block 
+                                                                        className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block touch-none 
                                                                             ${isCompleted ? 'completed-block' : ''} 
                                                                             ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
                                                                             ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
@@ -1757,7 +1868,7 @@
                                                                     onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                     onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end)}
                                                                     onClick={(e) => handleBlockClick(e, project.id, phase, colorIndex)}
-                                                                    className={`absolute top-[8px] md:top-[6px] h-[32px] md:h-[28px] rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block 
+                                                                    className={`absolute top-[8px] md:top-[6px] h-[32px] md:h-[28px] rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block touch-none 
                                                                         ${isCompleted ? 'completed-block' : ''}
                                                                         ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''}
                                                                         ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
@@ -1839,16 +1950,18 @@
                         /* ========================================= */
                         <div className="flex-1 flex flex-col overflow-hidden bg-slate-100/50">
                             {/* Team Planner Header Bar */}
-                            <div className="flex-shrink-0 flex flex-col md:flex-row justify-between items-center bg-white border-b border-slate-200 p-2 md:p-3 shadow-sm z-10 gap-2">
+                            <div className="flex-shrink-0 flex flex-col md:flex-row justify-between items-center bg-white border-b border-slate-200 p-1.5 md:p-2 shadow-sm z-10 gap-1.5">
                                 <div className="text-xs md:text-sm font-bold text-slate-700 w-full md:w-64 text-center md:text-left">Team Weekly Task Planner</div>
-                                <div className="flex items-center justify-center gap-2 md:gap-4 bg-slate-50 border border-slate-200 rounded px-2 py-1 shadow-sm w-full md:w-auto">
-                                    <button onClick={prevWeek} className="p-2 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronLeft /></button>
-                                    <div className="font-semibold text-xs md:text-sm text-slate-800 w-40 md:w-48 text-center uppercase tracking-wide">
+                                <div className="flex items-center justify-center gap-1 md:gap-3 bg-slate-50 border border-slate-200 rounded px-1 md:px-2 py-0.5 md:py-1 shadow-sm w-full md:w-auto">
+                                    <button onClick={jumpToEarliestTask} className="p-1 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors" title="Jump to Tasks"><Icons.Target /></button>
+                                    <div className="w-px h-3 md:h-4 bg-slate-300 mx-0.5 md:mx-1"></div>
+                                    <button onClick={prevWeek} className="p-1 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronLeft /></button>
+                                    <div className="font-semibold text-[11px] md:text-sm text-slate-800 w-32 md:w-48 text-center uppercase tracking-wide">
                                         {formatDate(currentTeamWeekStart)} - {formatDate(addDays(currentTeamWeekStart, 4))}
                                     </div>
-                                    <button onClick={nextWeek} className="p-2 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronRight /></button>
+                                    <button onClick={nextWeek} className="p-1 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronRight /></button>
                                 </div>
-                                <div className="w-full md:w-64 text-center md:text-right text-[10px] md:text-[11px] text-slate-400">Hold 0.3s to drag. Snap to Half-Days. Click to add sub-tasks.</div>
+                                <div className="w-full md:w-64 text-center md:text-right text-[9px] md:text-[10px] text-slate-400">Hold 0.3s to drag. Snap to Half-Days. Click to add sub-tasks.</div>
                             </div>
 
                             {/* TEAM GRID AREA */}
@@ -1889,11 +2002,15 @@
 
                                     {/* CONTENT ROWS */}
                                     <div className="flex-1 pb-32">
-                                        {teamViewData.map((assignee) => (
+                                        {teamViewData.map((assignee) => {
+                                            const memberObj = teamMembers.find(m => (m.name || m) === assignee.name);
+                                            const isLocked = memberObj ? memberObj.isLocked : false;
+
+                                            return (
                                             <div 
                                                 key={assignee.name} 
                                                 className={`flex w-full border-b border-slate-200 group/teamrow items-stretch ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
-                                                draggable={assignee.name !== 'Unassigned'}
+                                                draggable={assignee.name !== 'Unassigned' && !isLocked}
                                                 onDragStart={(e) => onDragStartTeamMember(e, assignee.name)}
                                                 onDragOver={(e) => onDragOverTeamMember(e, assignee.name)}
                                                 onDragEnd={onDragEndTeamMember}
@@ -1913,7 +2030,7 @@
                                                 >
                                                     <div className="flex items-center justify-between mb-3 w-full gap-2">
                                                         <div className="flex items-center gap-2 overflow-hidden">
-                                                            <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 ${assignee.name === 'Unassigned' ? 'hidden' : ''}`}>
+                                                            <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
                                                                 <Icons.Grip />
                                                             </div>
                                                             <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
@@ -1924,9 +2041,14 @@
                                                             </h3>
                                                         </div>
                                                         {assignee.name !== 'Unassigned' && (
-                                                            <button onClick={() => handleRemoveTeamMember(assignee.name)} className="opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity shrink-0" title="Remove Team Member & Unassign Tasks">
-                                                                <Icons.Trash />
-                                                            </button>
+                                                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0">
+                                                                <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>
+                                                                    {isLocked ? <Icons.Lock /> : <Icons.Unlock />}
+                                                                </button>
+                                                                <button onClick={() => handleRemoveTeamMember(assignee.name)} className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0" title="Remove Team Member & Unassign Tasks">
+                                                                    <Icons.Trash />
+                                                                </button>
+                                                            </div>
                                                         )}
                                                     </div>
 
@@ -2036,7 +2158,7 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))}
+                                        )})}
 
                                         {/* Add Team Member Row */}
                                         <div className="flex w-full mt-4 mb-8">
@@ -2233,11 +2355,12 @@
                                                             className={`w-32 md:w-28 text-sm md:text-xs bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent focus:border-slate-300 rounded md:rounded-none px-2 py-1 md:p-1 focus:outline-none ${task.done ? 'text-slate-400' : 'text-slate-600'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                                         >
                                                             <option value="">Unassigned</option>
-                                                            {teamMembers.map(member => (
-                                                                <option key={member} value={member}>{member}</option>
-                                                            ))}
+                                                            {teamMembers.map(memberObj => {
+                                                                const mName = memberObj.name || memberObj;
+                                                                return <option key={mName} value={mName}>{mName}</option>
+                                                            })}
                                                             {/* Fallback for existing manually typed assignees not in the master list */}
-                                                            {task.assignee && !teamMembers.includes(task.assignee) && (
+                                                            {task.assignee && !teamMembers.find(m => (m.name || m) === task.assignee) && (
                                                                 <option value={task.assignee}>{task.assignee}</option>
                                                             )}
                                                         </select>
