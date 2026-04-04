@@ -554,10 +554,10 @@
                 }
             };
 
-            // --- Vercel KV Upstash Export / Import Handlers with UI Context preservation and LocalStorage Fallback ---
+            // --- Vercel KV Upstash Export / Import Handlers with Full State Persistence ---
             const saveToCloud = async () => {
                 setIsSaving(true);
-                const payload = {
+                const appState = {
                     projects,
                     teamMembers,
                     viewMode,
@@ -569,13 +569,15 @@
                     const response = await fetch('/api/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+                        body: JSON.stringify(appState)
                     });
-                    if (!response.ok) throw new Error('Network error');
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    // Store a local backup to safeguard team members against restrictive KV endpoints
+                    localStorage.setItem('timeline_data', JSON.stringify(appState));
                     alert('Successfully saved to cloud!');
                 } catch (err) {
                     console.warn("Cloud save failed, falling back to LocalStorage.", err);
-                    localStorage.setItem('timeline_data', JSON.stringify(payload));
+                    localStorage.setItem('timeline_data', JSON.stringify(appState));
                     alert('Saved locally! (Vercel KV backend not reachable or offline)');
                 } finally {
                     setIsSaving(false);
@@ -590,28 +592,51 @@
                         const response = await fetch('/api/load');
                         if (!response.ok) throw new Error('Network error');
                         data = await response.json();
+                        
+                        // If the backend drops non-project fields, restore them from local storage
+                        if (data && !data.teamMembers) {
+                            const local = localStorage.getItem('timeline_data');
+                            if (local) {
+                                const localData = JSON.parse(local);
+                                if (localData.teamMembers) data.teamMembers = localData.teamMembers;
+                                if (localData.viewMode) data.viewMode = localData.viewMode;
+                                if (localData.zoomLevel) data.zoomLevel = localData.zoomLevel;
+                                if (localData.currentTeamWeekStart) data.currentTeamWeekStart = localData.currentTeamWeekStart;
+                            }
+                        }
                     } catch (err) {
                         const local = localStorage.getItem('timeline_data');
                         if (local) {
                             data = JSON.parse(local);
                             console.warn("Loaded from LocalStorage.");
                         } else {
-                            throw new Error('No saved data found in Cloud or LocalStorage.');
+                            throw new Error('No saved data found.');
                         }
                     }
                     
                     if (data) {
-                        // Restore precise UI contexts
+                        // Restore precise UI Contexts
                         if (data.viewMode) setViewMode(data.viewMode);
                         if (data.zoomLevel) setZoomLevel(data.zoomLevel);
                         if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
 
-                        if (data.teamMembers && Array.isArray(data.teamMembers)) {
-                            setTeamMembers(data.teamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                        // Safely parse Team Members
+                        let parsedTeamMembers = data.teamMembers;
+                        if (typeof parsedTeamMembers === 'string') {
+                            try { parsedTeamMembers = JSON.parse(parsedTeamMembers); } catch(e) {}
+                        }
+                        if (Array.isArray(parsedTeamMembers)) {
+                            setTeamMembers(parsedTeamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
                         }
 
-                        if (data.projects && Array.isArray(data.projects)) {
-                            const processedProjects = data.projects.map(p => ({
+                        // Safely parse Projects
+                        let parsedProjects = data.projects;
+                        if (typeof parsedProjects === 'string') {
+                            try { parsedProjects = JSON.parse(parsedProjects); } catch(e) {}
+                        }
+
+                        if (Array.isArray(parsedProjects)) {
+                            const processedProjects = parsedProjects.map(p => ({
                                 ...p,
                                 phases: p.phases.map(ph => ({
                                     ...ph,
@@ -645,7 +670,7 @@
                     }
                 } catch (err) {
                     console.error("Failed to load", err);
-                    alert(err.message);
+                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
                 } finally {
                     setIsLoading(false);
                 }
