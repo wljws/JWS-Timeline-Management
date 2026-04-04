@@ -2221,28 +2221,28 @@
                                                     <div className="absolute inset-0 flex">
                                                         {/* Task Pool Column */}
                                                         <div className="flex-1 flex flex-col p-1.5 md:p-2 min-w-0 border-r border-slate-200">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1.5">
                                                                 <span>{assignee.pool.length} Unscheduled</span>
                                                             </div>
-                                                            <div className="flex flex-col gap-1 overflow-y-auto flex-1 pr-1 pb-1 custom-scrollbar">
+                                                            <div className="grid grid-cols-6 gap-1 overflow-y-auto flex-1 pr-1 pb-1 custom-scrollbar content-start">
                                                                 {assignee.pool.length === 0 ? (
-                                                                    <div className="text-[10px] text-slate-400 italic py-1 text-center">Drop tasks here</div>
+                                                                    <div className="text-[10px] text-slate-400 italic py-1 text-center col-span-6">Drop tasks here</div>
                                                                 ) : (
                                                                     assignee.pool.map(item => {
                                                                         const poolBgColor = getPhaseColor(item.project.color, 0); 
                                                                         return (
                                                                         <div 
                                                                             key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
-                                                                            className="text-white rounded p-1.5 cursor-grab hover:shadow-md transition-shadow shadow-sm flex flex-col shrink-0"
+                                                                            className="text-white rounded p-1 cursor-grab hover:shadow-md transition-shadow shadow-sm flex flex-col justify-center overflow-hidden h-[28px]"
                                                                             style={{ backgroundColor: poolBgColor }}
                                                                             draggable
                                                                             onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
                                                                             onDragEnd={() => setDraggedTeamItem(null)}
                                                                         >
-                                                                            <div className="font-bold truncate text-[11px] drop-shadow-sm mb-[1px]" title={item.project.title}>
+                                                                            <div className="font-bold truncate text-[8px] drop-shadow-sm w-full leading-tight mb-[1px]" title={item.project.title}>
                                                                                 {item.project.title}
                                                                             </div>
-                                                                            <div className="truncate opacity-95 text-[9px] drop-shadow-sm" title={item.task.text}>
+                                                                            <div className="truncate opacity-95 text-[7px] drop-shadow-sm w-full leading-tight" title={item.task.text}>
                                                                                 {item.task.text}
                                                                             </div>
                                                                         </div>
