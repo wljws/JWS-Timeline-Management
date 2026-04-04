@@ -125,22 +125,33 @@
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@3.0.0-rc.0/default.css">
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@3.0.0-rc.0/index.min.js"></script>
-    <!-- Add html2canvas and jsPDF for PDF Export functionality -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose a stable API to the global scope for the React app to consume securely
+        window.firebaseAPI = {
+            initializeApp,
+            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, setDoc, getDoc, collection, onSnapshot
+        };
+        // Signal that the APIs are ready
+        window.dispatchEvent(new Event('firebaseLoaded'));
+    </script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
             var mdd = window.MobileDragDrop || window.mobileDragDrop;
             if (mdd) {
-                // holdToDrag: 300 allows users to scroll the page normally. 
-                // They must press and hold for 300ms to start a drag. CRITICAL for mobile UX.
                 mdd.polyfill({ 
                     holdToDrag: 300,
                     dragImageTranslateOverride: mdd.scrollBehaviourDragImageTranslateOverride 
                 });
             }
         });
-        // Prevent accidental scrolling while actively dragging elements
         window.addEventListener('touchmove', function() {}, {passive: false});
     </script>
 </head>
@@ -179,7 +190,6 @@
             return new Date(y, m-1, d);
         };
 
-        // Prevents Assignees from doing overlapping tasks
         const checkTeamOverlap = (projectsData, targetAssignees, start, end, excludeAllocId) => {
             if (!targetAssignees || targetAssignees.length === 0 || !start || !end) return false;
             for (const p of projectsData) {
@@ -217,6 +227,8 @@
             History: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>,
             Lock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0110 0v4"></path></svg>,
             Unlock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 019.9-1"></path></svg>,
+            CloudSync: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M22 10a3 3 0 00-3-3h-2.207a5.502 5.502 0 00-10.586 0H4a3 3 0 00-3 3v1h21v-1z"></path><path d="M12 11v8"></path><path d="M9 16l3 3 3-3"></path></svg>,
+            CloudCheck: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M9 13l2 2 4-4"></path></svg>,
             CloudUpload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 16V7"></path><path d="M8 11l4-4 4 4"></path></svg>,
             CloudDownload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 7v9"></path><path d="M8 12l4 4 4-4"></path></svg>,
             Download: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
@@ -275,29 +287,22 @@
 
         // --- Main Application Component ---
         const App = () => {
-            const [viewMode, setViewMode] = useState('projects'); // 'projects' or 'team'
-            
+            const [viewMode, setViewMode] = useState('projects'); 
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
             const [zoomLevel, setZoomLevel] = useState(40); 
-            // Better mobile & split-column default width
             const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
             
-            // Drag states
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             const [draggedPhase, setDraggedPhase] = useState(null);
             const [draggedTaskIndex, setDraggedTaskIndex] = useState(null);
             const [draggedMilestoneIndex, setDraggedMilestoneIndex] = useState(null);
             const [draggedTeamMemberName, setDraggedTeamMemberName] = useState(null);
-            
-            // Team View Specific Drag State
             const [draggedTeamItem, setDraggedTeamItem] = useState(null);
             
-            // Multi-Select State
             const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
             const [openDropdownId, setOpenDropdownId] = useState(null);
             
-            // Team Members State
             const [teamMembers, setTeamMembers] = useState([
                 { name: 'Alice Design', isLocked: false },
                 { name: 'Bob Builder', isLocked: false }
@@ -305,19 +310,25 @@
             const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
             const [newTeamMemberName, setNewTeamMemberName] = useState('');
             
-            // Modal States
             const [modalData, setModalData] = useState(null);
             const [teamModalData, setTeamModalData] = useState(null); 
             
-            // Cloud Saving/Loading/Export States
-            const [isSaving, setIsSaving] = useState(false);
-            const [isLoading, setIsLoading] = useState(false);
             const [isExporting, setIsExporting] = useState(false);
-
-            // History Backup States
+            const [syncStatus, setSyncStatus] = useState('Connecting...'); 
             const [saveHistory, setSaveHistory] = useState([]);
             const [showHistoryModal, setShowHistoryModal] = useState(false);
             const [confirmRestoreIdx, setConfirmRestoreIdx] = useState(null);
+
+            // Undo/Redo and Drag references
+            const [past, setPast] = useState([]);
+            const [future, setFuture] = useState([]);
+            const dragStartProjects = useRef(null);
+
+            // Firebase Multiplayer State
+            const [fbAPI, setFbAPI] = useState(null);
+            const [db, setDb] = useState(null);
+            const [user, setUser] = useState(null);
+            const isRemoteUpdate = useRef(false);
 
             useEffect(() => {
                 const hist = localStorage.getItem('timeline_version_history');
@@ -326,51 +337,43 @@
                 }
             }, []);
 
-            // Scrolling Refs
-            const scrollContainerRef = useRef(null);
-            const initialScrollDone = useRef(false);
-
-            // Timeline bounds
-            const today = useMemo(() => {
-                const d = new Date();
-                d.setHours(0,0,0,0);
-                return d;
-            }, []);
-            
-            const timelineStart = useMemo(() => new Date(2026, 0, 1), []);
-            const timelineEnd = useMemo(() => new Date(2028, 11, 31), []);
-            const totalDays = diffDays(timelineStart, timelineEnd) + 1;
-
-            // Team View bounds
-            const [currentTeamWeekStart, setCurrentTeamWeekStart] = useState(() => {
-                const d = new Date(timelineStart); // Default to timelineStart so loaded tasks are immediately visible
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
-                return new Date(d.setDate(diff));
-            });
-
-            const prevWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, -7));
-            const nextWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, 7));
-            
-            const jumpToEarliestTask = () => {
-                let earliest = null;
-                projects.forEach(p => p.phases.forEach(ph => ph.tasks.forEach(t => {
-                    if (t.allocations) {
-                        t.allocations.forEach(a => {
-                            if (a.start && (!earliest || a.start < earliest)) earliest = a.start;
-                        });
+            // 1. Initialize Firebase connection strictly following requirements for Multiplayer
+            useEffect(() => {
+                const setupFirebase = async () => {
+                    if (!window.firebaseAPI) {
+                        await new Promise(resolve => window.addEventListener('firebaseLoaded', resolve, { once: true }));
                     }
-                })));
-                const d = new Date(earliest || timelineStart);
-                const day = d.getDay();
-                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
-                setCurrentTeamWeekStart(new Date(d.setDate(diff)));
-            };
+                    const fb = window.firebaseAPI;
+                    const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : null;
+                    
+                    if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+                        setSyncStatus('Local Only (No Cloud DB)');
+                        return; // Abort silently if not running in the platform
+                    }
+                    
+                    try {
+                        const app = fb.initializeApp(firebaseConfig);
+                        const authInstance = fb.getAuth(app);
+                        const dbInstance = fb.getFirestore(app);
+                        setDb(dbInstance);
+                        setFbAPI(fb);
 
-            // Undo/Redo
-            const [past, setPast] = useState([]);
-            const [future, setFuture] = useState([]);
-            const dragStartProjects = useRef(null);
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await fb.signInWithCustomToken(authInstance, __initial_auth_token);
+                        } else {
+                            await fb.signInAnonymously(authInstance);
+                        }
+
+                        fb.onAuthStateChanged(authInstance, (u) => {
+                            setUser(u);
+                        });
+                    } catch (e) {
+                        console.error("Firebase init error", e);
+                        setSyncStatus('Cloud Connection Error');
+                    }
+                };
+                setupFirebase();
+            }, []);
 
             // Initial Mock Data
             const [projects, setProjects] = useState([
@@ -401,7 +404,143 @@
                 }
             ]);
 
-            // Sync helper to keep task overall start/end in sync with its granular team allocations
+            // 2. Real-time Multiplayer Data Sync
+            useEffect(() => {
+                if (!user || !db || !fbAPI) return;
+                const { doc, onSnapshot } = fbAPI;
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'timelineState', 'main');
+
+                const unsubscribe = onSnapshot(docRef, (snap) => {
+                    if (snap.exists()) {
+                        // Crucial: Ignore events that our own client just pushed to prevent echo bouncing
+                        if (snap.metadata.hasPendingWrites) return;
+
+                        const data = snap.data();
+                        isRemoteUpdate.current = true;
+                        
+                        if (data.teamMembers) {
+                            try {
+                                const parsedMembers = JSON.parse(data.teamMembers);
+                                if (Array.isArray(parsedMembers)) {
+                                    setTeamMembers(parsedMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                                }
+                            } catch(e) {}
+                        }
+
+                        if (data.projects) {
+                            try {
+                                const parsedProjects = JSON.parse(data.projects);
+                                const processedProjects = parsedProjects.map(p => ({
+                                    ...p,
+                                    phases: p.phases.map(ph => ({
+                                        ...ph,
+                                        start: ph.start ? new Date(ph.start) : null,
+                                        end: ph.end ? new Date(ph.end) : null,
+                                        milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                                        tasks: (ph.tasks || []).map(t => {
+                                            const safeAllocations = (t.allocations || []).length > 0 
+                                                ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                                : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                            return { 
+                                                ...t, 
+                                                start: t.start ? new Date(t.start) : null, 
+                                                end: t.end ? new Date(t.end) : null,
+                                                assignees: t.assignees || (t.assignee ? [t.assignee] : []),
+                                                assignee: '', 
+                                                allocations: safeAllocations
+                                            }
+                                        })
+                                    }))
+                                }));
+                                setProjects(processedProjects);
+                                setPast([]); // Invalidate local undo history when remote updates change the world state
+                                setFuture([]);
+                            } catch(e) { console.error("Parse error", e); }
+                        }
+                        setSyncStatus('Synced to Cloud');
+                        setTimeout(() => { isRemoteUpdate.current = false; }, 100);
+                    } else {
+                        setSyncStatus('Cloud Ready');
+                    }
+                }, (error) => {
+                    console.error("Snapshot error:", error);
+                    setSyncStatus('Sync Disconnected');
+                });
+
+                return () => unsubscribe();
+            }, [user, db, fbAPI]);
+
+            // 3. Automatic Save to Cloud
+            useEffect(() => {
+                if (!user || !db || !fbAPI || isRemoteUpdate.current) return;
+                
+                const timer = setTimeout(async () => {
+                    setSyncStatus('Saving...');
+                    try {
+                        const { doc, setDoc } = fbAPI;
+                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'timelineState', 'main');
+                        
+                        const appState = {
+                            projects: JSON.stringify(projects),
+                            teamMembers: JSON.stringify(teamMembers),
+                            updatedAt: new Date().toISOString(),
+                            updatedBy: user.uid
+                        };
+                        
+                        await setDoc(docRef, appState, { merge: true });
+                        setSyncStatus('Synced to Cloud');
+                    } catch (err) {
+                        console.error("Auto-save failed", err);
+                        setSyncStatus('Offline - Local Save Only');
+                    }
+                }, 1000); // 1-second debounce for seamless continuous background saving
+                
+                return () => clearTimeout(timer);
+            }, [projects, teamMembers, user, db, fbAPI]);
+
+            // Scrolling Refs
+            const scrollContainerRef = useRef(null);
+            const initialScrollDone = useRef(false);
+
+            // Timeline bounds
+            const today = useMemo(() => {
+                const d = new Date();
+                d.setHours(0,0,0,0);
+                return d;
+            }, []);
+            
+            const timelineStart = useMemo(() => new Date(2026, 0, 1), []);
+            const timelineEnd = useMemo(() => new Date(2028, 11, 31), []);
+            const totalDays = diffDays(timelineStart, timelineEnd) + 1;
+
+            // Team View bounds
+            const [currentTeamWeekStart, setCurrentTeamWeekStart] = useState(() => {
+                const d = new Date(timelineStart); 
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+                return new Date(d.setDate(diff));
+            });
+
+            const prevWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, -7));
+            const nextWeek = () => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, 7));
+            
+            const jumpToEarliestTask = () => {
+                let earliest = null;
+                projects.forEach(p => p.phases.forEach(ph => ph.tasks.forEach(t => {
+                    if (t.allocations) {
+                        t.allocations.forEach(a => {
+                            if (a.start && (!earliest || a.start < earliest)) earliest = a.start;
+                        });
+                    }
+                })));
+                const d = new Date(earliest || timelineStart);
+                const day = d.getDay();
+                const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
+                setCurrentTeamWeekStart(new Date(d.setDate(diff)));
+            };
+
             const syncTaskDates = (task) => {
                 if (!task.allocations || task.allocations.length === 0) {
                     return { ...task, start: null, end: null };
@@ -418,7 +557,7 @@
             const updateProjects = (updater) => {
                 setProjects(prev => {
                     const next = typeof updater === 'function' ? updater(prev) : updater;
-                    if (next !== prev) {
+                    if (next !== prev && !isRemoteUpdate.current) {
                         setPast(p => [...p, prev]);
                         setFuture([]);
                     }
@@ -426,14 +565,12 @@
                 });
             };
 
-            // --- DATA PREP FOR TEAM VIEW ---
             const teamViewData = useMemo(() => {
                 if (viewMode !== 'team') return [];
                 
                 const assigneesMap = new Map();
                 const weekEnd = addDays(currentTeamWeekStart, 5); // Sat 00:00:00
 
-                // Initialize map with known team members and 'Unassigned'
                 assigneesMap.set('Unassigned', { name: 'Unassigned', scheduled: [], pool: [] });
                 teamMembers.forEach(memberObj => {
                     const mName = memberObj.name || memberObj;
@@ -498,7 +635,7 @@
                 result.forEach(assignee => {
                     assignee.scheduled.sort((a, b) => a.allocation.start.getTime() - b.allocation.start.getTime());
                     assignee.scheduled.forEach(item => { item.level = 0; });
-                    assignee.rowHeight = 60; // Clean fixed height
+                    assignee.rowHeight = 60; 
                 });
 
                 return result;
@@ -567,7 +704,6 @@
                 }
             };
 
-            // --- Shared Data Loader ---
             const applyLoadedData = (data, isHistoryRestore = false) => {
                 if (data.viewMode) setViewMode(data.viewMode);
                 if (data.zoomLevel) setZoomLevel(data.zoomLevel);
@@ -629,81 +765,13 @@
                 return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + ' at ' + d.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
             };
 
-            // --- Vercel KV Upstash Export / Import Handlers with Full State Persistence ---
-            const saveToCloud = async () => {
-                setIsSaving(true);
-                const appState = {
-                    projects,
-                    teamMembers,
-                    viewMode,
-                    zoomLevel,
-                    currentTeamWeekStart: currentTeamWeekStart.toISOString()
-                };
-
-                // Add to history log locally immediately
+            const createLocalSnapshot = () => {
+                const appState = { projects, teamMembers };
                 const newHistoryEntry = { timestamp: new Date().toISOString(), data: appState };
-                const updatedHistory = [newHistoryEntry, ...saveHistory].slice(0, 15); // keep latest 15 versions
+                const updatedHistory = [newHistoryEntry, ...saveHistory].slice(0, 15); 
                 setSaveHistory(updatedHistory);
                 localStorage.setItem('timeline_version_history', JSON.stringify(updatedHistory));
-
-                try {
-                    const response = await fetch('/api/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(appState)
-                    });
-                    if (!response.ok) throw new Error('Network response was not ok');
-                    // Store a local backup to safeguard team members against restrictive KV endpoints
-                    localStorage.setItem('timeline_data', JSON.stringify(appState));
-                    alert('Successfully saved to cloud!');
-                } catch (err) {
-                    console.warn("Cloud save failed, falling back to LocalStorage.", err);
-                    localStorage.setItem('timeline_data', JSON.stringify(appState));
-                    alert('Saved locally! (Vercel KV backend not reachable or offline)');
-                } finally {
-                    setIsSaving(false);
-                }
-            };
-
-            const loadFromCloud = async () => {
-                setIsLoading(true);
-                try {
-                    let data = null;
-                    try {
-                        const response = await fetch('/api/load');
-                        if (!response.ok) throw new Error('Network error');
-                        data = await response.json();
-                        
-                        // If the backend drops non-project fields, restore them from local storage
-                        if (data && !data.teamMembers) {
-                            const local = localStorage.getItem('timeline_data');
-                            if (local) {
-                                const localData = JSON.parse(local);
-                                if (localData.teamMembers) data.teamMembers = localData.teamMembers;
-                                if (localData.viewMode) data.viewMode = localData.viewMode;
-                                if (localData.zoomLevel) data.zoomLevel = localData.zoomLevel;
-                                if (localData.currentTeamWeekStart) data.currentTeamWeekStart = localData.currentTeamWeekStart;
-                            }
-                        }
-                    } catch (err) {
-                        const local = localStorage.getItem('timeline_data');
-                        if (local) {
-                            data = JSON.parse(local);
-                            console.warn("Loaded from LocalStorage.");
-                        } else {
-                            throw new Error('No saved data found.');
-                        }
-                    }
-                    
-                    if (data) {
-                        applyLoadedData(data, false);
-                    }
-                } catch (err) {
-                    console.error("Failed to load", err);
-                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
-                } finally {
-                    setIsLoading(false);
-                }
+                alert('Local Snapshot Created!');
             };
 
             const exportToPDF = async () => {
@@ -716,9 +784,8 @@
                         return;
                     }
 
-                    // We use html2canvas to capture the full scrolling width of the active diagram
                     const canvas = await window.html2canvas(target, {
-                        scale: 1.5, // 1.5 balances export resolution with memory limits on massive DOMs
+                        scale: 1.5, 
                         useCORS: true,
                         logging: false,
                         backgroundColor: '#ffffff'
@@ -731,7 +798,6 @@
                     const imgHeight = canvas.height;
                     const orientation = imgWidth > imgHeight ? 'l' : 'p';
                     
-                    // Create a custom-sized PDF matching exact canvas dimensions to act like a digital blueprint
                     const pdf = new jsPDF({
                         orientation: orientation,
                         unit: 'px',
@@ -1233,7 +1299,7 @@
                     if (isResizingCol) setIsResizingCol(false);
                     if (draggingBlock) {
                         setProjects(current => {
-                            if (dragStartProjects.current && dragStartProjects.current !== current) {
+                            if (dragStartProjects.current && dragStartProjects.current !== current && !isRemoteUpdate.current) {
                                 setPast(p => [...p, dragStartProjects.current]);
                                 setFuture([]);
                             }
@@ -1439,7 +1505,7 @@
                 e.stopPropagation();
                 setDraggedTaskIndex(null);
                 setProjects(current => {
-                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                    if (dragStartProjects.current && dragStartProjects.current !== current && !isRemoteUpdate.current) {
                         setPast(p => [...p, dragStartProjects.current]);
                         setFuture([]);
                     }
@@ -1475,7 +1541,7 @@
                 e.stopPropagation();
                 setDraggedMilestoneIndex(null);
                 setProjects(current => {
-                    if (dragStartProjects.current && dragStartProjects.current !== current) {
+                    if (dragStartProjects.current && dragStartProjects.current !== current && !isRemoteUpdate.current) {
                         setPast(p => [...p, dragStartProjects.current]);
                         setFuture([]);
                     }
@@ -1675,31 +1741,32 @@
                                 </button>
                             </div>
 
-                            {/* Cloud Save / Load / Export */}
+                            {/* Cloud Sync Status & Local History / Export */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
-                                <button onClick={saveToCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Save to Cloud">
-                                    {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} <span className="hidden md:inline">Save</span>
+                                <div className={`px-2 py-1 flex items-center gap-1 text-[10px] md:text-xs font-medium ${syncStatus === 'Synced to Cloud' ? 'text-green-400' : syncStatus === 'Saving...' ? 'text-amber-400' : 'text-slate-400'}`}>
+                                    {syncStatus === 'Saving...' ? <Icons.Spinner /> : syncStatus === 'Synced to Cloud' ? <Icons.CloudCheck /> : <Icons.CloudSync />} 
+                                    <span className="hidden md:inline">{syncStatus}</span>
+                                </div>
+                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
+                                <button onClick={createLocalSnapshot} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Create Local Snapshot">
+                                    <Icons.CloudUpload /> <span className="hidden md:inline">Snap</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={loadFromCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Load from Cloud">
-                                    {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} <span className="hidden md:inline">Load</span>
-                                </button>
-                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={() => setShowHistoryModal(true)} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Version History">
+                                <button onClick={() => setShowHistoryModal(true)} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Version History">
                                     <Icons.History /> <span className="hidden md:inline">History</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={exportToPDF} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors" title="Export as PDF">
+                                <button onClick={exportToPDF} disabled={isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors" title="Export as PDF">
                                     {isExporting ? <Icons.Spinner /> : <Icons.Download />} <span className="hidden md:inline">PDF</span>
                                 </button>
                             </div>
 
                             {/* Undo / Redo */}
                             <div className="flex items-center gap-0.5 bg-slate-800 rounded px-1 py-0.5">
-                                <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo">
+                                <button onClick={undo} disabled={past.length === 0} className={`p-1 rounded ${past.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Undo Local Action">
                                     <Icons.Undo />
                                 </button>
-                                <button onClick={redo} disabled={future.length === 0} className={`p-1 rounded ${future.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Redo">
+                                <button onClick={redo} disabled={future.length === 0} className={`p-1 rounded ${future.length > 0 ? 'text-slate-300 hover:text-white hover:bg-slate-700' : 'text-slate-600 cursor-not-allowed'}`} title="Redo Local Action">
                                     <Icons.Redo />
                                 </button>
                             </div>
