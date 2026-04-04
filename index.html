@@ -279,8 +279,8 @@
             const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
             const [zoomLevel, setZoomLevel] = useState(40); 
-            // Better mobile default width
-            const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 150 : 330); 
+            // Better mobile & split-column default width
+            const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
             
             // Drag states
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
@@ -884,7 +884,7 @@
             const onDragStartTeamItem = (e, projectId, phaseId, task, allocationId, origStart, origEnd) => {
                 e.stopPropagation();
                 dragStartProjects.current = projects;
-                setDraggedTeamItem({ projectId, phaseId, taskId: task.id, allocationId, origStart, origEnd });
+                setDraggedTeamItem({ projectId, phaseId, task, taskId: task.id, allocationId, origStart, origEnd });
                 e.dataTransfer.effectAllowed = "move";
             };
 
@@ -2008,10 +2008,15 @@
                                     
                                     {/* HEADER ROW */}
                                     <div className="flex sticky top-0 z-40 h-[60px] w-full min-w-full bg-white border-b border-slate-300 shadow-sm">
-                                        {/* Left Header Cell */}
-                                        <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-col justify-end p-2 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth }}>
+                                        {/* Left Header Cell (Split into Members and Tasks) */}
+                                        <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-row shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth }}>
                                             <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)} onTouchStart={() => setIsResizingCol(true)}></div>
-                                            <div className="text-xs font-bold text-slate-500 uppercase w-full">Team Members</div>
+                                            <div className="w-[40%] min-w-[100px] border-r border-slate-200 flex flex-col justify-end p-2">
+                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate">Team Members</div>
+                                            </div>
+                                            <div className="flex-1 flex flex-col justify-end p-2">
+                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate">Task Pool</div>
+                                            </div>
                                         </div>
                                         
                                         {/* Right Header Cell */}
@@ -2053,7 +2058,7 @@
                                                 onDragOver={(e) => onDragOverTeamMember(e, assignee.name)}
                                                 onDragEnd={onDragEndTeamMember}
                                             >
-                                                {/* Left Cell: Assignee & Pool - Absolutely positioned inner div prevents row stretching */}
+                                                {/* Left Cell: Assignee & Pool - Split Side-by-Side */}
                                                 <div 
                                                     className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-colors border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" 
                                                     style={{ width: leftColWidth }}
@@ -2066,21 +2071,22 @@
                                                         onDropTeamPool(e, assignee.name);
                                                     }}
                                                 >
-                                                    <div className="absolute inset-0 flex flex-col p-3">
-                                                        <div className="flex items-center justify-between mb-3 w-full gap-2 shrink-0">
+                                                    <div className="absolute inset-0 flex">
+                                                        {/* Assignee Column */}
+                                                        <div className="w-[40%] min-w-[100px] border-r border-slate-200 p-2 md:p-3 flex flex-col gap-1.5 shrink-0 overflow-hidden">
                                                             <div className="flex items-center gap-2 overflow-hidden">
-                                                                <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
+                                                                <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 shrink-0 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
                                                                     <Icons.Grip />
                                                                 </div>
-                                                                <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
+                                                                <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
                                                                     {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
                                                                 </div>
-                                                                <h3 className={`font-bold text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
-                                                                    {assignee.name}
-                                                                </h3>
                                                             </div>
+                                                            <h3 className={`font-bold text-xs md:text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
+                                                                {assignee.name}
+                                                            </h3>
                                                             {assignee.name !== 'Unassigned' && (
-                                                                <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0">
+                                                                <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0 mt-auto pt-1">
                                                                     <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>
                                                                         {isLocked ? <Icons.Lock /> : <Icons.Unlock />}
                                                                     </button>
@@ -2091,10 +2097,10 @@
                                                             )}
                                                         </div>
 
-                                                        <div className="flex flex-col gap-1.5 flex-1 min-h-0">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0">
-                                                                <span>Task Pool</span>
-                                                                <span className="bg-slate-200 text-slate-600 px-1.5 rounded-full">{assignee.pool.length}</span>
+                                                        {/* Task Pool Column */}
+                                                        <div className="flex-1 flex flex-col p-2 min-w-0">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1.5">
+                                                                <span>{assignee.pool.length} Unscheduled</span>
                                                             </div>
                                                             <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-1 pb-1">
                                                                 {assignee.pool.length === 0 ? (
@@ -2202,28 +2208,31 @@
 
                                         {/* Add Team Member Row */}
                                         <div className="flex w-full mt-4 mb-8">
-                                            <div className="flex-shrink-0 sticky left-0 z-30 px-3 py-2" style={{ width: leftColWidth }}>
-                                                {isAddingTeamMember ? (
-                                                    <div className="bg-white border border-blue-300 rounded p-2 shadow-sm flex flex-col gap-2">
-                                                        <input 
-                                                            autoFocus
-                                                            type="text"
-                                                            value={newTeamMemberName}
-                                                            onChange={e => setNewTeamMemberName(e.target.value)}
-                                                            onKeyDown={e => { if(e.key === 'Enter') handleAddTeamMember() }}
-                                                            placeholder="Member Name..."
-                                                            className="w-full text-xs p-1.5 border border-slate-200 rounded focus:outline-none focus:border-blue-400"
-                                                        />
-                                                        <div className="flex justify-end gap-2">
-                                                            <button onClick={() => { setIsAddingTeamMember(false); setNewTeamMemberName(''); }} className="text-[10px] text-slate-500 font-medium px-2 py-1">Cancel</button>
-                                                            <button onClick={handleAddTeamMember} className="text-[10px] bg-blue-600 text-white rounded px-2 py-1 font-bold shadow-sm">Save</button>
+                                            <div className="flex-shrink-0 sticky left-0 z-30 px-2 py-2 flex" style={{ width: leftColWidth }}>
+                                                <div className="w-[40%] min-w-[100px] pr-2">
+                                                    {isAddingTeamMember ? (
+                                                        <div className="bg-white border border-blue-300 rounded p-2 shadow-sm flex flex-col gap-2">
+                                                            <input 
+                                                                autoFocus
+                                                                type="text"
+                                                                value={newTeamMemberName}
+                                                                onChange={e => setNewTeamMemberName(e.target.value)}
+                                                                onKeyDown={e => { if(e.key === 'Enter') handleAddTeamMember() }}
+                                                                placeholder="Name..."
+                                                                className="w-full text-xs p-1.5 border border-slate-200 rounded focus:outline-none focus:border-blue-400"
+                                                            />
+                                                            <div className="flex flex-col gap-1 mt-1">
+                                                                <button onClick={handleAddTeamMember} className="text-[10px] bg-blue-600 text-white rounded px-2 py-1.5 font-bold shadow-sm w-full">Save</button>
+                                                                <button onClick={() => { setIsAddingTeamMember(false); setNewTeamMemberName(''); }} className="text-[10px] text-slate-500 font-medium px-2 py-1.5 w-full border border-slate-200 rounded hover:bg-slate-50">Cancel</button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                ) : (
-                                                    <button onClick={() => setIsAddingTeamMember(true)} className="flex items-center justify-center gap-1.5 w-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded p-2 text-xs font-medium transition-colors">
-                                                        <Icons.Plus /> Add Team Member
-                                                    </button>
-                                                )}
+                                                    ) : (
+                                                        <button onClick={() => setIsAddingTeamMember(true)} className="flex items-center justify-center gap-1 w-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded p-2 text-xs font-medium transition-colors">
+                                                            <Icons.Plus /> <span className="hidden md:inline">Add</span> Member
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 border-r border-slate-200/50"></div>
                                             </div>
                                         </div>
 
