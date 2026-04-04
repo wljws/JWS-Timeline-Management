@@ -153,14 +153,30 @@
         import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // Expose a stable API to the global scope for the React app to consume
-        window.firebaseAPI = {
-            initializeApp,
-            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-            getFirestore, doc, setDoc, getDoc
-        };
-        // Signal that the APIs are ready
-        window.dispatchEvent(new Event('firebaseLoaded'));
+        try {
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+            let authInstance = null;
+            let dbInstance = null;
+
+            if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+                const app = initializeApp(firebaseConfig);
+                authInstance = getAuth(app);
+                dbInstance = getFirestore(app);
+            }
+
+            // Expose a stable API to the global scope for the React app to consume
+            window.firebaseServices = {
+                auth: authInstance,
+                db: dbInstance,
+                appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
+                signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+                doc, setDoc, getDoc
+            };
+            // Signal that the APIs are ready
+            window.dispatchEvent(new Event('firebaseLoaded'));
+        } catch(e) {
+            console.error("Firebase module init error:", e);
+        }
     </script>
 
     <script type="text/babel">
@@ -324,43 +340,35 @@
             const [isExporting, setIsExporting] = useState(false);
 
             // Firebase State
-            const [db, setDb] = useState(null);
-            const [auth, setAuth] = useState(null);
+            const [fb, setFb] = useState(null);
             const [user, setUser] = useState(null);
+            const isCloudReady = !!(user && fb && fb.db);
 
             useEffect(() => {
-                const setupFirebase = async () => {
+                const setupFirebase = async (services) => {
+                    setFb(services);
+                    if (!services.auth) return;
+
                     try {
-                        // Wait for the native module script to finish loading and exposing the API
-                        if (!window.firebaseAPI) {
-                            await new Promise(resolve => window.addEventListener('firebaseLoaded', resolve, { once: true }));
-                        }
-                        const fb = window.firebaseAPI;
-                        
-                        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-                        if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) return; // Abort silently if not running in the platform
-
-                        const app = fb.initializeApp(firebaseConfig);
-                        const authInstance = fb.getAuth(app);
-                        const dbInstance = fb.getFirestore(app);
-                        
-                        setDb(dbInstance);
-                        setAuth(authInstance);
-
                         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await fb.signInWithCustomToken(authInstance, __initial_auth_token);
+                            await services.signInWithCustomToken(services.auth, __initial_auth_token);
                         } else {
-                            await fb.signInAnonymously(authInstance);
+                            await services.signInAnonymously(services.auth);
                         }
-
-                        fb.onAuthStateChanged(authInstance, (u) => {
+                        services.onAuthStateChanged(services.auth, (u) => {
                             setUser(u);
                         });
                     } catch (e) {
-                        console.error("Firebase init error", e);
+                        console.error("Firebase auth error", e);
                     }
                 };
-                setupFirebase();
+
+                // Sync cleanly with the native module initialization
+                if (window.firebaseServices) {
+                    setupFirebase(window.firebaseServices);
+                } else {
+                    window.addEventListener('firebaseLoaded', () => setupFirebase(window.firebaseServices), { once: true });
+                }
             }, []);
             
             // Scrolling Refs
@@ -591,11 +599,10 @@
 
             // --- Cloud Export / Import Handlers ---
             const saveToCloud = async () => {
-                if (!user || !db || !window.firebaseAPI) return alert("Storage connection not ready yet.");
+                if (!isCloudReady) return alert("Storage connection not ready yet.");
                 setIsSaving(true);
                 try {
-                    const { doc, setDoc } = window.firebaseAPI;
-                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    const { doc, setDoc, db, appId } = fb;
                     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
                     
                     await setDoc(docRef, { 
@@ -612,11 +619,10 @@
             };
 
             const loadFromCloud = async () => {
-                if (!user || !db || !window.firebaseAPI) return alert("Storage connection not ready yet.");
+                if (!isCloudReady) return alert("Storage connection not ready yet.");
                 setIsLoading(true);
                 try {
-                    const { doc, getDoc } = window.firebaseAPI;
-                    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    const { doc, getDoc, db, appId } = fb;
                     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
                     const snap = await getDoc(docRef);
                     
@@ -1619,15 +1625,15 @@
 
                             {/* Cloud Save / Load / Export */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
-                                <button onClick={saveToCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Save to Cloud">
+                                <button onClick={saveToCloud} disabled={isSaving || isLoading || isExporting || !isCloudReady} className={`p-1 rounded flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors ${!isCloudReady ? 'text-slate-500 cursor-wait' : 'text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50'}`} title="Save to Cloud">
                                     {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} <span className="hidden md:inline">Save</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={loadFromCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Load from Cloud">
+                                <button onClick={loadFromCloud} disabled={isSaving || isLoading || isExporting || !isCloudReady} className={`p-1 rounded flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors ${!isCloudReady ? 'text-slate-500 cursor-wait' : 'text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50'}`} title="Load from Cloud">
                                     {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} <span className="hidden md:inline">Load</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={exportToPDF} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Export as PDF">
+                                <button onClick={exportToPDF} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors" title="Export as PDF">
                                     {isExporting ? <Icons.Spinner /> : <Icons.Download />} <span className="hidden md:inline">PDF</span>
                                 </button>
                             </div>
