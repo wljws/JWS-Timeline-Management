@@ -147,38 +147,6 @@
 <body>
     <div id="root"></div>
 
-    <script type="module">
-        // Import Firebase natively to prevent Babel 'require' transpilation errors
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        try {
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
-            let authInstance = null;
-            let dbInstance = null;
-
-            if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
-                const app = initializeApp(firebaseConfig);
-                authInstance = getAuth(app);
-                dbInstance = getFirestore(app);
-            }
-
-            // Expose a stable API to the global scope for the React app to consume
-            window.firebaseServices = {
-                auth: authInstance,
-                db: dbInstance,
-                appId: typeof __app_id !== 'undefined' ? __app_id : 'default-app-id',
-                signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-                doc, setDoc, getDoc
-            };
-            // Signal that the APIs are ready
-            window.dispatchEvent(new Event('firebaseLoaded'));
-        } catch(e) {
-            console.error("Firebase module init error:", e);
-        }
-    </script>
-
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
@@ -212,12 +180,14 @@
         };
 
         // Prevents Assignees from doing overlapping tasks
-        const checkTeamOverlap = (projectsData, assigneeName, start, end, excludeAllocId) => {
-            if (!assigneeName || !start || !end) return false;
+        const checkTeamOverlap = (projectsData, targetAssignees, start, end, excludeAllocId) => {
+            if (!targetAssignees || targetAssignees.length === 0 || !start || !end) return false;
             for (const p of projectsData) {
                 for (const ph of p.phases) {
                     for (const t of ph.tasks) {
-                        if (t.assignee === assigneeName) {
+                        const tAssignees = t.assignees || (t.assignee ? [t.assignee] : []);
+                        const isIntersecting = targetAssignees.some(a => tAssignees.includes(a));
+                        if (isIntersecting) {
                             for (const a of (t.allocations || [])) {
                                 if (a.id === excludeAllocId) continue;
                                 if (start < new Date(a.end) && end > new Date(a.start)) {
@@ -324,9 +294,13 @@
             
             // Multi-Select State
             const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
+            const [openDropdownId, setOpenDropdownId] = useState(null);
             
             // Team Members State
-            const [teamMembers, setTeamMembers] = useState(['Alice Design', 'Bob Builder']);
+            const [teamMembers, setTeamMembers] = useState([
+                { name: 'Alice Design', isLocked: false },
+                { name: 'Bob Builder', isLocked: false }
+            ]);
             const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
             const [newTeamMemberName, setNewTeamMemberName] = useState('');
             
@@ -339,38 +313,6 @@
             const [isLoading, setIsLoading] = useState(false);
             const [isExporting, setIsExporting] = useState(false);
 
-            // Firebase State
-            const [fb, setFb] = useState(null);
-            const [user, setUser] = useState(null);
-            const isCloudReady = !!(user && fb && fb.db);
-
-            useEffect(() => {
-                const setupFirebase = async (services) => {
-                    setFb(services);
-                    if (!services.auth) return;
-
-                    try {
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await services.signInWithCustomToken(services.auth, __initial_auth_token);
-                        } else {
-                            await services.signInAnonymously(services.auth);
-                        }
-                        services.onAuthStateChanged(services.auth, (u) => {
-                            setUser(u);
-                        });
-                    } catch (e) {
-                        console.error("Firebase auth error", e);
-                    }
-                };
-
-                // Sync cleanly with the native module initialization
-                if (window.firebaseServices) {
-                    setupFirebase(window.firebaseServices);
-                } else {
-                    window.addEventListener('firebaseLoaded', () => setupFirebase(window.firebaseServices), { once: true });
-                }
-            }, []);
-            
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
             const initialScrollDone = useRef(false);
@@ -435,7 +377,7 @@
                                 id: `t_${i}_${tIdx}`, 
                                 text: taskTemplate.text, 
                                 done: false, 
-                                assignee: isAllocated ? 'Alice Design' : '',
+                                assignees: isAllocated ? ['Alice Design'] : [],
                                 start: tStart,
                                 end: tEnd,
                                 allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
@@ -480,41 +422,44 @@
 
                 // Initialize map with known team members and 'Unassigned'
                 assigneesMap.set('Unassigned', { name: 'Unassigned', scheduled: [], pool: [] });
-                teamMembers.forEach(member => {
-                    assigneesMap.set(member, { name: member, scheduled: [], pool: [] });
+                teamMembers.forEach(memberObj => {
+                    const mName = memberObj.name || memberObj;
+                    assigneesMap.set(mName, { name: mName, scheduled: [], pool: [] });
                 });
 
                 projects.forEach(p => {
                     p.phases.forEach(ph => {
                         ph.tasks.forEach(t => {
-                            const name = (t.assignee || '').trim() || 'Unassigned';
-                            if (!assigneesMap.has(name)) assigneesMap.set(name, { name, scheduled: [], pool: [] });
-                            
-                            const assignee = assigneesMap.get(name);
-                            
-                            // Pool always holds a reference to the task so it can be dragged repeatedly
-                            assignee.pool.push({ project: p, phase: ph, task: t });
-                            
-                            (t.allocations || []).forEach(alloc => {
-                                const tStart = alloc.start;
-                                const tEnd = alloc.end;
+                            const assigneesList = (t.assignees && t.assignees.length > 0) ? t.assignees : (t.assignee ? [t.assignee] : []);
+                            if (assigneesList.length === 0) assigneesList.push('Unassigned');
+
+                            assigneesList.forEach(name => {
+                                if (!assigneesMap.has(name)) assigneesMap.set(name, { name, scheduled: [], pool: [] });
+                                const assignee = assigneesMap.get(name);
                                 
-                                if (tStart && tEnd && tEnd > currentTeamWeekStart && tStart < weekEnd) {
-                                    const renderStart = Math.max(tStart.getTime(), currentTeamWeekStart.getTime());
-                                    const renderEnd = Math.min(tEnd.getTime(), weekEnd.getTime() - 1);
+                                assignee.pool.push({ project: p, phase: ph, task: t });
+                                
+                                (t.allocations || []).forEach(alloc => {
+                                    const tStart = alloc.start;
+                                    const tEnd = alloc.end;
                                     
-                                    const startHourDiff = (renderStart - currentTeamWeekStart.getTime()) / (1000 * 60 * 60);
-                                    let startCol = Math.floor(startHourDiff / 12);
-                                    
-                                    const endHourDiff = (renderEnd - currentTeamWeekStart.getTime()) / (1000 * 60 * 60);
-                                    let endCol = Math.ceil(endHourDiff / 12);
-                                    
-                                    startCol = Math.max(0, Math.min(9, startCol));
-                                    endCol = Math.max(1, Math.min(10, endCol));
-                                    const span = Math.max(1, endCol - startCol);
-                                    
-                                    assignee.scheduled.push({ project: p, phase: ph, task: t, allocation: alloc, startCol, span });
-                                }
+                                    if (tStart && tEnd && tEnd > currentTeamWeekStart && tStart < weekEnd) {
+                                        const renderStart = Math.max(tStart.getTime(), currentTeamWeekStart.getTime());
+                                        const renderEnd = Math.min(tEnd.getTime(), weekEnd.getTime() - 1);
+                                        
+                                        const startHourDiff = (renderStart - currentTeamWeekStart.getTime()) / (1000 * 60 * 60);
+                                        let startCol = Math.floor(startHourDiff / 12);
+                                        
+                                        const endHourDiff = (renderEnd - currentTeamWeekStart.getTime()) / (1000 * 60 * 60);
+                                        let endCol = Math.ceil(endHourDiff / 12);
+                                        
+                                        startCol = Math.max(0, Math.min(9, startCol));
+                                        endCol = Math.max(1, Math.min(10, endCol));
+                                        const span = Math.max(1, endCol - startCol);
+                                        
+                                        assignee.scheduled.push({ project: p, phase: ph, task: t, allocation: alloc, startCol, span });
+                                    }
+                                });
                             });
                         });
                     });
@@ -524,8 +469,8 @@
                     if (a.name === 'Unassigned') return 1;
                     if (b.name === 'Unassigned') return -1;
                     
-                    const indexA = teamMembers.indexOf(a.name);
-                    const indexB = teamMembers.indexOf(b.name);
+                    const indexA = teamMembers.findIndex(m => (m.name || m) === a.name);
+                    const indexB = teamMembers.findIndex(m => (m.name || m) === b.name);
 
                     if (indexA !== -1 && indexB !== -1) return indexA - indexB;
                     if (indexA !== -1) return -1;
@@ -534,11 +479,10 @@
                     return a.name.localeCompare(b.name);
                 });
                 
-                // Layout processing (Single row per assignee since overlaps are prevented)
                 result.forEach(assignee => {
                     assignee.scheduled.sort((a, b) => a.allocation.start.getTime() - b.allocation.start.getTime());
                     assignee.scheduled.forEach(item => { item.level = 0; });
-                    assignee.rowHeight = 60; 
+                    assignee.rowHeight = 60; // Clean fixed height
                 });
 
                 return result;
@@ -562,26 +506,36 @@
 
             const handleAddTeamMember = () => {
                 if (newTeamMemberName.trim()) {
-                    setTeamMembers(prev => [...prev, newTeamMemberName.trim()]);
+                    setTeamMembers(prev => [...prev, { name: newTeamMemberName.trim(), isLocked: false }]);
                     setNewTeamMemberName('');
                     setIsAddingTeamMember(false);
                 }
             };
 
+            const toggleTeamMemberLock = (memberName) => {
+                setTeamMembers(prev => prev.map(m => {
+                    const mName = typeof m === 'object' ? m.name : m;
+                    if (mName === memberName) {
+                        return { name: mName, isLocked: !(typeof m === 'object' ? m.isLocked : false) };
+                    }
+                    return typeof m === 'object' ? m : { name: m, isLocked: false };
+                }));
+            };
+
             const handleRemoveTeamMember = (memberName) => {
-                // Remove from explicit list
-                setTeamMembers(prev => prev.filter(m => m !== memberName));
+                setTeamMembers(prev => prev.filter(m => (m.name || m) !== memberName));
                 
-                // Unassign their tasks
                 let hasChanges = false;
                 const nextProjects = projects.map(p => {
                     let pChanged = false;
                     const nextPhases = p.phases.map(ph => {
                         let phChanged = false;
                         const nextTasks = ph.tasks.map(t => {
-                            if (t.assignee === memberName) {
+                            const currentAssignees = t.assignees || (t.assignee ? [t.assignee] : []);
+                            if (currentAssignees.includes(memberName)) {
                                 phChanged = true;
-                                return { ...t, assignee: '' }; // '' maps to 'Unassigned'
+                                const newAssignees = currentAssignees.filter(m => m !== memberName);
+                                return { ...t, assignees: newAssignees, assignee: '' };
                             }
                             return t;
                         });
@@ -597,79 +551,70 @@
                 }
             };
 
-            // --- Cloud Export / Import Handlers ---
+            // --- Vercel KV Upstash Export / Import Handlers ---
             const saveToCloud = async () => {
-                if (!isCloudReady) return alert("Storage connection not ready yet.");
                 setIsSaving(true);
                 try {
-                    const { doc, setDoc, db, appId } = fb;
-                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
-                    
-                    await setDoc(docRef, { 
-                        projects: JSON.stringify(projects), 
-                        teamMembers: JSON.stringify(teamMembers) 
+                    const response = await fetch('/api/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ projects, teamMembers })
                     });
+                    if (!response.ok) throw new Error('Network response was not ok');
                     alert('Successfully saved to cloud!');
                 } catch (err) {
                     console.error("Failed to save", err);
-                    alert("Failed to save: " + err.message);
+                    alert('Failed to save to cloud. Ensure your Vercel KV backend is setup correctly.');
                 } finally {
                     setIsSaving(false);
                 }
             };
 
             const loadFromCloud = async () => {
-                if (!isCloudReady) return alert("Storage connection not ready yet.");
                 setIsLoading(true);
                 try {
-                    const { doc, getDoc, db, appId } = fb;
-                    const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
-                    const snap = await getDoc(docRef);
+                    const response = await fetch('/api/load');
+                    const data = await response.json();
                     
-                    if (snap.exists()) {
-                        const data = snap.data();
-                        
-                        if (data.teamMembers) {
-                            try {
-                                const parsedTeamMembers = typeof data.teamMembers === 'string' ? JSON.parse(data.teamMembers) : data.teamMembers;
-                                if (Array.isArray(parsedTeamMembers)) {
-                                    setTeamMembers(parsedTeamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
-                                }
-                            } catch(e) {}
-                        }
+                    if (data.teamMembers && Array.isArray(data.teamMembers)) {
+                        setTeamMembers(data.teamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                    }
 
-                        if (data.projects) {
-                            const parsedProjects = JSON.parse(data.projects);
-                            const processedProjects = parsedProjects.map(p => ({
-                                ...p,
-                                phases: p.phases.map(ph => ({
-                                    ...ph,
-                                    start: ph.start ? new Date(ph.start) : null,
-                                    end: ph.end ? new Date(ph.end) : null,
-                                    milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
-                                    tasks: (ph.tasks || []).map(t => {
-                                        const safeAllocations = (t.allocations || []).length > 0 
-                                            ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-                                            : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-                                            
-                                        return { 
-                                            ...t, 
-                                            start: t.start ? new Date(t.start) : null, 
-                                            end: t.end ? new Date(t.end) : null,
-                                            allocations: safeAllocations
-                                        }
-                                    })
-                                }))
-                            }));
-                            updateProjects(processedProjects);
-                            alert('Successfully loaded from cloud!');
-                        }
+                    if (data.projects && Array.isArray(data.projects)) {
+                        const processedProjects = data.projects.map(p => ({
+                            ...p,
+                            phases: p.phases.map(ph => ({
+                                ...ph,
+                                start: ph.start ? new Date(ph.start) : null,
+                                end: ph.end ? new Date(ph.end) : null,
+                                milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                                tasks: (ph.tasks || []).map(t => {
+                                    const safeAllocations = (t.allocations || []).length > 0 
+                                        ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                        : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                        
+                                    // Ensure array mapping for existing legacy mock data
+                                    const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
+
+                                    return { 
+                                        ...t, 
+                                        start: t.start ? new Date(t.start) : null, 
+                                        end: t.end ? new Date(t.end) : null,
+                                        assignees: assigneesArray,
+                                        assignee: '', // Clear legacy string safely
+                                        allocations: safeAllocations
+                                    }
+                                })
+                            }))
+                        }));
+                        updateProjects(processedProjects);
+                        alert('Successfully loaded from cloud!');
                     } else {
                         alert('No saved data found in cloud.');
                     }
                 } catch (err) {
                     console.error("Failed to load", err);
-                    alert("Failed to load: " + err.message);
+                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
                 } finally {
                     setIsLoading(false);
                 }
@@ -785,7 +730,7 @@
                         isLocked: false,
                         start: null,
                         end: null,
-                        tasks: t.tasks.map(taskTemplate => ({ id: generateId(), text: taskTemplate.text, done: false, assignee: '', start: null, end: null, allocations: [] })),
+                        tasks: t.tasks.map(taskTemplate => ({ id: generateId(), text: taskTemplate.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })),
                         milestones: []
                     }))
                 }]);
@@ -919,8 +864,8 @@
 
                 setTeamMembers(prev => {
                     const newMembers = [...prev];
-                    const draggedIdx = newMembers.indexOf(draggedTeamMemberName);
-                    const targetIdx = newMembers.indexOf(targetMemberName);
+                    const draggedIdx = newMembers.findIndex(m => (m.name || m) === draggedTeamMemberName);
+                    const targetIdx = newMembers.findIndex(m => (m.name || m) === targetMemberName);
                     
                     if (draggedIdx === -1 || targetIdx === -1) return prev;
 
@@ -963,12 +908,18 @@
                      newEnd.setHours(isPM ? 23 : 11, 59, 59, 999);
                 }
 
-                const finalAssignee = targetAssignee === 'Unassigned' ? '' : targetAssignee;
+                const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
+                if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) {
+                    finalAssignees.push(targetAssignee);
+                }
+                if (targetAssignee === 'Unassigned') {
+                    finalAssignees.length = 0; // Clear assignees
+                }
 
                 // PREVENT OVERLAP
-                if (finalAssignee) {
-                    if (checkTeamOverlap(projects, finalAssignee, newStart, newEnd, draggedTeamItem.allocationId)) {
-                        alert(`Cannot assign task here. ${finalAssignee} already has a task in this time slot.`);
+                if (finalAssignees.length > 0) {
+                    if (checkTeamOverlap(projects, finalAssignees, newStart, newEnd, draggedTeamItem.allocationId)) {
+                        alert(`Cannot assign task here. One or more assignees already have an overlapping task in this time slot.`);
                         setDraggedTeamItem(null);
                         return;
                     }
@@ -984,7 +935,7 @@
                                 } else {
                                     newAllocations.push({ id: generateId(), start: newStart, end: newEnd, subTasks: [] });
                                 }
-                                const updatedTask = { ...t, assignee: finalAssignee, allocations: newAllocations };
+                                const updatedTask = { ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations };
                                 return syncTaskDates(updatedTask);
                             }
                             return t;
@@ -1007,17 +958,23 @@
                 e.stopPropagation();
                 if (!draggedTeamItem) return;
 
-                const finalAssignee = targetAssignee === 'Unassigned' ? '' : targetAssignee;
+                const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
+                if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) {
+                    finalAssignees.push(targetAssignee);
+                }
+                if (targetAssignee === 'Unassigned') {
+                    finalAssignees.length = 0; // Clear assignees
+                }
 
                 setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
                     ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
                         ...ph, tasks: ph.tasks.map(t => {
                             if (t.id === draggedTeamItem.taskId && draggedTeamItem.allocationId) {
                                 const newAllocations = (t.allocations || []).filter(a => a.id !== draggedTeamItem.allocationId);
-                                return syncTaskDates({ ...t, assignee: finalAssignee, allocations: newAllocations });
+                                return syncTaskDates({ ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations });
                             }
                             if (t.id === draggedTeamItem.taskId) {
-                                return { ...t, assignee: finalAssignee };
+                                return { ...t, assignees: finalAssignees, assignee: '' };
                             }
                             return t;
                         })
@@ -1112,10 +1069,10 @@
                                                     }
                                                     
                                                     // PREVENT OVERLAP DURING DRAG
-                                                    const finalAssignee = task.assignee;
+                                                    const finalAssignees = task.assignees || (task.assignee ? [task.assignee] : []);
                                                     let isColliding = false;
-                                                    if (finalAssignee) {
-                                                        isColliding = checkTeamOverlap(next, finalAssignee, newStart, newEnd, b.allocationId);
+                                                    if (finalAssignees.length > 0) {
+                                                        isColliding = checkTeamOverlap(next, finalAssignees, newStart, newEnd, b.allocationId);
                                                     }
                                                     
                                                     if (!isColliding && (newStart.getTime() !== alloc.start.getTime() || newEnd.getTime() !== alloc.end.getTime())) {
@@ -1151,8 +1108,9 @@
                                                         const shiftedAllocations = (t.allocations || []).map(a => {
                                                             const shiftStart = a.start ? addDays(a.start, deltaDays) : null;
                                                             const shiftEnd = a.end ? addDays(a.end, deltaDays) : null;
-                                                            if (t.assignee && shiftStart && shiftEnd) {
-                                                                if (checkTeamOverlap(next, t.assignee, shiftStart, shiftEnd, a.id)) {
+                                                            const finalAssignees = t.assignees || (t.assignee ? [t.assignee] : []);
+                                                            if (finalAssignees.length > 0 && shiftStart && shiftEnd) {
+                                                                if (checkTeamOverlap(next, finalAssignees, shiftStart, shiftEnd, a.id)) {
                                                                     anyCollision = true;
                                                                 }
                                                             }
@@ -1445,7 +1403,7 @@
             };
 
             const addTask = () => {
-                const updatedTasks = [...modalData.phase.tasks, { id: generateId(), text: 'New Task', done: false, assignee: '', start: null, end: null, allocations: [] }];
+                const updatedTasks = [...modalData.phase.tasks, { id: generateId(), text: 'New Task', done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] }];
                 updateTasksInState(updatedTasks);
             };
 
@@ -1454,8 +1412,13 @@
                 updateTasksInState(updatedTasks);
             };
 
-            const updateTaskAssignee = (taskId, assignee) => {
-                const updatedTasks = modalData.phase.tasks.map(t => t.id === taskId ? { ...t, assignee } : t);
+            const updateTaskAssignees = (taskId, assigneesArray) => {
+                const updatedTasks = modalData.phase.tasks.map(t => {
+                    if (t.id === taskId) {
+                        return { ...t, assignees: assigneesArray, assignee: '' };
+                    }
+                    return t;
+                });
                 updateTasksInState(updatedTasks);
             };
 
@@ -1468,11 +1431,14 @@
                 let taskToUpdate = null;
                 modalData.phase.tasks.forEach(t => { if(t.id === taskId) taskToUpdate = t; });
                 
-                if (taskToUpdate && taskToUpdate.assignee && newStart && newEnd) {
-                    const allocId = taskToUpdate.allocations?.[0]?.id; 
-                    if (checkTeamOverlap(projects, taskToUpdate.assignee, newStart, newEnd, allocId)) {
-                        alert(`Cannot set dates. ${taskToUpdate.assignee} already has a task overlapping this range.`);
-                        return;
+                if (taskToUpdate && newStart && newEnd) {
+                    const finalAssignees = taskToUpdate.assignees || (taskToUpdate.assignee ? [taskToUpdate.assignee] : []);
+                    if (finalAssignees.length > 0) {
+                        const allocId = taskToUpdate.allocations?.[0]?.id; 
+                        if (checkTeamOverlap(projects, finalAssignees, newStart, newEnd, allocId)) {
+                            alert(`Cannot set dates. One or more assignees already have a task overlapping this range.`);
+                            return;
+                        }
                     }
                 }
 
@@ -1625,11 +1591,11 @@
 
                             {/* Cloud Save / Load / Export */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
-                                <button onClick={saveToCloud} disabled={isSaving || isLoading || isExporting || !isCloudReady} className={`p-1 rounded flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors ${!isCloudReady ? 'text-slate-500 cursor-wait' : 'text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50'}`} title="Save to Cloud">
+                                <button onClick={saveToCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Save to Cloud">
                                     {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} <span className="hidden md:inline">Save</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={loadFromCloud} disabled={isSaving || isLoading || isExporting || !isCloudReady} className={`p-1 rounded flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors ${!isCloudReady ? 'text-slate-500 cursor-wait' : 'text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50'}`} title="Load from Cloud">
+                                <button onClick={loadFromCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Load from Cloud">
                                     {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} <span className="hidden md:inline">Load</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
@@ -2081,15 +2047,15 @@
                                             return (
                                             <div 
                                                 key={assignee.name} 
-                                                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
+                                                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch min-h-[140px] ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
                                                 draggable={assignee.name !== 'Unassigned' && !isLocked}
                                                 onDragStart={(e) => onDragStartTeamMember(e, assignee.name)}
                                                 onDragOver={(e) => onDragOverTeamMember(e, assignee.name)}
                                                 onDragEnd={onDragEndTeamMember}
                                             >
-                                                {/* Left Cell: Assignee & Pool */}
+                                                {/* Left Cell: Assignee & Pool - Absolutely positioned inner div prevents row stretching */}
                                                 <div 
-                                                    className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-colors border-r border-slate-300 flex flex-col p-3 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" 
+                                                    className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-colors border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" 
                                                     style={{ width: leftColWidth }}
                                                     onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/30'); }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/30')}
@@ -2100,64 +2066,66 @@
                                                         onDropTeamPool(e, assignee.name);
                                                     }}
                                                 >
-                                                    <div className="flex items-center justify-between mb-3 w-full gap-2">
-                                                        <div className="flex items-center gap-2 overflow-hidden">
-                                                            <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
-                                                                <Icons.Grip />
+                                                    <div className="absolute inset-0 flex flex-col p-3">
+                                                        <div className="flex items-center justify-between mb-3 w-full gap-2 shrink-0">
+                                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                                <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
+                                                                    <Icons.Grip />
+                                                                </div>
+                                                                <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
+                                                                    {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
+                                                                </div>
+                                                                <h3 className={`font-bold text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
+                                                                    {assignee.name}
+                                                                </h3>
                                                             </div>
-                                                            <div className="w-7 h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
-                                                                {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
-                                                            </div>
-                                                            <h3 className={`font-bold text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
-                                                                {assignee.name}
-                                                            </h3>
-                                                        </div>
-                                                        {assignee.name !== 'Unassigned' && (
-                                                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0">
-                                                                <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>
-                                                                    {isLocked ? <Icons.Lock /> : <Icons.Unlock />}
-                                                                </button>
-                                                                <button onClick={() => handleRemoveTeamMember(assignee.name)} className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0" title="Remove Team Member & Unassign Tasks">
-                                                                    <Icons.Trash />
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="flex flex-col gap-1.5 flex-1">
-                                                        <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center">
-                                                            <span>Task Pool</span>
-                                                            <span className="bg-slate-200 text-slate-600 px-1.5 rounded-full">{assignee.pool.length}</span>
-                                                        </div>
-                                                        <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[250px] pr-1 pb-1">
-                                                            {assignee.pool.length === 0 ? (
-                                                                <div className="text-[10px] text-slate-400 italic py-1">Drop tasks here to unschedule</div>
-                                                            ) : (
-                                                                assignee.pool.map(item => (
-                                                                    <div 
-                                                                        key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
-                                                                        className="bg-white border border-slate-300 text-slate-700 text-[10px] md:text-xs rounded p-1.5 md:p-2 cursor-grab hover:border-blue-400 hover:shadow-md transition-shadow shadow-sm flex flex-col gap-1"
-                                                                        draggable
-                                                                        onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
-                                                                        onDragEnd={() => setDraggedTeamItem(null)}
-                                                                    >
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{backgroundColor: getIndicatorColor(item.project.color)}}></div>
-                                                                            <span className="font-bold truncate" title={item.task.text}>{item.task.text}</span> 
-                                                                        </div>
-                                                                        <div className="text-[9px] text-slate-400 truncate pl-3" title={item.project.title}>
-                                                                            {item.project.title}
-                                                                        </div>
-                                                                    </div>
-                                                                ))
+                                                            {assignee.name !== 'Unassigned' && (
+                                                                <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0">
+                                                                    <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>
+                                                                        {isLocked ? <Icons.Lock /> : <Icons.Unlock />}
+                                                                    </button>
+                                                                    <button onClick={() => handleRemoveTeamMember(assignee.name)} className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0" title="Remove Team Member & Unassign Tasks">
+                                                                        <Icons.Trash />
+                                                                    </button>
+                                                                </div>
                                                             )}
+                                                        </div>
+
+                                                        <div className="flex flex-col gap-1.5 flex-1 min-h-0">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0">
+                                                                <span>Task Pool</span>
+                                                                <span className="bg-slate-200 text-slate-600 px-1.5 rounded-full">{assignee.pool.length}</span>
+                                                            </div>
+                                                            <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-1 pb-1">
+                                                                {assignee.pool.length === 0 ? (
+                                                                    <div className="text-[10px] text-slate-400 italic py-1">Drop tasks here to unschedule</div>
+                                                                ) : (
+                                                                    assignee.pool.map(item => (
+                                                                        <div 
+                                                                            key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
+                                                                            className="bg-white border border-slate-300 text-slate-700 text-[10px] md:text-xs rounded p-1.5 md:p-2 cursor-grab hover:border-blue-400 hover:shadow-md transition-shadow shadow-sm flex flex-col gap-1 shrink-0"
+                                                                            draggable
+                                                                            onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
+                                                                            onDragEnd={() => setDraggedTeamItem(null)}
+                                                                        >
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{backgroundColor: getIndicatorColor(item.project.color)}}></div>
+                                                                                <span className="font-bold truncate" title={item.task.text}>{item.task.text}</span> 
+                                                                            </div>
+                                                                            <div className="text-[9px] text-slate-400 truncate pl-3" title={item.project.title}>
+                                                                                {item.project.title}
+                                                                            </div>
+                                                                        </div>
+                                                                    ))
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
 
                                                 {/* Right Cell: Grid Area */}
                                                 <div 
-                                                    className="flex-1 relative min-w-[600px] team-row-container min-h-[120px] group-hover/teamrow:bg-slate-50/30 transition-colors"
+                                                    className="flex-1 relative min-w-[600px] team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors"
                                                     onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/20'); }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/20')}
                                                     onDrop={(e) => {
@@ -2270,7 +2238,7 @@
                     {/* Project View Task Checklist Modal */}
                     {modalData && activeProject && !teamModalData && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center md:p-4" onMouseDown={() => setModalData(null)}>
-                            <div className="bg-white md:rounded-xl shadow-2xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-[700px] overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
+                            <div className="bg-white md:rounded-xl shadow-2xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-[750px] overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
                                 {/* Modal Header */}
                                 <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(activeProject.color, modalData.colorIndex) }}>
                                     <div className="flex-1 mr-4 flex items-center">
@@ -2384,6 +2352,8 @@
                                             <span className="w-6 md:w-4"></span>
                                             <span className="w-5 md:w-4"></span>
                                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-1">Description</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-32 md:w-28 pl-2">Assignees</span>
+                                            <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider w-[180px] pl-2 text-center" title="Overall task span. Schedule specifics in Team View.">Overall Span</span>
                                         </div>
                                     </div>
 
@@ -2391,7 +2361,10 @@
                                         {modalData.phase.tasks.length === 0 ? (
                                             <p className="text-center text-sm text-slate-400 py-4 italic">No tasks added yet.</p>
                                         ) : (
-                                            modalData.phase.tasks.map((task, tIdx) => (
+                                            modalData.phase.tasks.map((task, tIdx) => {
+                                                const taskAssignees = task.assignees || (task.assignee ? [task.assignee] : []);
+                                                
+                                                return (
                                                 <div 
                                                     key={task.id} 
                                                     draggable={!modalData.phase.isLocked}
@@ -2419,23 +2392,42 @@
                                                             className={`flex-1 text-base md:text-sm bg-transparent border-b border-slate-200 md:border-transparent focus:border-slate-300 focus:outline-none py-1.5 md:py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                                         />
                                                     </div>
+                                                    
                                                     <div className="flex items-center justify-between w-full md:w-auto pl-12 md:pl-0 mt-2 md:mt-0 gap-2">
-                                                        <select 
-                                                            value={task.assignee || ''}
-                                                            disabled={modalData.phase.isLocked}
-                                                            onChange={(e) => updateTaskAssignee(task.id, e.target.value)}
-                                                            className={`w-32 md:w-28 text-sm md:text-xs bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent focus:border-slate-300 rounded md:rounded-none px-2 py-1 md:p-1 focus:outline-none ${task.done ? 'text-slate-400' : 'text-slate-600'} ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
-                                                        >
-                                                            <option value="">Unassigned</option>
-                                                            {teamMembers.map(memberObj => {
-                                                                const mName = memberObj.name || memberObj;
-                                                                return <option key={mName} value={mName}>{mName}</option>
-                                                            })}
-                                                            {/* Fallback for existing manually typed assignees not in the master list */}
-                                                            {task.assignee && !teamMembers.find(m => (m.name || m) === task.assignee) && (
-                                                                <option value={task.assignee}>{task.assignee}</option>
+                                                        {/* CUSTOM MULTI-SELECT DROPDOWN */}
+                                                        <div className="relative w-32 md:w-28 flex-shrink-0" onMouseLeave={() => setOpenDropdownId(null)}>
+                                                            <div 
+                                                                onClick={() => { if (!modalData.phase.isLocked) setOpenDropdownId(openDropdownId === task.id ? null : task.id) }}
+                                                                className={`text-sm md:text-xs bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-2 py-1 md:p-1 cursor-pointer truncate select-none ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''} ${task.done ? 'text-slate-400' : 'text-slate-600'}`}
+                                                            >
+                                                                {taskAssignees.length === 0 ? 'Unassigned' : taskAssignees.length === 1 ? taskAssignees[0] : `${taskAssignees.length} Assignees`}
+                                                            </div>
+                                                            
+                                                            {openDropdownId === task.id && (
+                                                                <div className="absolute top-full left-0 z-50 mt-1 w-48 bg-white border border-slate-200 shadow-xl rounded-md py-1 max-h-48 overflow-y-auto">
+                                                                    {teamMembers.map(mObj => {
+                                                                        const mName = mObj.name || mObj;
+                                                                        const isSelected = taskAssignees.includes(mName);
+                                                                        return (
+                                                                            <label key={mName} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer">
+                                                                                <input 
+                                                                                    type="checkbox" 
+                                                                                    checked={isSelected} 
+                                                                                    onChange={() => {
+                                                                                        const next = isSelected ? taskAssignees.filter(m => m !== mName) : [...taskAssignees, mName];
+                                                                                        updateTaskAssignees(task.id, next);
+                                                                                    }} 
+                                                                                    className="accent-blue-500 w-3.5 h-3.5 cursor-pointer" 
+                                                                                />
+                                                                                <span className="text-xs text-slate-700 truncate select-none">{mName}</span>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                    {teamMembers.length === 0 && <div className="text-xs text-slate-400 italic px-3 py-2">No team members added. Add them in Team View.</div>}
+                                                                </div>
                                                             )}
-                                                        </select>
+                                                        </div>
+
                                                         <div className="flex-1 md:w-[180px] flex flex-col md:flex-row items-center md:justify-between md:pl-2 md:border-l border-slate-100 gap-1 md:gap-0" title="Auto-synced from Team View Allocations. Edit to overwrite all.">
                                                             <div className="flex items-center w-full justify-between">
                                                                 <input 
@@ -2460,7 +2452,7 @@
                                                         </button>
                                                     </div>
                                                 </div>
-                                            ))
+                                            )})
                                         )}
                                     </div>
                                     <button onClick={addTask} disabled={modalData.phase.isLocked} className={`text-sm md:text-xs font-medium flex items-center justify-center border border-dashed border-blue-200 w-full p-3 rounded gap-2 mt-2 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed border-slate-200' : 'text-blue-600 hover:bg-blue-50'}`}>
