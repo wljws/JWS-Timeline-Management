@@ -437,7 +437,10 @@
                                 if (!assigneesMap.has(name)) assigneesMap.set(name, { name, scheduled: [], pool: [] });
                                 const assignee = assigneesMap.get(name);
                                 
-                                assignee.pool.push({ project: p, phase: ph, task: t });
+                                const hasValidAllocation = (t.allocations || []).some(a => a.start && a.end);
+                                if (!hasValidAllocation) {
+                                    assignee.pool.push({ project: p, phase: ph, task: t });
+                                }
                                 
                                 (t.allocations || []).forEach(alloc => {
                                     const tStart = alloc.start;
@@ -551,20 +554,29 @@
                 }
             };
 
-            // --- Vercel KV Upstash Export / Import Handlers ---
+            // --- Vercel KV Upstash Export / Import Handlers with UI Context preservation and LocalStorage Fallback ---
             const saveToCloud = async () => {
                 setIsSaving(true);
+                const payload = {
+                    projects,
+                    teamMembers,
+                    viewMode,
+                    zoomLevel,
+                    currentTeamWeekStart: currentTeamWeekStart.toISOString()
+                };
+
                 try {
                     const response = await fetch('/api/save', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ projects, teamMembers })
+                        body: JSON.stringify(payload)
                     });
-                    if (!response.ok) throw new Error('Network response was not ok');
+                    if (!response.ok) throw new Error('Network error');
                     alert('Successfully saved to cloud!');
                 } catch (err) {
-                    console.error("Failed to save", err);
-                    alert('Failed to save to cloud. Ensure your Vercel KV backend is setup correctly.');
+                    console.warn("Cloud save failed, falling back to LocalStorage.", err);
+                    localStorage.setItem('timeline_data', JSON.stringify(payload));
+                    alert('Saved locally! (Vercel KV backend not reachable or offline)');
                 } finally {
                     setIsSaving(false);
                 }
@@ -573,48 +585,67 @@
             const loadFromCloud = async () => {
                 setIsLoading(true);
                 try {
-                    const response = await fetch('/api/load');
-                    const data = await response.json();
-                    
-                    if (data.teamMembers && Array.isArray(data.teamMembers)) {
-                        setTeamMembers(data.teamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                    let data = null;
+                    try {
+                        const response = await fetch('/api/load');
+                        if (!response.ok) throw new Error('Network error');
+                        data = await response.json();
+                    } catch (err) {
+                        const local = localStorage.getItem('timeline_data');
+                        if (local) {
+                            data = JSON.parse(local);
+                            console.warn("Loaded from LocalStorage.");
+                        } else {
+                            throw new Error('No saved data found in Cloud or LocalStorage.');
+                        }
                     }
+                    
+                    if (data) {
+                        // Restore precise UI contexts
+                        if (data.viewMode) setViewMode(data.viewMode);
+                        if (data.zoomLevel) setZoomLevel(data.zoomLevel);
+                        if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
 
-                    if (data.projects && Array.isArray(data.projects)) {
-                        const processedProjects = data.projects.map(p => ({
-                            ...p,
-                            phases: p.phases.map(ph => ({
-                                ...ph,
-                                start: ph.start ? new Date(ph.start) : null,
-                                end: ph.end ? new Date(ph.end) : null,
-                                milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
-                                tasks: (ph.tasks || []).map(t => {
-                                    const safeAllocations = (t.allocations || []).length > 0 
-                                        ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-                                        : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-                                        
-                                    // Ensure array mapping for existing legacy mock data
-                                    const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
+                        if (data.teamMembers && Array.isArray(data.teamMembers)) {
+                            setTeamMembers(data.teamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                        }
 
-                                    return { 
-                                        ...t, 
-                                        start: t.start ? new Date(t.start) : null, 
-                                        end: t.end ? new Date(t.end) : null,
-                                        assignees: assigneesArray,
-                                        assignee: '', // Clear legacy string safely
-                                        allocations: safeAllocations
-                                    }
-                                })
-                            }))
-                        }));
-                        updateProjects(processedProjects);
-                        alert('Successfully loaded from cloud!');
-                    } else {
-                        alert('No saved data found in cloud.');
+                        if (data.projects && Array.isArray(data.projects)) {
+                            const processedProjects = data.projects.map(p => ({
+                                ...p,
+                                phases: p.phases.map(ph => ({
+                                    ...ph,
+                                    start: ph.start ? new Date(ph.start) : null,
+                                    end: ph.end ? new Date(ph.end) : null,
+                                    milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                                    tasks: (ph.tasks || []).map(t => {
+                                        const safeAllocations = (t.allocations || []).length > 0 
+                                            ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                            : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                            
+                                        // Ensure array mapping for existing legacy mock data
+                                        const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
+
+                                        return { 
+                                            ...t, 
+                                            start: t.start ? new Date(t.start) : null, 
+                                            end: t.end ? new Date(t.end) : null,
+                                            assignees: assigneesArray,
+                                            assignee: '', // Clear legacy string safely
+                                            allocations: safeAllocations
+                                        }
+                                    })
+                                }))
+                            }));
+                            updateProjects(processedProjects);
+                            alert(data.viewMode ? 'Successfully loaded timeline and restored your view state!' : 'Successfully loaded data!');
+                        } else {
+                            alert('No valid project data found.');
+                        }
                     }
                 } catch (err) {
                     console.error("Failed to load", err);
-                    alert('Failed to load from cloud. Ensure your Vercel KV backend is setup correctly.');
+                    alert(err.message);
                 } finally {
                     setIsLoading(false);
                 }
