@@ -125,6 +125,9 @@
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@3.0.0-rc.0/default.css">
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@3.0.0-rc.0/index.min.js"></script>
+    <!-- Add html2canvas and jsPDF for PDF Export functionality -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
             var mdd = window.MobileDragDrop || window.mobileDragDrop;
@@ -145,13 +148,19 @@
     <div id="root"></div>
 
     <script type="module">
-        // Load Firebase using native modules to bypass Babel standalone 'require' transpilation errors
-        window.importFirebase = async function() {
-            const app = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js");
-            const auth = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js");
-            const firestore = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
-            return Object.assign({}, app, auth, firestore);
+        // Import Firebase natively to prevent Babel 'require' transpilation errors
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose a stable API to the global scope for the React app to consume
+        window.firebaseAPI = {
+            initializeApp,
+            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, setDoc, getDoc
         };
+        // Signal that the APIs are ready
+        window.dispatchEvent(new Event('firebaseLoaded'));
     </script>
 
     <script type="text/babel">
@@ -223,6 +232,7 @@
             Unlock: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 019.9-1"></path></svg>,
             CloudUpload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 16V7"></path><path d="M8 11l4-4 4 4"></path></svg>,
             CloudDownload: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 116.71-9h1.79a4.5 4.5 0 110 9z"></path><path d="M12 7v9"></path><path d="M8 12l4 4 4-4"></path></svg>,
+            Download: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>,
             Spinner: () => <svg className="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>,
             Users: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 00-3-3.87"></path><path d="M16 3.13a4 4 0 010 7.75"></path></svg>,
             Layout: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
@@ -308,9 +318,10 @@
             const [modalData, setModalData] = useState(null);
             const [teamModalData, setTeamModalData] = useState(null); 
             
-            // Cloud Saving/Loading States
+            // Cloud Saving/Loading/Export States
             const [isSaving, setIsSaving] = useState(false);
             const [isLoading, setIsLoading] = useState(false);
+            const [isExporting, setIsExporting] = useState(false);
 
             // Firebase State
             const [db, setDb] = useState(null);
@@ -320,16 +331,18 @@
             useEffect(() => {
                 const setupFirebase = async () => {
                     try {
-                        if (!window.importFirebase) return;
-                        const fb = await window.importFirebase();
+                        // Wait for the native module script to finish loading and exposing the API
+                        if (!window.firebaseAPI) {
+                            await new Promise(resolve => window.addEventListener('firebaseLoaded', resolve, { once: true }));
+                        }
+                        const fb = window.firebaseAPI;
                         
-                        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+                        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+                        if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) return; // Abort silently if not running in the platform
+
                         const app = fb.initializeApp(firebaseConfig);
                         const authInstance = fb.getAuth(app);
                         const dbInstance = fb.getFirestore(app);
-                        
-                        // Store in global window variable for save/load functions to securely access without Babel issues
-                        window.fbTools = fb; 
                         
                         setDb(dbInstance);
                         setAuth(authInstance);
@@ -578,16 +591,16 @@
 
             // --- Cloud Export / Import Handlers ---
             const saveToCloud = async () => {
-                if (!user || !db || !window.fbTools) return alert("Storage connection not ready yet.");
+                if (!user || !db || !window.firebaseAPI) return alert("Storage connection not ready yet.");
                 setIsSaving(true);
                 try {
-                    const { doc, setDoc } = window.fbTools;
+                    const { doc, setDoc } = window.firebaseAPI;
                     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
                     
                     await setDoc(docRef, { 
                         projects: JSON.stringify(projects), 
-                        teamMembers: teamMembers 
+                        teamMembers: JSON.stringify(teamMembers) 
                     });
                     alert('Successfully saved to cloud!');
                 } catch (err) {
@@ -599,18 +612,24 @@
             };
 
             const loadFromCloud = async () => {
-                if (!user || !db || !window.fbTools) return alert("Storage connection not ready yet.");
+                if (!user || !db || !window.firebaseAPI) return alert("Storage connection not ready yet.");
                 setIsLoading(true);
                 try {
-                    const { doc, getDoc } = window.fbTools;
+                    const { doc, getDoc } = window.firebaseAPI;
                     const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                     const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'timeline', 'main');
                     const snap = await getDoc(docRef);
                     
                     if (snap.exists()) {
                         const data = snap.data();
-                        if (data.teamMembers && Array.isArray(data.teamMembers)) {
-                            setTeamMembers(data.teamMembers);
+                        
+                        if (data.teamMembers) {
+                            try {
+                                const parsedTeamMembers = typeof data.teamMembers === 'string' ? JSON.parse(data.teamMembers) : data.teamMembers;
+                                if (Array.isArray(parsedTeamMembers)) {
+                                    setTeamMembers(parsedTeamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                                }
+                            } catch(e) {}
                         }
 
                         if (data.projects) {
@@ -647,6 +666,49 @@
                     alert("Failed to load: " + err.message);
                 } finally {
                     setIsLoading(false);
+                }
+            };
+
+            const exportToPDF = async () => {
+                setIsExporting(true);
+                try {
+                    const target = scrollContainerRef.current?.firstElementChild;
+                    if (!target) {
+                        alert("Nothing to export.");
+                        setIsExporting(false);
+                        return;
+                    }
+
+                    // We use html2canvas to capture the full scrolling width of the active diagram
+                    const canvas = await window.html2canvas(target, {
+                        scale: 1.5, // 1.5 balances export resolution with memory limits on massive DOMs
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff'
+                    });
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                    const { jsPDF } = window.jspdf;
+                    
+                    const imgWidth = canvas.width;
+                    const imgHeight = canvas.height;
+                    const orientation = imgWidth > imgHeight ? 'l' : 'p';
+                    
+                    // Create a custom-sized PDF matching exact canvas dimensions to act like a digital blueprint
+                    const pdf = new jsPDF({
+                        orientation: orientation,
+                        unit: 'px',
+                        format: [imgWidth, imgHeight]
+                    });
+
+                    pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+                    pdf.save(`Timeline_Export_${viewMode}_${toYMD(new Date())}.pdf`);
+
+                } catch (error) {
+                    console.error("PDF Export Error:", error);
+                    alert("Failed to export PDF. The timeline might be too large to process.");
+                } finally {
+                    setIsExporting(false);
                 }
             };
 
@@ -1555,14 +1617,18 @@
                                 </button>
                             </div>
 
-                            {/* Cloud Save / Load */}
+                            {/* Cloud Save / Load / Export */}
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
-                                <button onClick={saveToCloud} disabled={isSaving || isLoading} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Save to Cloud">
+                                <button onClick={saveToCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Save to Cloud">
                                     {isSaving ? <Icons.Spinner /> : <Icons.CloudUpload />} <span className="hidden md:inline">Save</span>
                                 </button>
                                 <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-                                <button onClick={loadFromCloud} disabled={isSaving || isLoading} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Load from Cloud">
+                                <button onClick={loadFromCloud} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Load from Cloud">
                                     {isLoading ? <Icons.Spinner /> : <Icons.CloudDownload />} <span className="hidden md:inline">Load</span>
+                                </button>
+                                <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
+                                <button onClick={exportToPDF} disabled={isSaving || isLoading || isExporting} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Export as PDF">
+                                    {isExporting ? <Icons.Spinner /> : <Icons.Download />} <span className="hidden md:inline">PDF</span>
                                 </button>
                             </div>
 
