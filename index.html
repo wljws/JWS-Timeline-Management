@@ -23,16 +23,22 @@
         }
         
         /* Mobile DnD & Touch Action */
-        [draggable="true"] { touch-action: pan-y; } /* Allow scrolling on draggable items... */
-        .drag-handle { touch-action: none; } /* ...but lock touch on specific handles if needed */
+        [draggable="true"] { touch-action: pan-y; } 
+        .drag-handle { touch-action: none; } 
         
-        /* Custom Scrollbar - Hidden on very small screens for cleaner UI */
+        /* Custom Scrollbar */
         @media (min-width: 768px) {
             ::-webkit-scrollbar { width: 10px; height: 10px; }
             ::-webkit-scrollbar-track { background: #f8fafc; border-top: 1px solid #e2e8f0; border-left: 1px solid #e2e8f0; }
             ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 5px; border: 2px solid #f8fafc; }
             ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         }
+        
+        /* Localized hidden scrollbar for task pools to prevent layout shifting */
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
 
         .timeline-block {
             transition: box-shadow 0.2s, outline 0.1s;
@@ -47,13 +53,13 @@
             position: absolute;
             top: 0;
             bottom: 0;
-            width: 24px; /* Larger touch target for mobile */
+            width: 24px; 
             cursor: ew-resize;
             z-index: 20;
             display: flex;
             align-items: center;
             justify-content: center;
-            background-color: rgba(255, 255, 255, 0.0); /* Transparent by default for wider hit area */
+            background-color: rgba(255, 255, 255, 0.0); 
             transition: background-color 0.2s;
         }
         .resize-handle:hover, .resize-handle:active {
@@ -67,7 +73,6 @@
             border-radius: 1px;
             box-shadow: 0 1px 2px rgba(0,0,0,0.3);
         }
-        /* Keep handles accessible but slightly overlapping the edges */
         .resize-handle-left { left: -4px; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }
         .resize-handle-right { right: -4px; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
         
@@ -100,13 +105,13 @@
             right: -3px;
             top: 0;
             bottom: 0;
-            width: 12px; /* Larger hit area */
+            width: 12px; 
             cursor: col-resize;
             background-color: transparent;
             z-index: 50;
         }
         .col-resizer:hover, .col-resizer:active {
-            background-color: rgba(96, 165, 250, 0.5); /* Subtle blue tint on grab */
+            background-color: rgba(96, 165, 250, 0.5); 
         }
         .col-resizer::after {
             content: '';
@@ -118,7 +123,7 @@
             background-color: transparent;
         }
         .col-resizer:hover::after, .col-resizer:active::after {
-            background-color: #3b82f6; /* Tailwind blue-500 */
+            background-color: #3b82f6; 
         }
 
         .drop-zone-active { background-color: rgba(59, 130, 246, 0.1); }
@@ -188,6 +193,13 @@
             if (!str) return null;
             const [y,m,d] = str.split('-');
             return new Date(y, m-1, d);
+        };
+
+        const abbreviatePhase = (text) => {
+            if (!text) return '';
+            const words = text.trim().split(/[\s-]+/);
+            if (words.length === 1) return words[0].substring(0, 3).toUpperCase();
+            return words.map(w => w[0]).join('').toUpperCase().substring(0, 4);
         };
 
         const checkTeamOverlap = (projectsData, targetAssignees, start, end, excludeAllocId) => {
@@ -379,7 +391,7 @@
                     
                     if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
                         setSyncStatus('Local Only (No Cloud DB)');
-                        return; // Abort silently if not running in the platform
+                        return; 
                     }
                     
                     try {
@@ -470,7 +482,6 @@
                             applyLoadedData(data, false);
                             setSyncStatus('Synced to Cloud');
                         } else {
-                            // Try local storage if KV says 404 (first time use)
                             const local = localStorage.getItem('timeline_data');
                             if (local) {
                                 applyLoadedData(JSON.parse(local), false);
@@ -480,7 +491,6 @@
                             }
                         }
                     } catch(e) {
-                        // Network failure
                         const local = localStorage.getItem('timeline_data');
                         if (local) {
                             applyLoadedData(JSON.parse(local), false);
@@ -510,7 +520,6 @@
                         currentTeamWeekStart: currentTeamWeekStart.toISOString()
                     };
                     
-                    // Always backup locally instantly
                     localStorage.setItem('timeline_data', JSON.stringify(appState));
 
                     try {
@@ -544,13 +553,14 @@
                 return d;
             }, []);
             
-            const timelineStart = useMemo(() => new Date(2026, 0, 1), []);
-            const timelineEnd = useMemo(() => new Date(2028, 11, 31), []);
+            const timelineStart = useMemo(() => new Date(today.getFullYear(), 0, 1), [today]);
+            const timelineEnd = useMemo(() => new Date(today.getFullYear() + 2, 11, 31), [today]);
             const totalDays = diffDays(timelineStart, timelineEnd) + 1;
 
-            // Team View bounds
+            // Team View bounds - Defaults to Current Week
             const [currentTeamWeekStart, setCurrentTeamWeekStart] = useState(() => {
-                const d = new Date(timelineStart); 
+                const d = new Date(); 
+                d.setHours(0,0,0,0);
                 const day = d.getDay();
                 const diff = d.getDate() - day + (day === 0 ? -6 : 1); 
                 return new Date(d.setDate(diff));
@@ -667,8 +677,6 @@
                 
                 result.forEach(assignee => {
                     assignee.scheduled.sort((a, b) => a.allocation.start.getTime() - b.allocation.start.getTime());
-                    assignee.scheduled.forEach(item => { item.level = 0; });
-                    assignee.rowHeight = 60; 
                 });
 
                 return result;
@@ -1904,11 +1912,13 @@
                                                         const hasTimeline = phase.start && phase.end;
                                                         const isSelected = selectedPhaseIds.has(phase.id);
 
-                                                        let left = 0, width = 0, isVisible = false;
+                                                        let left = 0, width = 0, isVisible = false, durationWeeks = 0;
                                                         if (hasTimeline) {
                                                             left = diffExactDays(timelineStart, phase.start) * zoomLevel;
-                                                            width = (diffExactDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                            const durationDays = diffExactDays(phase.start, phase.end) + 1;
+                                                            width = durationDays * zoomLevel;
                                                             isVisible = left + width >= 0 && left <= gridWidth;
+                                                            durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
                                                         }
 
                                                         return (
@@ -1927,7 +1937,7 @@
                                                                     >
                                                                         <div className="truncate drop-shadow-md flex items-center gap-1">
                                                                             {phase.isLocked && <Icons.Lock />}
-                                                                            {phase.title}
+                                                                            {abbreviatePhase(phase.title)} ({durationWeeks}w)
                                                                         </div>
                                                                         {!phase.isLocked && (
                                                                             <>
@@ -1980,10 +1990,12 @@
                                             {project.isExpanded && project.phases.map((phase, phaseIndex) => {
                                                 const hasTimeline = phase.start && phase.end;
                                                 const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
-                                                let left = 0, width = 0;
+                                                let left = 0, width = 0, durationWeeks = 0;
                                                 if (hasTimeline) {
                                                     left = diffExactDays(timelineStart, phase.start) * zoomLevel;
-                                                    width = (diffExactDays(phase.start, phase.end) + 1) * zoomLevel;
+                                                    const durationDays = diffExactDays(phase.start, phase.end) + 1;
+                                                    width = durationDays * zoomLevel;
+                                                    durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
                                                 }
                                                 const taskCount = phase.tasks.length;
                                                 const doneCount = phase.tasks.filter(t => t.done).length;
@@ -2050,7 +2062,7 @@
                                                                 >
                                                                     <span className="truncate drop-shadow-md flex items-center gap-1">
                                                                         {phase.isLocked && <Icons.Lock />}
-                                                                        {phase.title}
+                                                                        {abbreviatePhase(phase.title)} ({durationWeeks}w)
                                                                     </span>
                                                                     {taskCount > 0 && width > 100 && (
                                                                         <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">
@@ -2143,14 +2155,14 @@
                                     
                                     {/* HEADER ROW */}
                                     <div className="flex sticky top-0 z-40 h-[60px] w-full min-w-full bg-white border-b border-slate-300 shadow-sm">
-                                        {/* Left Header Cell (Split into Members and Tasks) */}
+                                        {/* Left Header Cell (Split into Tasks and Members) */}
                                         <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-row shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth }}>
                                             <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)} onTouchStart={() => setIsResizingCol(true)}></div>
-                                            <div className="w-[40%] min-w-[100px] border-r border-slate-200 flex flex-col justify-end p-2">
-                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate">Team Members</div>
-                                            </div>
-                                            <div className="flex-1 flex flex-col justify-end p-2">
+                                            <div className="flex-1 border-r border-slate-200 flex flex-col justify-end p-2">
                                                 <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate">Task Pool</div>
+                                            </div>
+                                            <div className="w-[35%] min-w-[90px] flex flex-col justify-end p-2">
+                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate text-center">Team Members</div>
                                             </div>
                                         </div>
                                         
@@ -2187,13 +2199,13 @@
                                             return (
                                             <div 
                                                 key={assignee.name} 
-                                                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch min-h-[140px] ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
+                                                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch h-[80px] ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
                                                 draggable={assignee.name !== 'Unassigned' && !isLocked}
                                                 onDragStart={(e) => onDragStartTeamMember(e, assignee.name)}
                                                 onDragOver={(e) => onDragOverTeamMember(e, assignee.name)}
                                                 onDragEnd={onDragEndTeamMember}
                                             >
-                                                {/* Left Cell: Assignee & Pool - Split Side-by-Side */}
+                                                {/* Left Cell: Pool & Assignee - Split Side-by-Side */}
                                                 <div 
                                                     className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-colors border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" 
                                                     style={{ width: leftColWidth }}
@@ -2207,21 +2219,51 @@
                                                     }}
                                                 >
                                                     <div className="absolute inset-0 flex">
-                                                        {/* Assignee Column */}
-                                                        <div className="w-[40%] min-w-[100px] border-r border-slate-200 p-2 md:p-3 flex flex-col gap-1.5 shrink-0 overflow-hidden">
-                                                            <div className="flex items-center gap-2 overflow-hidden">
-                                                                <div className={`w-4 flex justify-center items-center h-full opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 shrink-0 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
-                                                                    <Icons.Grip />
-                                                                </div>
-                                                                <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-xs shrink-0">
-                                                                    {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
-                                                                </div>
+                                                        {/* Task Pool Column */}
+                                                        <div className="flex-1 flex flex-col p-1.5 md:p-2 min-w-0 border-r border-slate-200">
+                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1">
+                                                                <span>{assignee.pool.length} Unscheduled</span>
                                                             </div>
-                                                            <h3 className={`font-bold text-xs md:text-sm truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
+                                                            <div className="flex flex-col gap-1 overflow-y-auto flex-1 pr-1 pb-1 custom-scrollbar">
+                                                                {assignee.pool.length === 0 ? (
+                                                                    <div className="text-[10px] text-slate-400 italic py-1 text-center">Drop tasks here</div>
+                                                                ) : (
+                                                                    assignee.pool.map(item => {
+                                                                        const poolBgColor = getPhaseColor(item.project.color, 0); 
+                                                                        return (
+                                                                        <div 
+                                                                            key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
+                                                                            className="text-white rounded p-1.5 cursor-grab hover:shadow-md transition-shadow shadow-sm flex flex-col shrink-0"
+                                                                            style={{ backgroundColor: poolBgColor }}
+                                                                            draggable
+                                                                            onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
+                                                                            onDragEnd={() => setDraggedTeamItem(null)}
+                                                                        >
+                                                                            <div className="font-bold truncate text-[11px] drop-shadow-sm mb-[1px]" title={item.project.title}>
+                                                                                {item.project.title}
+                                                                            </div>
+                                                                            <div className="truncate opacity-95 text-[9px] drop-shadow-sm" title={item.task.text}>
+                                                                                {item.task.text}
+                                                                            </div>
+                                                                        </div>
+                                                                    )})
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Assignee Column */}
+                                                        <div className="w-[35%] min-w-[90px] p-2 flex flex-col gap-1 shrink-0 overflow-hidden items-center justify-center relative">
+                                                            <div className={`absolute top-1 left-1 w-4 flex justify-center items-center opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 shrink-0 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
+                                                                <Icons.Grip />
+                                                            </div>
+                                                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-sm shrink-0 mb-0.5">
+                                                                {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
+                                                            </div>
+                                                            <h3 className={`font-bold text-[10px] md:text-xs text-center leading-tight w-full truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
                                                                 {assignee.name}
                                                             </h3>
                                                             {assignee.name !== 'Unassigned' && (
-                                                                <div className="flex items-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0 mt-auto pt-1">
+                                                                <div className="flex items-center justify-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0 mt-0.5">
                                                                     <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>
                                                                         {isLocked ? <Icons.Lock /> : <Icons.Unlock />}
                                                                     </button>
@@ -2230,36 +2272,6 @@
                                                                     </button>
                                                                 </div>
                                                             )}
-                                                        </div>
-
-                                                        {/* Task Pool Column */}
-                                                        <div className="flex-1 flex flex-col p-2 min-w-0">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1.5">
-                                                                <span>{assignee.pool.length} Unscheduled</span>
-                                                            </div>
-                                                            <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 pr-1 pb-1">
-                                                                {assignee.pool.length === 0 ? (
-                                                                    <div className="text-[10px] text-slate-400 italic py-1">Drop tasks here to unschedule</div>
-                                                                ) : (
-                                                                    assignee.pool.map(item => (
-                                                                        <div 
-                                                                            key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
-                                                                            className="bg-white border border-slate-300 text-slate-700 text-[10px] md:text-xs rounded p-1.5 md:p-2 cursor-grab hover:border-blue-400 hover:shadow-md transition-shadow shadow-sm flex flex-col gap-1 shrink-0"
-                                                                            draggable
-                                                                            onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
-                                                                            onDragEnd={() => setDraggedTeamItem(null)}
-                                                                        >
-                                                                            <div className="flex items-center gap-1.5">
-                                                                                <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{backgroundColor: getIndicatorColor(item.project.color)}}></div>
-                                                                                <span className="font-bold truncate" title={item.task.text}>{item.task.text}</span> 
-                                                                            </div>
-                                                                            <div className="text-[9px] text-slate-400 truncate pl-3" title={item.project.title}>
-                                                                                {item.project.title}
-                                                                            </div>
-                                                                        </div>
-                                                                    ))
-                                                                )}
-                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2289,7 +2301,7 @@
                                                     </div>
 
                                                     {/* Foreground Scheduled Allocations */}
-                                                    <div className="absolute inset-0 p-1 pointer-events-none">
+                                                    <div className="absolute inset-0 pointer-events-none">
                                                         {assignee.scheduled.map(item => {
                                                             const bgColor = getPhaseColor(item.project.color, 1);
                                                             const totalSub = item.allocation.subTasks?.length || 0;
@@ -2298,33 +2310,35 @@
                                                             return (
                                                                 <div 
                                                                     key={`${item.project.id}_${item.phase.id}_${item.task.id}_${item.allocation.id}`}
-                                                                    className={`absolute rounded shadow-sm text-white px-2 py-1 flex flex-col justify-center overflow-hidden z-10 pointer-events-auto cursor-grab border border-white/20 hover:scale-[1.02] transition-transform
+                                                                    className={`absolute rounded shadow-sm text-white px-2 py-1 flex flex-col justify-center overflow-hidden z-10 pointer-events-auto cursor-grab border border-white/20 hover:scale-[1.01] transition-transform
                                                                         ${item.task.done ? 'completed-block' : ''}
                                                                     `}
                                                                     style={{ 
                                                                         left: `calc(${(item.startCol / 10) * 100}% + 2px)`,
                                                                         width: `calc(${(item.span / 10) * 100}% - 4px)`,
-                                                                        top: `${item.level * 44 + 4}px`,
-                                                                        backgroundColor: bgColor,
-                                                                        height: '36px'
+                                                                        top: '2px',
+                                                                        height: 'calc(100% - 4px)',
+                                                                        backgroundColor: bgColor
                                                                     }}
                                                                     draggable
                                                                     onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, item.allocation.id, item.allocation.start, item.allocation.end)}
                                                                     onDragEnd={() => setDraggedTeamItem(null)}
                                                                     onClick={(e) => handleTeamBlockClick(e, item.project.id, item.phase.id, item.task.id, item.allocation.id)}
                                                                 >
-                                                                    <div className="flex justify-between items-start gap-1">
-                                                                        <div className="truncate drop-shadow-md text-[10px] md:text-[11px] font-bold">
+                                                                    <div className="flex flex-col h-full justify-center">
+                                                                        <div className="flex justify-between items-start gap-1">
+                                                                            <div className="truncate drop-shadow-md text-[11px] font-bold">
+                                                                                {item.project.title}
+                                                                            </div>
+                                                                            {totalSub > 0 && (
+                                                                                <div className="text-[8px] bg-black/30 px-1 rounded-sm font-semibold shrink-0 mt-0.5">
+                                                                                    {doneSub}/{totalSub}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                        <div className="truncate drop-shadow-md font-medium text-[9px] opacity-95">
                                                                             {item.task.text}
                                                                         </div>
-                                                                        {totalSub > 0 && (
-                                                                            <div className="text-[8px] bg-black/30 px-1 rounded-sm font-semibold shrink-0">
-                                                                                {doneSub}/{totalSub}
-                                                                            </div>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="truncate drop-shadow-md font-medium text-[8px] md:text-[9px] opacity-90 mt-0.5">
-                                                                        {item.project.title} <span className="mx-0.5 opacity-60">/</span> {item.phase.title}
                                                                     </div>
                                                                     
                                                                     {!item.phase.isLocked && (
@@ -2343,8 +2357,9 @@
 
                                         {/* Add Team Member Row */}
                                         <div className="flex w-full mt-4 mb-8">
-                                            <div className="flex-shrink-0 sticky left-0 z-30 px-2 py-2 flex" style={{ width: leftColWidth }}>
-                                                <div className="w-[40%] min-w-[100px] pr-2">
+                                            <div className="flex-shrink-0 sticky left-0 z-30 flex" style={{ width: leftColWidth }}>
+                                                <div className="flex-1 border-r border-slate-200/50"></div>
+                                                <div className="w-[35%] min-w-[90px] p-2">
                                                     {isAddingTeamMember ? (
                                                         <div className="bg-white border border-blue-300 rounded p-2 shadow-sm flex flex-col gap-2">
                                                             <input 
@@ -2367,7 +2382,6 @@
                                                         </button>
                                                     )}
                                                 </div>
-                                                <div className="flex-1 border-r border-slate-200/50"></div>
                                             </div>
                                         </div>
 
