@@ -324,11 +324,7 @@
             const [future, setFuture] = useState([]);
             const dragStartProjects = useRef(null);
 
-            // Firebase Multiplayer State
-            const [fbAPI, setFbAPI] = useState(null);
-            const [db, setDb] = useState(null);
-            const [user, setUser] = useState(null);
-            const isRemoteUpdate = useRef(false);
+            const [isDataLoaded, setIsDataLoaded] = useState(false);
 
             useEffect(() => {
                 const hist = localStorage.getItem('timeline_version_history');
@@ -336,6 +332,41 @@
                     try { setSaveHistory(JSON.parse(hist)); } catch(e) {}
                 }
             }, []);
+
+            // Initial Mock Data
+            const [projects, setProjects] = useState([
+                {
+                    id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
+                    phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
+                        id: `ph_${i}`,
+                        title: t.title,
+                        isLocked: false,
+                        start: i === 0 ? new Date(2026, 0, 5) : (i === 1 ? new Date(2026, 0, 25) : null),
+                        end: i === 0 ? new Date(2026, 0, 20) : (i === 1 ? new Date(2026, 1, 20) : null),
+                        tasks: t.tasks.map((taskTemplate, tIdx) => {
+                            const isAllocated = i === 0 && tIdx === 0;
+                            const tStart = isAllocated ? new Date(2026, 0, 6) : null;
+                            const tEnd = isAllocated ? new Date(2026, 0, 8) : null;
+                            return { 
+                                id: `t_${i}_${tIdx}`, 
+                                text: taskTemplate.text, 
+                                done: false, 
+                                assignees: isAllocated ? ['Alice Design'] : [],
+                                start: tStart,
+                                end: tEnd,
+                                allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
+                            }
+                        }),
+                        milestones: []
+                    }))
+                }
+            ]);
+
+            // Firebase Multiplayer State
+            const [fbAPI, setFbAPI] = useState(null);
+            const [db, setDb] = useState(null);
+            const [user, setUser] = useState(null);
+            const isRemoteUpdate = useRef(false);
 
             // 1. Initialize Firebase connection strictly following requirements for Multiplayer
             useEffect(() => {
@@ -375,130 +406,132 @@
                 setupFirebase();
             }, []);
 
-            // Initial Mock Data
-            const [projects, setProjects] = useState([
-                {
-                    id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
-                    phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
-                        id: `ph_${i}`,
-                        title: t.title,
-                        isLocked: false,
-                        start: i === 0 ? new Date(2026, 0, 5) : (i === 1 ? new Date(2026, 0, 25) : null),
-                        end: i === 0 ? new Date(2026, 0, 20) : (i === 1 ? new Date(2026, 1, 20) : null),
-                        tasks: t.tasks.map((taskTemplate, tIdx) => {
-                            const isAllocated = i === 0 && tIdx === 0;
-                            const tStart = isAllocated ? new Date(2026, 0, 6) : null;
-                            const tEnd = isAllocated ? new Date(2026, 0, 8) : null;
-                            return { 
-                                id: `t_${i}_${tIdx}`, 
-                                text: taskTemplate.text, 
-                                done: false, 
-                                assignees: isAllocated ? ['Alice Design'] : [],
-                                start: tStart,
-                                end: tEnd,
-                                allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
-                            }
-                        }),
-                        milestones: []
-                    }))
+            // --- Shared Data Loader ---
+            const applyLoadedData = (data, isHistoryRestore = false) => {
+                if (data.viewMode) setViewMode(data.viewMode);
+                if (data.zoomLevel) setZoomLevel(data.zoomLevel);
+                if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
+
+                let parsedTeamMembers = data.teamMembers;
+                if (typeof parsedTeamMembers === 'string') {
+                    try { parsedTeamMembers = JSON.parse(parsedTeamMembers); } catch(e) {}
                 }
-            ]);
+                if (Array.isArray(parsedTeamMembers)) {
+                    setTeamMembers(parsedTeamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                }
 
-            // 2. Real-time Multiplayer Data Sync
-            useEffect(() => {
-                if (!user || !db || !fbAPI) return;
-                const { doc, onSnapshot } = fbAPI;
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'timelineState', 'main');
+                let parsedProjects = data.projects;
+                if (typeof parsedProjects === 'string') {
+                    try { parsedProjects = JSON.parse(parsedProjects); } catch(e) {}
+                }
 
-                const unsubscribe = onSnapshot(docRef, (snap) => {
-                    if (snap.exists()) {
-                        // Crucial: Ignore events that our own client just pushed to prevent echo bouncing
-                        if (snap.metadata.hasPendingWrites) return;
+                if (Array.isArray(parsedProjects)) {
+                    const processedProjects = parsedProjects.map(p => ({
+                        ...p,
+                        phases: p.phases.map(ph => ({
+                            ...ph,
+                            start: ph.start ? new Date(ph.start) : null,
+                            end: ph.end ? new Date(ph.end) : null,
+                            milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                            tasks: (ph.tasks || []).map(t => {
+                                const safeAllocations = (t.allocations || []).length > 0 
+                                    ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                    : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                    
+                                const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
 
-                        const data = snap.data();
-                        isRemoteUpdate.current = true;
-                        
-                        if (data.teamMembers) {
-                            try {
-                                const parsedMembers = JSON.parse(data.teamMembers);
-                                if (Array.isArray(parsedMembers)) {
-                                    setTeamMembers(parsedMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                                return { 
+                                    ...t, 
+                                    start: t.start ? new Date(t.start) : null, 
+                                    end: t.end ? new Date(t.end) : null,
+                                    assignees: assigneesArray,
+                                    assignee: '', 
+                                    allocations: safeAllocations
                                 }
-                            } catch(e) {}
-                        }
-
-                        if (data.projects) {
-                            try {
-                                const parsedProjects = JSON.parse(data.projects);
-                                const processedProjects = parsedProjects.map(p => ({
-                                    ...p,
-                                    phases: p.phases.map(ph => ({
-                                        ...ph,
-                                        start: ph.start ? new Date(ph.start) : null,
-                                        end: ph.end ? new Date(ph.end) : null,
-                                        milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
-                                        tasks: (ph.tasks || []).map(t => {
-                                            const safeAllocations = (t.allocations || []).length > 0 
-                                                ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-                                                : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-                                            return { 
-                                                ...t, 
-                                                start: t.start ? new Date(t.start) : null, 
-                                                end: t.end ? new Date(t.end) : null,
-                                                assignees: t.assignees || (t.assignee ? [t.assignee] : []),
-                                                assignee: '', 
-                                                allocations: safeAllocations
-                                            }
-                                        })
-                                    }))
-                                }));
-                                setProjects(processedProjects);
-                                setPast([]); // Invalidate local undo history when remote updates change the world state
-                                setFuture([]);
-                            } catch(e) { console.error("Parse error", e); }
-                        }
-                        setSyncStatus('Synced to Cloud');
-                        setTimeout(() => { isRemoteUpdate.current = false; }, 100);
-                    } else {
-                        setSyncStatus('Cloud Ready');
+                            })
+                        }))
+                    }));
+                    updateProjects(processedProjects);
+                    
+                    if (isHistoryRestore) {
+                        alert('Successfully restored previous version from history!');
                     }
-                }, (error) => {
-                    console.error("Snapshot error:", error);
-                    setSyncStatus('Sync Disconnected');
-                });
+                }
+            };
 
-                return () => unsubscribe();
-            }, [user, db, fbAPI]);
-
-            // 3. Automatic Save to Cloud
+            // 1. Initial Load from Vercel KV (or Local Storage Fallback)
             useEffect(() => {
-                if (!user || !db || !fbAPI || isRemoteUpdate.current) return;
-                
+                const loadData = async () => {
+                    setSyncStatus('Loading...');
+                    try {
+                        const res = await fetch('/api/load');
+                        if (res.ok) {
+                            const data = await res.json();
+                            applyLoadedData(data, false);
+                            setSyncStatus('Synced to Cloud');
+                        } else {
+                            // Try local storage if KV says 404 (first time use)
+                            const local = localStorage.getItem('timeline_data');
+                            if (local) {
+                                applyLoadedData(JSON.parse(local), false);
+                                setSyncStatus('Loaded Local Backup');
+                            } else {
+                                setSyncStatus('New Timeline');
+                            }
+                        }
+                    } catch(e) {
+                        // Network failure
+                        const local = localStorage.getItem('timeline_data');
+                        if (local) {
+                            applyLoadedData(JSON.parse(local), false);
+                            setSyncStatus('Loaded Local Backup');
+                        } else {
+                            setSyncStatus('Offline');
+                        }
+                    } finally {
+                        setIsDataLoaded(true);
+                    }
+                };
+                loadData();
+            }, []);
+
+            // 2. Debounced Auto-Save to Vercel KV API
+            useEffect(() => {
+                if (!isDataLoaded) return;
+
                 const timer = setTimeout(async () => {
                     setSyncStatus('Saving...');
+                    
+                    const appState = {
+                        projects,
+                        teamMembers,
+                        viewMode,
+                        zoomLevel,
+                        currentTeamWeekStart: currentTeamWeekStart.toISOString()
+                    };
+                    
+                    // Always backup locally instantly
+                    localStorage.setItem('timeline_data', JSON.stringify(appState));
+
                     try {
-                        const { doc, setDoc } = fbAPI;
-                        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                        const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'timelineState', 'main');
+                        const res = await fetch('/api/save', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(appState)
+                        });
                         
-                        const appState = {
-                            projects: JSON.stringify(projects),
-                            teamMembers: JSON.stringify(teamMembers),
-                            updatedAt: new Date().toISOString(),
-                            updatedBy: user.uid
-                        };
-                        
-                        await setDoc(docRef, appState, { merge: true });
-                        setSyncStatus('Synced to Cloud');
-                    } catch (err) {
-                        console.error("Auto-save failed", err);
+                        if (res.ok) {
+                            setSyncStatus('Synced to Cloud');
+                        } else {
+                            setSyncStatus('Offline - Local Save Only');
+                        }
+                    } catch(e) {
                         setSyncStatus('Offline - Local Save Only');
                     }
-                }, 1000); // 1-second debounce for seamless continuous background saving
+                }, 1500); 
                 
                 return () => clearTimeout(timer);
-            }, [projects, teamMembers, user, db, fbAPI]);
+            }, [projects, teamMembers, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded]);
 
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
@@ -701,61 +734,6 @@
 
                 if (hasChanges) {
                     updateProjects(nextProjects);
-                }
-            };
-
-            const applyLoadedData = (data, isHistoryRestore = false) => {
-                if (data.viewMode) setViewMode(data.viewMode);
-                if (data.zoomLevel) setZoomLevel(data.zoomLevel);
-                if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
-
-                let parsedTeamMembers = data.teamMembers;
-                if (typeof parsedTeamMembers === 'string') {
-                    try { parsedTeamMembers = JSON.parse(parsedTeamMembers); } catch(e) {}
-                }
-                if (Array.isArray(parsedTeamMembers)) {
-                    setTeamMembers(parsedTeamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
-                }
-
-                let parsedProjects = data.projects;
-                if (typeof parsedProjects === 'string') {
-                    try { parsedProjects = JSON.parse(parsedProjects); } catch(e) {}
-                }
-
-                if (Array.isArray(parsedProjects)) {
-                    const processedProjects = parsedProjects.map(p => ({
-                        ...p,
-                        phases: p.phases.map(ph => ({
-                            ...ph,
-                            start: ph.start ? new Date(ph.start) : null,
-                            end: ph.end ? new Date(ph.end) : null,
-                            milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
-                            tasks: (ph.tasks || []).map(t => {
-                                const safeAllocations = (t.allocations || []).length > 0 
-                                    ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-                                    : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-                                    
-                                const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
-
-                                return { 
-                                    ...t, 
-                                    start: t.start ? new Date(t.start) : null, 
-                                    end: t.end ? new Date(t.end) : null,
-                                    assignees: assigneesArray,
-                                    assignee: '', 
-                                    allocations: safeAllocations
-                                }
-                            })
-                        }))
-                    }));
-                    updateProjects(processedProjects);
-                    if (isHistoryRestore) {
-                        alert('Successfully restored previous version from history!');
-                    } else {
-                        alert(data.viewMode ? 'Successfully loaded timeline and restored your view state!' : 'Successfully loaded data!');
-                    }
-                } else {
-                    alert('No valid project data found.');
                 }
             };
 
