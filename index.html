@@ -305,6 +305,10 @@
             const [zoomLevel, setZoomLevel] = useState(40); 
             const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
             
+            // New Collapse State for Left Panel
+            const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+            const currentLeftWidth = isLeftPanelCollapsed ? (viewMode === 'team' ? 120 : 48) : leftColWidth;
+            
             const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
             const [draggedPhase, setDraggedPhase] = useState(null);
             const [draggedTaskIndex, setDraggedTaskIndex] = useState(null);
@@ -1786,7 +1790,7 @@
                             <div className="relative min-w-full w-max min-h-full">
                                 
                                 {/* Grid Background */}
-                                <div className="absolute top-[60px] bottom-0 flex pointer-events-none z-0" style={{ left: leftColWidth, width: gridWidth }}>
+                                <div className="absolute top-[60px] bottom-0 flex pointer-events-none z-0" style={{ left: currentLeftWidth, width: gridWidth }}>
                                     {weeks.map((w, i) => (
                                         <div key={i} className="h-full border-r border-slate-300 relative" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
                                             <div className="absolute inset-0 flex">
@@ -1800,7 +1804,7 @@
 
                                 {/* Red Line */}
                                 {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
-                                    <div className="absolute top-[60px] bottom-0 w-[2px] bg-red-500 z-10 opacity-70 pointer-events-none" style={{ left: leftColWidth + diffDays(timelineStart, today) * zoomLevel }}>
+                                    <div className="absolute top-[60px] bottom-0 w-[2px] bg-red-500 z-10 opacity-70 pointer-events-none transition-[left] duration-300 ease-in-out" style={{ left: currentLeftWidth + diffDays(timelineStart, today) * zoomLevel }}>
                                         <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
                                     </div>
                                 )}
@@ -1808,13 +1812,21 @@
                                 {/* HEADER ROW */}
                                 <div className="flex sticky top-0 z-40 h-[60px] w-max min-w-full">
                                     {/* Left Header Cell */}
-                                    <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-b border-slate-300 flex flex-col justify-end p-2 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth }}>
-                                        <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)} onTouchStart={() => setIsResizingCol(true)}></div>
-                                        <input 
-                                            value={leftColTitle} 
-                                            onChange={e => setLeftColTitle(e.target.value)}
-                                            className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full"
-                                        />
+                                    <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-b border-slate-300 flex flex-row items-center justify-between p-2 shadow-[2px_0_5px_rgba(0,0,0,0.05)] transition-[width] duration-300 ease-in-out" style={{ width: currentLeftWidth }}>
+                                        {!isLeftPanelCollapsed && <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)} onTouchStart={() => setIsResizingCol(true)}></div>}
+                                        
+                                        {isLeftPanelCollapsed ? (
+                                            <button onClick={() => setIsLeftPanelCollapsed(false)} className="w-full flex justify-center text-slate-400 hover:text-slate-700" title="Expand Panel"><Icons.ChevronRight /></button>
+                                        ) : (
+                                            <>
+                                                <input 
+                                                    value={leftColTitle} 
+                                                    onChange={e => setLeftColTitle(e.target.value)}
+                                                    className="text-xs font-bold text-slate-500 uppercase bg-transparent border-b border-transparent hover:border-slate-300 focus:border-blue-400 focus:outline-none w-full truncate pr-2"
+                                                />
+                                                <button onClick={() => setIsLeftPanelCollapsed(true)} className="text-slate-400 hover:text-slate-700 flex-shrink-0" title="Collapse Panel"><Icons.ChevronLeft /></button>
+                                            </>
+                                        )}
                                     </div>
                                     
                                     {/* Right Header Cell */}
@@ -1854,54 +1866,62 @@
                                             {/* PROJECT ROW */}
                                             <div className="flex w-full group">
                                                 {/* Left Cell */}
-                                                <div className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover:bg-slate-50 transition-colors border-r border-slate-300 flex items-center h-[48px] pl-2 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth }}>
-                                                    <div className="w-6 md:w-8 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover:opacity-100 cursor-grab">
-                                                        <Icons.Grip />
-                                                    </div>
-                                                    <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700">
-                                                        {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
-                                                    </button>
-
-                                                    <div className="relative group/color mr-2 flex items-center h-full">
-                                                        <div className="w-4 h-4 md:w-3 md:h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
-                                                        <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
-                                                            <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
-                                                                {THEME_COLORS.map(c => (
-                                                                    <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-5 h-5 md:w-4 md:h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
-                                                                ))}
-                                                                <div className="w-px h-5 md:h-4 bg-slate-200 mx-0.5"></div>
-                                                                <label className="w-5 h-5 md:w-4 md:h-4 rounded-full cursor-pointer hover:scale-110 overflow-hidden relative border border-slate-300 shadow-inner flex-shrink-0" title="Custom Color">
-                                                                    <input 
-                                                                        type="color" 
-                                                                        value={project.color && project.color.startsWith('#') ? project.color : '#000000'}
-                                                                        onChange={(e) => updateProjectColor(project.id, e.target.value)}
-                                                                        className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer"
-                                                                    />
-                                                                    <div className="w-full h-full bg-[conic-gradient(red,yellow,lime,aqua,blue,fuchsia,red)]"></div>
-                                                                </label>
-                                                            </div>
+                                                <div className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover:bg-slate-50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 flex items-center h-[48px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-hidden" style={{ width: currentLeftWidth, paddingLeft: isLeftPanelCollapsed ? '0' : '0.5rem' }}>
+                                                    {isLeftPanelCollapsed ? (
+                                                        <div className="w-full flex justify-center cursor-pointer hover:bg-slate-100 h-full items-center" onClick={() => setIsLeftPanelCollapsed(false)} title={`Expand - ${project.title}`}>
+                                                            <div className="w-4 h-4 rounded-full shadow-sm border border-slate-200" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
                                                         </div>
-                                                    </div>
+                                                    ) : (
+                                                        <div className="flex w-full items-center pr-1 overflow-hidden">
+                                                            <div className="w-6 md:w-8 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover:opacity-100 cursor-grab shrink-0">
+                                                                <Icons.Grip />
+                                                            </div>
+                                                            <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700 shrink-0">
+                                                                {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+                                                            </button>
 
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={allPhasesSelected}
-                                                        onChange={() => toggleProjectSelection(project.id)}
-                                                        className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
-                                                        title="Select All Phases to shift timeline"
-                                                    />
+                                                            <div className="relative group/color mr-2 flex items-center h-full shrink-0">
+                                                                <div className="w-4 h-4 md:w-3 md:h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
+                                                                <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
+                                                                    <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
+                                                                        {THEME_COLORS.map(c => (
+                                                                            <div key={c} onClick={() => updateProjectColor(project.id, c)} className="w-5 h-5 md:w-4 md:h-4 rounded-full cursor-pointer hover:scale-110 shadow-sm border border-slate-200" style={{backgroundColor: COLOR_PALETTES[c][1]}}></div>
+                                                                        ))}
+                                                                        <div className="w-px h-5 md:h-4 bg-slate-200 mx-0.5"></div>
+                                                                        <label className="w-5 h-5 md:w-4 md:h-4 rounded-full cursor-pointer hover:scale-110 overflow-hidden relative border border-slate-300 shadow-inner flex-shrink-0" title="Custom Color">
+                                                                            <input 
+                                                                                type="color" 
+                                                                                value={project.color && project.color.startsWith('#') ? project.color : '#000000'}
+                                                                                onChange={(e) => updateProjectColor(project.id, e.target.value)}
+                                                                                className="absolute -top-2 -left-2 w-8 h-8 opacity-0 cursor-pointer"
+                                                                            />
+                                                                            <div className="w-full h-full bg-[conic-gradient(red,yellow,lime,aqua,blue,fuchsia,red)]"></div>
+                                                                        </label>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
 
-                                                    <input 
-                                                        value={project.title}
-                                                        onChange={(e) => updateProjectTitle(project.id, e.target.value)}
-                                                        className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate"
-                                                    />
-                                                    <button onClick={() => addPhase(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-blue-600" title="Add Phase">
-                                                        <Icons.Plus />
-                                                    </button>
-                                                    <button onClick={() => deleteProject(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2" title="Delete Project">
-                                                        <Icons.Trash />
-                                                    </button>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={allPhasesSelected}
+                                                                onChange={() => toggleProjectSelection(project.id)}
+                                                                className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0"
+                                                                title="Select All Phases to shift timeline"
+                                                            />
+
+                                                            <input 
+                                                                value={project.title}
+                                                                onChange={(e) => updateProjectTitle(project.id, e.target.value)}
+                                                                className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate min-w-0"
+                                                            />
+                                                            <button onClick={() => addPhase(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase">
+                                                                <Icons.Plus />
+                                                            </button>
+                                                            <button onClick={() => deleteProject(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2 shrink-0" title="Delete Project">
+                                                                <Icons.Trash />
+                                                            </button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                                 
                                                 {/* Right Cell */}
@@ -2012,38 +2032,46 @@
                                                         className="flex w-full group/phase border-t border-slate-200/50"
                                                     >
                                                         {/* Left Cell */}
-                                                        <div className={`flex-shrink-0 sticky left-0 z-30 border-r border-slate-300 flex items-center h-[48px] md:h-[40px] pl-6 md:pl-8 pr-2 md:pr-3 shadow-[2px_0_5px_rgba(0,0,0,0.05)] transition-colors
+                                                        <div className={`flex-shrink-0 sticky left-0 z-30 border-r border-slate-300 flex items-center h-[48px] md:h-[40px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] transition-[width,background-color] duration-300 ease-in-out overflow-hidden
                                                             ${draggedPhase?.projectId === project.id && draggedPhase?.phaseIndex === phaseIndex ? 'opacity-40 bg-slate-200' : 'bg-slate-50/50 group-hover/phase:bg-slate-100/60'} 
                                                             ${isSelected ? '!bg-blue-50/50' : ''}`} 
-                                                            style={{ width: leftColWidth }}
+                                                            style={{ width: currentLeftWidth }}
                                                         >
-                                                            <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1">
-                                                                <Icons.Grip />
-                                                            </div>
-                                                            <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
-                                                            
-                                                            <input 
-                                                                type="checkbox" 
-                                                                checked={selectedPhaseIds.has(phase.id)}
-                                                                onChange={() => togglePhaseSelection(phase.id)}
-                                                                className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500"
-                                                            />
+                                                            {isLeftPanelCollapsed ? (
+                                                                <div className="w-full flex justify-center cursor-pointer h-full items-center" onClick={() => setIsLeftPanelCollapsed(false)} title={`Expand - ${phase.title}`}>
+                                                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex w-full items-center pl-6 md:pl-8 pr-2 md:pr-3 overflow-hidden">
+                                                                    <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0">
+                                                                        <Icons.Grip />
+                                                                    </div>
+                                                                    <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
+                                                                    
+                                                                    <input 
+                                                                        type="checkbox" 
+                                                                        checked={selectedPhaseIds.has(phase.id)}
+                                                                        onChange={() => togglePhaseSelection(phase.id)}
+                                                                        className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0"
+                                                                    />
 
-                                                            <input 
-                                                                list="standard-phases-list"
-                                                                value={phase.title}
-                                                                onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)}
-                                                                className="flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate"
-                                                                placeholder="Phase Title"
-                                                            />
-                                                            
-                                                            <button onClick={() => toggleLock(project.id, phase.id)} className={`p-2 md:p-1 transition-colors ml-1 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-100 md:opacity-0 md:group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>
-                                                                {phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}
-                                                            </button>
-                                                            
-                                                            <button onClick={() => removePhase(project.id, phase.id)} className="opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1" title="Delete Phase">
-                                                                <Icons.Trash />
-                                                            </button>
+                                                                    <input 
+                                                                        list="standard-phases-list"
+                                                                        value={phase.title}
+                                                                        onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)}
+                                                                        className="flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0"
+                                                                        placeholder="Phase Title"
+                                                                    />
+                                                                    
+                                                                    <button onClick={() => toggleLock(project.id, phase.id)} className={`p-2 md:p-1 transition-colors ml-1 shrink-0 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-100 md:opacity-0 md:group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>
+                                                                        {phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}
+                                                                    </button>
+                                                                    
+                                                                    <button onClick={() => removePhase(project.id, phase.id)} className="opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1 shrink-0" title="Delete Phase">
+                                                                        <Icons.Trash />
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
 
                                                         {/* Right Cell */}
@@ -2119,10 +2147,12 @@
 
                                     {/* Add Project Row */}
                                     <div className="flex w-full mt-2 mb-6">
-                                        <div className="flex-shrink-0 sticky left-0 z-30 px-3 py-2" style={{ width: leftColWidth }}>
-                                            <button onClick={addProject} className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg p-2 text-sm font-medium transition-colors">
-                                                <Icons.Plus /> New Project
-                                            </button>
+                                        <div className="flex-shrink-0 sticky left-0 z-30 px-3 py-2 transition-[width] duration-300 ease-in-out overflow-hidden" style={{ width: currentLeftWidth }}>
+                                            {!isLeftPanelCollapsed && (
+                                                <button onClick={addProject} className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg p-2 text-sm font-medium transition-colors whitespace-nowrap">
+                                                    <Icons.Plus /> New Project
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -2156,13 +2186,21 @@
                                     {/* HEADER ROW */}
                                     <div className="flex sticky top-0 z-40 h-[60px] w-full min-w-full bg-white border-b border-slate-300 shadow-sm">
                                         {/* Left Header Cell (Split into Tasks and Members) */}
-                                        <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-row shadow-[2px_0_5px_rgba(0,0,0,0.05)]" style={{ width: leftColWidth }}>
-                                            <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)} onTouchStart={() => setIsResizingCol(true)}></div>
-                                            <div className="flex-1 border-r border-slate-200 flex flex-col justify-end p-2">
-                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate">Task Pool</div>
-                                            </div>
-                                            <div className="w-[35%] min-w-[90px] flex flex-col justify-end p-2">
-                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate text-center">Team Members</div>
+                                        <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-row shadow-[2px_0_5px_rgba(0,0,0,0.05)] transition-[width] duration-300 ease-in-out" style={{ width: currentLeftWidth }}>
+                                            {!isLeftPanelCollapsed && <div className="col-resizer" onMouseDown={() => setIsResizingCol(true)} onTouchStart={() => setIsResizingCol(true)}></div>}
+                                            
+                                            {!isLeftPanelCollapsed && (
+                                                <div className="flex-1 border-r border-slate-200 flex flex-row justify-between items-end p-2">
+                                                    <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate">Task Pool</div>
+                                                    <button onClick={() => setIsLeftPanelCollapsed(true)} className="text-slate-400 hover:text-slate-700" title="Collapse Task Pool"><Icons.ChevronLeft /></button>
+                                                </div>
+                                            )}
+                                            
+                                            <div className={`${isLeftPanelCollapsed ? 'w-full' : 'w-[35%] min-w-[90px]'} flex flex-col justify-end p-2 relative transition-all duration-300 ease-in-out`}>
+                                                {isLeftPanelCollapsed && (
+                                                    <button onClick={() => setIsLeftPanelCollapsed(false)} className="absolute top-2 left-2 text-slate-400 hover:text-slate-700" title="Expand Task Pool"><Icons.ChevronRight /></button>
+                                                )}
+                                                <div className="text-[10px] md:text-xs font-bold text-slate-500 uppercase truncate text-center w-full">Team Members</div>
                                             </div>
                                         </div>
                                         
@@ -2207,52 +2245,54 @@
                                             >
                                                 {/* Left Cell: Pool & Assignee - Split Side-by-Side */}
                                                 <div 
-                                                    className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-colors border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)]" 
-                                                    style={{ width: leftColWidth }}
+                                                    className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-hidden" 
+                                                    style={{ width: currentLeftWidth }}
                                                     onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/30'); }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/30')}
                                                     onDrop={(e) => {
                                                         e.preventDefault();
                                                         e.stopPropagation();
                                                         e.currentTarget.classList.remove('bg-blue-50/30');
-                                                        onDropTeamPool(e, assignee.name);
+                                                        if(!isLeftPanelCollapsed) onDropTeamPool(e, assignee.name);
                                                     }}
                                                 >
                                                     <div className="absolute inset-0 flex">
                                                         {/* Task Pool Column */}
-                                                        <div className="flex-1 flex flex-col p-1.5 md:p-2 min-w-0 border-r border-slate-200">
-                                                            <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1.5">
-                                                                <span>{assignee.pool.length} Unscheduled</span>
-                                                            </div>
-                                                            <div className="grid grid-cols-6 gap-1 overflow-y-auto flex-1 pr-1 pb-1 custom-scrollbar content-start">
-                                                                {assignee.pool.length === 0 ? (
-                                                                    <div className="text-[10px] text-slate-400 italic py-1 text-center col-span-6">Drop tasks here</div>
-                                                                ) : (
-                                                                    assignee.pool.map(item => {
-                                                                        const poolBgColor = getPhaseColor(item.project.color, 0); 
-                                                                        return (
-                                                                        <div 
-                                                                            key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
-                                                                            className="text-white rounded p-1 cursor-grab hover:shadow-md transition-shadow shadow-sm flex flex-col justify-center overflow-hidden h-[28px]"
-                                                                            style={{ backgroundColor: poolBgColor }}
-                                                                            draggable
-                                                                            onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
-                                                                            onDragEnd={() => setDraggedTeamItem(null)}
-                                                                        >
-                                                                            <div className="font-bold truncate text-[8px] drop-shadow-sm w-full leading-tight mb-[1px]" title={item.project.title}>
-                                                                                {item.project.title}
+                                                        {!isLeftPanelCollapsed && (
+                                                            <div className="flex-1 flex flex-col p-1.5 md:p-2 min-w-0 border-r border-slate-200">
+                                                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex justify-between items-center shrink-0 mb-1.5">
+                                                                    <span>{assignee.pool.length} Unscheduled</span>
+                                                                </div>
+                                                                <div className="grid grid-cols-6 gap-1 overflow-y-auto flex-1 pr-1 pb-1 custom-scrollbar content-start">
+                                                                    {assignee.pool.length === 0 ? (
+                                                                        <div className="text-[10px] text-slate-400 italic py-1 text-center col-span-6">Drop tasks here</div>
+                                                                    ) : (
+                                                                        assignee.pool.map(item => {
+                                                                            const poolBgColor = getPhaseColor(item.project.color, 0); 
+                                                                            return (
+                                                                            <div 
+                                                                                key={`${item.project.id}_${item.phase.id}_${item.task.id}`}
+                                                                                className="text-white rounded p-1 cursor-grab hover:shadow-md transition-shadow shadow-sm flex flex-col justify-center overflow-hidden h-[28px]"
+                                                                                style={{ backgroundColor: poolBgColor }}
+                                                                                draggable
+                                                                                onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null)}
+                                                                                onDragEnd={() => setDraggedTeamItem(null)}
+                                                                            >
+                                                                                <div className="font-bold truncate text-[8px] drop-shadow-sm w-full leading-tight mb-[1px]" title={item.project.title}>
+                                                                                    {item.project.title}
+                                                                                </div>
+                                                                                <div className="truncate opacity-95 text-[7px] drop-shadow-sm w-full leading-tight" title={item.task.text}>
+                                                                                    {item.task.text}
+                                                                                </div>
                                                                             </div>
-                                                                            <div className="truncate opacity-95 text-[7px] drop-shadow-sm w-full leading-tight" title={item.task.text}>
-                                                                                {item.task.text}
-                                                                            </div>
-                                                                        </div>
-                                                                    )})
-                                                                )}
+                                                                        )})
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        </div>
+                                                        )}
 
                                                         {/* Assignee Column */}
-                                                        <div className="w-[35%] min-w-[90px] p-2 flex flex-col gap-1 shrink-0 overflow-hidden items-center justify-center relative">
+                                                        <div className={`${isLeftPanelCollapsed ? 'w-full' : 'w-[35%] min-w-[90px]'} p-2 flex flex-col gap-1 shrink-0 overflow-hidden items-center justify-center relative transition-all duration-300 ease-in-out`}>
                                                             <div className={`absolute top-1 left-1 w-4 flex justify-center items-center opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 shrink-0 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}>
                                                                 <Icons.Grip />
                                                             </div>
@@ -2357,10 +2397,14 @@
 
                                         {/* Add Team Member Row */}
                                         <div className="flex w-full mt-4 mb-8">
-                                            <div className="flex-shrink-0 sticky left-0 z-30 flex" style={{ width: leftColWidth }}>
-                                                <div className="flex-1 border-r border-slate-200/50"></div>
-                                                <div className="w-[35%] min-w-[90px] p-2">
-                                                    {isAddingTeamMember ? (
+                                            <div className="flex-shrink-0 sticky left-0 z-30 flex transition-[width] duration-300 ease-in-out overflow-hidden" style={{ width: currentLeftWidth }}>
+                                                {!isLeftPanelCollapsed && <div className="flex-1 border-r border-slate-200/50"></div>}
+                                                <div className={`${isLeftPanelCollapsed ? 'w-full' : 'w-[35%] min-w-[90px]'} p-2 transition-all duration-300 ease-in-out`}>
+                                                    {isLeftPanelCollapsed ? (
+                                                        <button onClick={() => setIsLeftPanelCollapsed(false)} className="flex items-center justify-center w-full h-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-500 rounded transition-colors text-xs" title="Expand to add team members">
+                                                            <Icons.Plus />
+                                                        </button>
+                                                    ) : isAddingTeamMember ? (
                                                         <div className="bg-white border border-blue-300 rounded p-2 shadow-sm flex flex-col gap-2">
                                                             <input 
                                                                 autoFocus
@@ -2431,11 +2475,21 @@
                                                         type="date" 
                                                         value={toYMD(modalData.phase.start)} 
                                                         disabled={modalData.phase.isLocked}
-                                                        onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))}
+                                                        onChange={(e) => {
+                                                            updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end));
+                                                            if (e.target.value) {
+                                                                const endInput = document.getElementById('phase-end-date');
+                                                                if (endInput) {
+                                                                    endInput.focus();
+                                                                    try { endInput.showPicker(); } catch(err) {}
+                                                                }
+                                                            }
+                                                        }}
                                                         className={`text-sm md:text-xs border border-slate-200 rounded p-2 md:p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
                                                     />
                                                     <span className="text-xs text-slate-400">to</span>
                                                     <input 
+                                                        id="phase-end-date"
                                                         type="date" 
                                                         value={toYMD(modalData.phase.end)} 
                                                         disabled={modalData.phase.isLocked}
@@ -2592,11 +2646,21 @@
                                                                     type="date" 
                                                                     value={toYMD(task.start)} 
                                                                     disabled={modalData.phase.isLocked}
-                                                                    onChange={(e) => updateTaskDates(task.id, e.target.value, toYMD(task.end))}
+                                                                    onChange={(e) => {
+                                                                        updateTaskDates(task.id, e.target.value, toYMD(task.end));
+                                                                        if (e.target.value) {
+                                                                            const endInput = document.getElementById(`task-end-${task.id}`);
+                                                                            if (endInput) {
+                                                                                endInput.focus();
+                                                                                try { endInput.showPicker(); } catch(err) {}
+                                                                            }
+                                                                        }
+                                                                    }}
                                                                     className={`w-[110px] md:w-[80px] text-xs md:text-[10px] bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-1 py-1 focus:border-slate-300 focus:outline-none text-slate-500 ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`}
                                                                 />
                                                                 <span className="text-[10px] text-slate-300 mx-1 md:mx-0.5">-</span>
                                                                 <input 
+                                                                    id={`task-end-${task.id}`}
                                                                     type="date" 
                                                                     value={toYMD(task.end)} 
                                                                     disabled={modalData.phase.isLocked}
