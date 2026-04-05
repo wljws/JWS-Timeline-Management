@@ -297,10 +297,37 @@
             { title: 'Construction Admin', tasks: [{ text: 'Site Visits', start: null, end: null }, { text: 'RFI Responses', start: null, end: null }, { text: 'Snagging/Defect List', start: null, end: null }] }
         ];
 
+        const generateDefaultProjects = () => ([
+            {
+                id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
+                phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
+                    id: `ph_${i}`,
+                    title: t.title,
+                    isLocked: false,
+                    start: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 5) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth(), 25) : null),
+                    end: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 20) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth()+1, 20) : null),
+                    tasks: t.tasks.map((taskTemplate, tIdx) => {
+                        const isAllocated = i === 0 && tIdx === 0;
+                        const tStart = isAllocated ? new Date(new Date().getFullYear(), new Date().getMonth(), 6) : null;
+                        const tEnd = isAllocated ? new Date(new Date().getFullYear(), new Date().getMonth(), 8) : null;
+                        return { 
+                            id: `t_${i}_${tIdx}`, 
+                            text: taskTemplate.text, 
+                            done: false, 
+                            assignees: isAllocated ? ['Alice Design'] : [],
+                            start: tStart,
+                            end: tEnd,
+                            allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
+                        }
+                    }),
+                    milestones: []
+                }))
+            }
+        ]);
+
         // --- Main Application Component ---
         const App = () => {
             const [viewMode, setViewMode] = useState('projects'); 
-            const [appTitle, setAppTitle] = useState("Interior Design Master Timeline");
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
             const [zoomLevel, setZoomLevel] = useState(40); 
             const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
@@ -318,16 +345,11 @@
             
             const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
             const [openDropdownId, setOpenDropdownId] = useState(null);
-            
-            const [teamMembers, setTeamMembers] = useState([
-                { name: 'Alice Design', isLocked: false },
-                { name: 'Bob Builder', isLocked: false }
-            ]);
-            const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
-            const [newTeamMemberName, setNewTeamMemberName] = useState('');
-            
+
+            // Modal States
             const [modalData, setModalData] = useState(null);
             const [teamModalData, setTeamModalData] = useState(null); 
+            const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
             
             const [isExporting, setIsExporting] = useState(false);
             const [syncStatus, setSyncStatus] = useState('Connecting...'); 
@@ -349,34 +371,49 @@
                 }
             }, []);
 
-            // Initial Mock Data
-            const [projects, setProjects] = useState([
+            // --- Core State: Collections ---
+            const [collections, setCollections] = useState([
                 {
-                    id: 'p1', title: 'Project Template', color: 'blue', isExpanded: true,
-                    phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
-                        id: `ph_${i}`,
-                        title: t.title,
-                        isLocked: false,
-                        start: i === 0 ? new Date(2026, 0, 5) : (i === 1 ? new Date(2026, 0, 25) : null),
-                        end: i === 0 ? new Date(2026, 0, 20) : (i === 1 ? new Date(2026, 1, 20) : null),
-                        tasks: t.tasks.map((taskTemplate, tIdx) => {
-                            const isAllocated = i === 0 && tIdx === 0;
-                            const tStart = isAllocated ? new Date(2026, 0, 6) : null;
-                            const tEnd = isAllocated ? new Date(2026, 0, 8) : null;
-                            return { 
-                                id: `t_${i}_${tIdx}`, 
-                                text: taskTemplate.text, 
-                                done: false, 
-                                assignees: isAllocated ? ['Alice Design'] : [],
-                                start: tStart,
-                                end: tEnd,
-                                allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
-                            }
-                        }),
-                        milestones: []
-                    }))
+                    id: 'default',
+                    title: 'Main Master Collection',
+                    projects: generateDefaultProjects(),
+                    teamMembers: [
+                        { name: 'Alice Design', isLocked: false },
+                        { name: 'Bob Builder', isLocked: false }
+                    ]
                 }
             ]);
+            const [activeCollectionId, setActiveCollectionId] = useState('default');
+
+            // Derived states for active collection
+            const activeCollection = useMemo(() => collections.find(c => c.id === activeCollectionId) || collections[0], [collections, activeCollectionId]);
+            const projects = activeCollection?.projects || [];
+            const teamMembers = activeCollection?.teamMembers || [];
+
+            // Override setProjects to update inside the collections structure
+            const setProjects = (newProjectsOrUpdater) => {
+                setCollections(prevCols => prevCols.map(c => {
+                    if (c.id === activeCollection.id) {
+                        const updatedProjects = typeof newProjectsOrUpdater === 'function' ? newProjectsOrUpdater(c.projects) : newProjectsOrUpdater;
+                        return { ...c, projects: updatedProjects };
+                    }
+                    return c;
+                }));
+            };
+
+            // Override setTeamMembers to update inside the collections structure
+            const setTeamMembers = (newMembersOrUpdater) => {
+                setCollections(prevCols => prevCols.map(c => {
+                    if (c.id === activeCollection.id) {
+                        const updatedMembers = typeof newMembersOrUpdater === 'function' ? newMembersOrUpdater(c.teamMembers) : newMembersOrUpdater;
+                        return { ...c, teamMembers: updatedMembers };
+                    }
+                    return c;
+                }));
+            };
+
+            const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
+            const [newTeamMemberName, setNewTeamMemberName] = useState('');
 
             // Firebase Multiplayer State
             const [fbAPI, setFbAPI] = useState(null);
@@ -428,46 +465,59 @@
                 if (data.zoomLevel) setZoomLevel(data.zoomLevel);
                 if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
 
-                let parsedTeamMembers = data.teamMembers;
-                if (typeof parsedTeamMembers === 'string') {
-                    try { parsedTeamMembers = JSON.parse(parsedTeamMembers); } catch(e) {}
-                }
-                if (Array.isArray(parsedTeamMembers)) {
-                    setTeamMembers(parsedTeamMembers.map(m => typeof m === 'string' ? { name: m, isLocked: false } : m));
+                let loadedCollections = [];
+                if (data.collections) {
+                    loadedCollections = typeof data.collections === 'string' ? JSON.parse(data.collections) : data.collections;
+                } else if (data.projects) {
+                    // Migration from old single-project format
+                    let parsedProjects = typeof data.projects === 'string' ? JSON.parse(data.projects) : data.projects;
+                    let parsedMembers = typeof data.teamMembers === 'string' ? JSON.parse(data.teamMembers) : (data.teamMembers || []);
+                    loadedCollections = [{
+                        id: 'default',
+                        title: 'Imported Master Collection',
+                        projects: parsedProjects,
+                        teamMembers: parsedMembers
+                    }];
                 }
 
-                let parsedProjects = data.projects;
-                if (typeof parsedProjects === 'string') {
-                    try { parsedProjects = JSON.parse(parsedProjects); } catch(e) {}
-                }
+                if (loadedCollections && loadedCollections.length > 0) {
+                    const processedCollections = loadedCollections.map(c => ({
+                        ...c,
+                        teamMembers: (c.teamMembers || []).map(m => typeof m === 'string' ? { name: m, isLocked: false } : m),
+                        projects: (c.projects || []).map(p => ({
+                            ...p,
+                            phases: (p.phases || []).map(ph => ({
+                                ...ph,
+                                start: ph.start ? new Date(ph.start) : null,
+                                end: ph.end ? new Date(ph.end) : null,
+                                milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
+                                tasks: (ph.tasks || []).map(t => {
+                                    const safeAllocations = (t.allocations || []).length > 0 
+                                        ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
+                                        : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
+                                        
+                                    const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
 
-                if (Array.isArray(parsedProjects)) {
-                    const processedProjects = parsedProjects.map(p => ({
-                        ...p,
-                        phases: p.phases.map(ph => ({
-                            ...ph,
-                            start: ph.start ? new Date(ph.start) : null,
-                            end: ph.end ? new Date(ph.end) : null,
-                            milestones: (ph.milestones || []).map(m => ({ ...m, date: m.date ? new Date(m.date) : null })),
-                            tasks: (ph.tasks || []).map(t => {
-                                const safeAllocations = (t.allocations || []).length > 0 
-                                    ? t.allocations.map(a => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-                                    : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-                                    
-                                const assigneesArray = t.assignees ? t.assignees : (t.assignee ? [t.assignee] : []);
-
-                                return { 
-                                    ...t, 
-                                    start: t.start ? new Date(t.start) : null, 
-                                    end: t.end ? new Date(t.end) : null,
-                                    assignees: assigneesArray,
-                                    assignee: '', 
-                                    allocations: safeAllocations
-                                }
-                            })
+                                    return { 
+                                        ...t, 
+                                        start: t.start ? new Date(t.start) : null, 
+                                        end: t.end ? new Date(t.end) : null,
+                                        assignees: assigneesArray,
+                                        assignee: '', 
+                                        allocations: safeAllocations
+                                    }
+                                })
+                            }))
                         }))
                     }));
-                    updateProjects(processedProjects);
+
+                    setCollections(processedCollections);
+                    
+                    let nextActiveId = data.activeCollectionId || activeCollectionId;
+                    if (!processedCollections.find(c => c.id === nextActiveId)) {
+                        nextActiveId = processedCollections[0].id;
+                    }
+                    setActiveCollectionId(nextActiveId);
                     
                     if (isHistoryRestore) {
                         alert('Successfully restored previous version from history!');
@@ -517,8 +567,8 @@
                     setSyncStatus('Saving...');
                     
                     const appState = {
-                        projects,
-                        teamMembers,
+                        collections,
+                        activeCollectionId,
                         viewMode,
                         zoomLevel,
                         currentTeamWeekStart: currentTeamWeekStart.toISOString()
@@ -544,7 +594,7 @@
                 }, 1500); 
                 
                 return () => clearTimeout(timer);
-            }, [projects, teamMembers, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded]);
+            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded]);
 
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
@@ -610,6 +660,32 @@
                     }
                     return next;
                 });
+            };
+
+            const switchCollection = (id) => {
+                setActiveCollectionId(id);
+                setPast([]);
+                setFuture([]);
+                setShowCollectionDropdown(false);
+            };
+
+            const createCollection = () => {
+                const newId = generateId();
+                const newCollection = {
+                    id: newId,
+                    title: 'New Collection',
+                    projects: [],
+                    teamMembers: []
+                };
+                setCollections(prev => [...prev, newCollection]);
+                setActiveCollectionId(newId);
+                setPast([]);
+                setFuture([]);
+                setShowCollectionDropdown(false);
+            };
+
+            const updateCollectionTitle = (newTitle) => {
+                setCollections(prev => prev.map(c => c.id === activeCollectionId ? { ...c, title: newTitle } : c));
             };
 
             const teamViewData = useMemo(() => {
@@ -756,7 +832,7 @@
             };
 
             const createLocalSnapshot = () => {
-                const appState = { projects, teamMembers };
+                const appState = { collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart: currentTeamWeekStart.toISOString() };
                 const newHistoryEntry = { timestamp: new Date().toISOString(), data: appState };
                 const updatedHistory = [newHistoryEntry, ...saveHistory].slice(0, 15); 
                 setSaveHistory(updatedHistory);
@@ -774,14 +850,40 @@
                         return;
                     }
 
+                    // Temporarily expand dimensions to avoid clipping inside the scrolling div
+                    const originalWidth = target.style.width;
+                    const originalHeight = target.style.height;
+                    target.style.width = target.scrollWidth + 'px';
+                    target.style.height = target.scrollHeight + 'px';
+
                     const canvas = await window.html2canvas(target, {
-                        scale: 1.5, 
+                        scale: 2, // Doubled scale to drastically improve font rendering/overlapping
+                        width: target.scrollWidth,
+                        height: target.scrollHeight,
+                        windowWidth: target.scrollWidth,
+                        windowHeight: target.scrollHeight,
                         useCORS: true,
                         logging: false,
-                        backgroundColor: '#ffffff'
+                        backgroundColor: '#ffffff',
+                        onclone: (clonedDoc) => {
+                            const style = clonedDoc.createElement('style');
+                            style.innerHTML = `
+                                * {
+                                    text-rendering: geometricPrecision !important;
+                                    font-variant-ligatures: none !important;
+                                    letter-spacing: normal !important;
+                                    -webkit-font-smoothing: antialiased !important;
+                                }
+                            `;
+                            clonedDoc.head.appendChild(style);
+                        }
                     });
 
-                    const imgData = canvas.toDataURL('image/jpeg', 0.9);
+                    // Restore dimensions
+                    target.style.width = originalWidth;
+                    target.style.height = originalHeight;
+
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
                     const { jsPDF } = window.jspdf;
                     
                     const imgWidth = canvas.width;
@@ -795,7 +897,7 @@
                     });
 
                     pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
-                    pdf.save(`Timeline_Export_${viewMode}_${toYMD(new Date())}.pdf`);
+                    pdf.save(`Collection_${activeCollection.title.replace(/[^a-z0-9]/gi, '_')}_${viewMode}_${toYMD(new Date())}.pdf`);
 
                 } catch (error) {
                     console.error("PDF Export Error:", error);
@@ -1710,15 +1812,50 @@
 
                     {/* Header */}
                     <div className="flex-shrink-0 bg-slate-900 text-white px-2 py-1.5 md:px-4 md:py-2 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-1.5 md:gap-2">
-                        <div className="w-full text-center lg:text-left flex flex-col justify-center">
-                            <input 
-                                type="text" 
-                                value={appTitle} 
-                                onChange={(e) => setAppTitle(e.target.value)}
-                                className="bg-transparent text-base md:text-lg font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-full md:w-80 text-center lg:text-left leading-tight"
-                            />
-                            <p className="text-slate-400 text-[9px] md:text-[10px] hidden md:block">Interior Design Timeline & Task Management</p>
+                        
+                        <div className="relative group/collection z-50 flex items-center" onMouseLeave={() => setShowCollectionDropdown(false)}>
+                            <div className="flex flex-col text-center lg:text-left justify-center">
+                                <div className="flex items-center justify-center lg:justify-start gap-1 cursor-pointer">
+                                    <input 
+                                        type="text" 
+                                        value={activeCollection?.title || ''} 
+                                        onChange={(e) => updateCollectionTitle(e.target.value)}
+                                        onClick={() => setShowCollectionDropdown(true)}
+                                        className="bg-transparent text-base md:text-lg font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-full md:w-64 leading-tight"
+                                        placeholder="Collection Name"
+                                    />
+                                    <button onClick={() => setShowCollectionDropdown(!showCollectionDropdown)} className="text-slate-400 hover:text-slate-200">
+                                        <Icons.ChevronDown />
+                                    </button>
+                                </div>
+                                <p className="text-slate-400 text-[9px] md:text-[10px] hidden md:block">Interior Design Timeline & Task Management</p>
+                            </div>
+                            
+                            {showCollectionDropdown && (
+                                <div className="absolute top-full left-0 mt-1 w-64 bg-slate-800 border border-slate-700 shadow-xl rounded-md py-1 z-50 text-left">
+                                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Collections</div>
+                                    {collections.map(c => (
+                                        <div
+                                            key={c.id}
+                                            onClick={() => switchCollection(c.id)}
+                                            className={`px-4 py-2 text-sm cursor-pointer hover:bg-slate-700 flex items-center justify-between ${c.id === activeCollectionId ? 'text-blue-400 font-bold' : 'text-slate-200'}`}
+                                        >
+                                            <span className="truncate">{c.title}</span>
+                                            {c.id === activeCollectionId && <Icons.CloudCheck />}
+                                        </div>
+                                    ))}
+                                    <div className="border-t border-slate-700 mt-1 pt-1">
+                                        <div
+                                            onClick={createCollection}
+                                            className="px-4 py-2 text-sm cursor-pointer hover:bg-slate-700 text-blue-300 flex items-center gap-2 font-medium"
+                                        >
+                                            <Icons.Plus /> Create New Collection
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
+
                         <div className="flex flex-wrap items-center justify-center lg:justify-end gap-1.5 w-full">
                             
                             {/* View Toggle */}
@@ -2124,7 +2261,7 @@
                                                                     </div>
                                                                 </div>
                                                             )}
-
+                                                            
                                                             {(phase.milestones || []).map(milestone => {
                                                                 if (!milestone.date) return null;
                                                                 return (
@@ -2790,9 +2927,20 @@
                                     ) : (
                                         <div className="space-y-3">
                                             {saveHistory.map((hist, idx) => {
-                                                const projectCount = Array.isArray(hist.data.projects) ? hist.data.projects.length : 0;
+                                                const projectCount = Array.isArray(hist.data.collections) 
+                                                    ? hist.data.collections.reduce((sum, c) => sum + (c.projects?.length || 0), 0)
+                                                    : Array.isArray(hist.data.projects) ? hist.data.projects.length : 0;
+                                                
                                                 let taskCount = 0;
-                                                if (Array.isArray(hist.data.projects)) {
+                                                if (Array.isArray(hist.data.collections)) {
+                                                    hist.data.collections.forEach(c => {
+                                                        c.projects?.forEach(p => {
+                                                            p.phases?.forEach(ph => {
+                                                                taskCount += (ph.tasks?.length || 0);
+                                                            });
+                                                        });
+                                                    });
+                                                } else if (Array.isArray(hist.data.projects)) {
                                                     hist.data.projects.forEach(p => {
                                                         p.phases?.forEach(ph => {
                                                             taskCount += (ph.tasks?.length || 0);
