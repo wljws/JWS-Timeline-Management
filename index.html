@@ -380,6 +380,23 @@
             const [user, setUser] = useState(null);
             const isRemoteUpdate = useRef(false);
 
+            const [isAltPressed, setIsAltPressed] = useState(false);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => { if (e.key === 'Alt') setIsAltPressed(true); };
+                const handleKeyUp = (e) => { if (e.key === 'Alt') setIsAltPressed(false); };
+                const handleBlur = () => setIsAltPressed(false); // Reset if user tabs out
+                
+                window.addEventListener('keydown', handleKeyDown);
+                window.addEventListener('keyup', handleKeyUp);
+                window.addEventListener('blur', handleBlur);
+                return () => {
+                    window.removeEventListener('keydown', handleKeyDown);
+                    window.removeEventListener('keyup', handleKeyUp);
+                    window.removeEventListener('blur', handleBlur);
+                };
+            }, []);
+
             // --- Core State: Collections ---
             const [collections, setCollections] = useState([
                 {
@@ -1064,14 +1081,17 @@
             const onDragStartTeamItem = (e, projectId, phaseId, task, allocationId, origStart, origEnd, isAdHoc = false) => {
                 e.stopPropagation();
                 recordHistory();
-                setDraggedTeamItem({ projectId, phaseId, task, taskId: task.id, allocationId, origStart, origEnd, isAdHoc });
-                e.dataTransfer.effectAllowed = "move";
+                const isCopyModeInit = e.altKey || isAltPressed;
+                setDraggedTeamItem({ projectId, phaseId, task, taskId: task.id, allocationId, origStart, origEnd, isAdHoc, isCopyMode: isCopyModeInit });
+                e.dataTransfer.effectAllowed = "copyMove";
             };
 
             const onDropTeamGrid = (e, targetAssignee, colIndex) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!draggedTeamItem) return;
+
+                const isCopy = e.altKey || isAltPressed || draggedTeamItem.isCopyMode;
 
                 const dayOffset = Math.floor(colIndex / 2);
                 const isPM = colIndex % 2 !== 0;
@@ -1091,48 +1111,94 @@
                 if (draggedTeamItem.isAdHoc) {
                     const finalAssignees = targetAssignee !== 'Unassigned' ? [targetAssignee] : [];
                     if (finalAssignees.length > 0) {
-                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, null, draggedTeamItem.taskId)) {
+                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, null, isCopy ? null : draggedTeamItem.taskId)) {
                             alert(`Cannot assign manual task here. The assignee already has an overlapping task in this time slot.`);
                             setDraggedTeamItem(null);
                             return;
                         }
                     }
-                    setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: newStart, end: newEnd, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    
+                    if (isCopy) {
+                        const newTask = {
+                            ...draggedTeamItem.task,
+                            id: generateId(),
+                            assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee,
+                            start: newStart,
+                            end: newEnd,
+                            subTasks: (draggedTeamItem.task.subTasks || []).map(st => ({...st, id: generateId(), done: false}))
+                        };
+                        setAdHocTasks(prev => [...prev, newTask]);
+                    } else {
+                        setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: newStart, end: newEnd, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    }
                     setDraggedTeamItem(null);
                     return;
                 }
 
-                const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
-                if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) {
-                    finalAssignees.push(targetAssignee);
-                }
-                if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
-
-                if (finalAssignees.length > 0) {
-                    if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, draggedTeamItem.allocationId, null)) {
-                        alert(`Cannot assign task here. One or more assignees already have an overlapping task in this time slot.`);
-                        setDraggedTeamItem(null);
-                        return;
+                if (isCopy) {
+                    const finalAssignees = targetAssignee !== 'Unassigned' ? [targetAssignee] : [];
+                    if (finalAssignees.length > 0) {
+                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, null, null)) {
+                            alert(`Cannot copy task here. The assignee already has an overlapping task in this time slot.`);
+                            setDraggedTeamItem(null);
+                            return;
+                        }
                     }
-                }
 
-                setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
-                        ...ph, tasks: ph.tasks.map(t => {
-                            if (t.id === draggedTeamItem.taskId) {
-                                let newAllocations = [...(t.allocations || [])];
-                                if (draggedTeamItem.allocationId) {
-                                    newAllocations = newAllocations.map(a => a.id === draggedTeamItem.allocationId ? { ...a, start: newStart, end: newEnd } : a);
-                                } else {
-                                    newAllocations.push({ id: generateId(), start: newStart, end: newEnd, subTasks: [] });
+                    const draggedAlloc = (draggedTeamItem.task.allocations || []).find(a => a.id === draggedTeamItem.allocationId);
+                    
+                    const newTask = {
+                        ...draggedTeamItem.task,
+                        id: generateId(),
+                        assignees: finalAssignees,
+                        assignee: '',
+                        allocations: [{
+                            id: generateId(),
+                            start: newStart,
+                            end: newEnd,
+                            subTasks: (draggedAlloc?.subTasks || []).map(st => ({...st, id: generateId(), done: false}))
+                        }]
+                    };
+                    const syncedTask = syncTaskDates(newTask);
+
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: [...ph.tasks, syncedTask]
+                        } : ph)
+                    } : p));
+                } else {
+                    const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
+                    if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) {
+                        finalAssignees.push(targetAssignee);
+                    }
+                    if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
+
+                    if (finalAssignees.length > 0) {
+                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, draggedTeamItem.allocationId, null)) {
+                            alert(`Cannot assign task here. One or more assignees already have an overlapping task in this time slot.`);
+                            setDraggedTeamItem(null);
+                            return;
+                        }
+                    }
+
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: ph.tasks.map(t => {
+                                if (t.id === draggedTeamItem.taskId) {
+                                    let newAllocations = [...(t.allocations || [])];
+                                    if (draggedTeamItem.allocationId) {
+                                        newAllocations = newAllocations.map(a => a.id === draggedTeamItem.allocationId ? { ...a, start: newStart, end: newEnd } : a);
+                                    } else {
+                                        newAllocations.push({ id: generateId(), start: newStart, end: newEnd, subTasks: [] });
+                                    }
+                                    const updatedTask = { ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations };
+                                    return syncTaskDates(updatedTask);
                                 }
-                                const updatedTask = { ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations };
-                                return syncTaskDates(updatedTask);
-                            }
-                            return t;
-                        })
-                    } : ph)
-                } : p));
+                                return t;
+                            })
+                        } : ph)
+                    } : p));
+                }
 
                 setDraggedTeamItem(null);
             };
@@ -1142,28 +1208,60 @@
                 e.stopPropagation();
                 if (!draggedTeamItem) return;
 
+                const isCopy = e.altKey || isAltPressed || draggedTeamItem.isCopyMode;
+
                 if (draggedTeamItem.isAdHoc) {
-                    setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: null, end: null, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    if (isCopy) {
+                        const newTask = {
+                            ...draggedTeamItem.task,
+                            id: generateId(),
+                            assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee,
+                            start: null,
+                            end: null,
+                            subTasks: (draggedTeamItem.task.subTasks || []).map(st => ({...st, id: generateId(), done: false}))
+                        };
+                        setAdHocTasks(prev => [...prev, newTask]);
+                    } else {
+                        setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: null, end: null, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    }
                     setDraggedTeamItem(null);
                     return;
                 }
 
-                const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
-                if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) finalAssignees.push(targetAssignee);
-                if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
+                if (isCopy) {
+                    const finalAssignees = targetAssignee !== 'Unassigned' ? [targetAssignee] : [];
+                    const newTask = {
+                        ...draggedTeamItem.task,
+                        id: generateId(),
+                        assignees: finalAssignees,
+                        assignee: '',
+                        allocations: []
+                    };
+                    const syncedTask = syncTaskDates(newTask);
 
-                setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
-                        ...ph, tasks: ph.tasks.map(t => {
-                            if (t.id === draggedTeamItem.taskId && draggedTeamItem.allocationId) {
-                                const newAllocations = (t.allocations || []).filter(a => a.id !== draggedTeamItem.allocationId);
-                                return syncTaskDates({ ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations });
-                            }
-                            if (t.id === draggedTeamItem.taskId) return { ...t, assignees: finalAssignees, assignee: '' };
-                            return t;
-                        })
-                    } : ph)
-                } : p));
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: [...ph.tasks, syncedTask]
+                        } : ph)
+                    } : p));
+                } else {
+                    const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
+                    if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) finalAssignees.push(targetAssignee);
+                    if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
+
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: ph.tasks.map(t => {
+                                if (t.id === draggedTeamItem.taskId && draggedTeamItem.allocationId) {
+                                    const newAllocations = (t.allocations || []).filter(a => a.id !== draggedTeamItem.allocationId);
+                                    return syncTaskDates({ ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations });
+                                }
+                                if (t.id === draggedTeamItem.taskId) return { ...t, assignees: finalAssignees, assignee: '' };
+                                return t;
+                            })
+                        } : ph)
+                    } : p));
+                }
 
                 setDraggedTeamItem(null);
             };
@@ -2105,7 +2203,7 @@
                                     </div>
                                     <button onClick={nextWeek} className="p-1 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronRight /></button>
                                 </div>
-                                <div className="w-full md:w-64 text-center md:text-right text-[9px] md:text-[10px] text-slate-400">Hold 0.3s to drag. Snap to Half-Days. Click to add sub-tasks.</div>
+                                <div className="w-full md:w-auto text-center md:text-right text-[9px] md:text-[10px] text-slate-400">Hold 0.3s to drag. <strong>Alt+Drag</strong> to duplicate. Click block for sub-tasks.</div>
                             </div>
 
                             <div className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
@@ -2165,7 +2263,11 @@
                                                 <div 
                                                     className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-hidden" 
                                                     style={{ width: currentLeftWidth }}
-                                                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/30'); }}
+                                                    onDragOver={(e) => { 
+                                                        e.preventDefault(); 
+                                                        e.currentTarget.classList.add('bg-blue-50/30'); 
+                                                        e.dataTransfer.dropEffect = (e.altKey || isAltPressed || draggedTeamItem?.isCopyMode) ? 'copy' : 'move';
+                                                    }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/30')}
                                                     onDrop={(e) => {
                                                         e.preventDefault(); e.stopPropagation();
@@ -2229,7 +2331,11 @@
 
                                                 <div 
                                                     className="flex-1 relative min-w-[600px] team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors"
-                                                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/20'); }}
+                                                    onDragOver={(e) => { 
+                                                        e.preventDefault(); 
+                                                        e.currentTarget.classList.add('bg-blue-50/20'); 
+                                                        e.dataTransfer.dropEffect = (e.altKey || isAltPressed || draggedTeamItem?.isCopyMode) ? 'copy' : 'move';
+                                                    }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/20')}
                                                     onDrop={(e) => {
                                                         e.preventDefault(); e.stopPropagation();
