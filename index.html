@@ -365,6 +365,8 @@
             // Vercel KV Config State
             const [kvConfig, setKvConfig] = useState(null);
             const [appId, setAppId] = useState('default-app-id');
+            const lastSavedTimestampRef = useRef(0);
+            const isRemoteUpdate = useRef(false);
 
             const [isAltPressed, setIsAltPressed] = useState(false);
 
@@ -467,16 +469,16 @@
             useEffect(() => {
                 const initDb = () => {
                     // --- VERCEL KV CONFIGURATION ---
-                    // Replace these with your actual Vercel KV REST API credentials
+                    // ⚠️ IMPORTANT: REPLACE THESE WITH YOUR ACTUAL VERCEL KV CREDENTIALS
+                    // You can find these in your Vercel Dashboard -> Storage -> Your KV Database -> REST API
                     const VERCEL_KV_REST_API_URL = "https://awaited-drake-76193.upstash.io"; 
                     const VERCEL_KV_REST_API_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
                     const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'timeline-app-data';
                     setAppId(currentAppId);
                     
-                    if (VERCEL_KV_REST_API_URL === "https://awaited-drake-76193.upstash.io" || !gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM) {
-                        setSyncStatus('Local Only (No Cloud DB)');
-                        // Fallback to local storage load here
+                    if (VERCEL_KV_REST_API_URL === "https://awaited-drake-76193.upstash.io" || !VERCEL_KV_REST_API_TOKEN) {
+                        setSyncStatus('Local Only (Missing Vercel KV Keys)');
                         const local = localStorage.getItem('timeline_data');
                         if (local) {
                             applyLoadedData(JSON.parse(local), false);
@@ -561,69 +563,101 @@
                 }
             };
 
-            // 2. Cloud Data Fetching (Vercel KV GET)
+            // 2. Cloud Data Fetching & Live Polling (Vercel KV)
             useEffect(() => {
                 if (!kvConfig) return;
                 
-                const fetchKVData = async () => {
-                    setSyncStatus('Loading from Vercel KV...');
+                const fetchKVData = async (isInitialLoad = false) => {
+                    if (isInitialLoad) setSyncStatus('Loading from Vercel KV...');
                     try {
-                        const response = await fetch(`${kvConfig.url}/get/${appId}`, {
-                            headers: {
+                        // Using robust POST command syntax for Upstash/Vercel KV
+                        const response = await fetch(kvConfig.url, {
+                            method: 'POST',
+                            headers: { 
                                 Authorization: `Bearer ${kvConfig.token}`,
+                                'Content-Type': 'application/json'
                             },
+                            body: JSON.stringify(["GET", appId])
                         });
                         
                         const json = await response.json();
                         
                         if (json.result) {
-                            const data = JSON.parse(json.result);
-                            applyLoadedData(data, false);
-                            setSyncStatus('Synced to Cloud');
-                        } else {
+                            const data = typeof json.result === 'string' ? JSON.parse(json.result) : json.result;
+                            
+                            // If this is a background poll, only update if the cloud version is NEWER than our local save
+                            if (!isInitialLoad) {
+                                if (data.timestamp && data.timestamp > lastSavedTimestampRef.current) {
+                                    isRemoteUpdate.current = true; // Tell the save function to ignore this incoming echo
+                                    applyLoadedData(data, false);
+                                    lastSavedTimestampRef.current = data.timestamp;
+                                    setSyncStatus('Live Sync: Updated from Cloud');
+                                    setTimeout(() => setSyncStatus('Synced to Cloud'), 2500);
+                                }
+                            } else {
+                                // Initial load
+                                applyLoadedData(data, false);
+                                lastSavedTimestampRef.current = data.timestamp || 0;
+                                setSyncStatus('Synced to Cloud');
+                            }
+                        } else if (isInitialLoad) {
                             // Key doesn't exist yet, check local storage as fallback
                             const local = localStorage.getItem('timeline_data');
-                            if (local) {
-                                applyLoadedData(JSON.parse(local), false);
-                            }
+                            if (local) applyLoadedData(JSON.parse(local), false);
                             setSyncStatus('New Cloud Timeline');
                         }
                     } catch (error) {
                         console.error("Vercel KV fetch error:", error);
-                        setSyncStatus('Cloud Sync Error');
+                        if (isInitialLoad) setSyncStatus('Cloud Sync Error');
                     } finally {
-                        setIsDataLoaded(true);
+                        if (isInitialLoad) setIsDataLoaded(true);
                     }
                 };
 
-                fetchKVData();
+                fetchKVData(true); // Run immediately on mount
+                
+                // LIVE SYNC POLLING: Check the cloud every 3 seconds for updates from other devices
+                const pollInterval = setInterval(() => fetchKVData(false), 3000);
+                return () => clearInterval(pollInterval);
             }, [kvConfig, appId]);
 
             // 3. Save Data (Local & Vercel KV POST)
             useEffect(() => {
                 if (!isDataLoaded) return;
+
+                // Prevent Echo: If state changed because we just pulled new data from the cloud, DO NOT save it right back.
+                if (isRemoteUpdate.current) {
+                    isRemoteUpdate.current = false;
+                    return;
+                }
+
                 const timer = setTimeout(async () => {
                     setSyncStatus('Saving...');
+                    const saveTimestamp = Date.now();
                     const appState = {
                         collections: JSON.stringify(collections), 
                         activeCollectionId,
                         viewMode,
                         zoomLevel,
-                        currentTeamWeekStart: currentTeamWeekStart.toISOString()
+                        currentTeamWeekStart: currentTeamWeekStart.toISOString(),
+                        timestamp: saveTimestamp // Track exactly when this was written
                     };
+                    
+                    lastSavedTimestampRef.current = saveTimestamp;
                     
                     // Always backup locally
                     localStorage.setItem('timeline_data', JSON.stringify({ ...appState, collections }));
 
                     if (kvConfig) {
-                        setSyncStatus('Saving to Vercel KV...');
                         try {
-                            await fetch(`${kvConfig.url}/set/${appId}`, {
+                            // Using robust POST command syntax for Upstash/Vercel KV
+                            await fetch(kvConfig.url, {
                                 method: 'POST',
                                 headers: {
                                     Authorization: `Bearer ${kvConfig.token}`,
+                                    'Content-Type': 'application/json'
                                 },
-                                body: JSON.stringify(appState),
+                                body: JSON.stringify(["SET", appId, JSON.stringify(appState)]),
                             });
                             setSyncStatus('Synced to Cloud');
                         } catch (e) {
