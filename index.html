@@ -484,7 +484,27 @@
                         await new Promise(resolve => window.addEventListener('firebaseLoaded', resolve, { once: true }));
                     }
                     const fb = window.firebaseAPI;
-                    const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : null;
+                    
+                    // Setup Firebase Configuration
+                    let firebaseConfig = null;
+                    
+                    // A. Use Canvas Environment Cloud Database (if available)
+                    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                        firebaseConfig = JSON.parse(__firebase_config);
+                    } 
+                    // B. OR Use Your Own Firebase Project (uncomment and fill in if hosting yourself)
+                    else {
+                        /* firebaseConfig = {
+                            apiKey: "YOUR_API_KEY",
+                            authDomain: "your-project.firebaseapp.com",
+                            projectId: "your-project",
+                            storageBucket: "your-project.appspot.com",
+                            messagingSenderId: "123456789",
+                            appId: "1:123456789:web:abcdef"
+                        };
+                        */
+                    }
+
                     const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                     setAppId(currentAppId);
                     
