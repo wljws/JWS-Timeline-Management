@@ -477,7 +477,7 @@
                     const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'timeline-app-data';
                     setAppId(currentAppId);
                     
-                    if (VERCEL_KV_REST_API_URL === "https://awaited-drake-76193.upstash.io" || !VERCEL_KV_REST_API_TOKEN) {
+                    if (!VERCEL_KV_REST_API_URL || VERCEL_KV_REST_API_URL === "YOUR_KV_REST_API_URL" || !VERCEL_KV_REST_API_TOKEN) {
                         setSyncStatus('Local Only (Missing Vercel KV Keys)');
                         const local = localStorage.getItem('timeline_data');
                         if (local) {
@@ -1996,7 +1996,7 @@
                             </div>
 
                             <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
-                                <div className={`px-2 py-1 flex items-center gap-1 text-[10px] md:text-xs font-medium ${syncStatus.includes('Synced') ? 'text-green-400' : 'text-slate-400'}`}>
+                                <div className={`px-2 py-1 flex items-center gap-1 text-[10px] md:text-xs font-medium ${syncStatus.includes('Live Sync') || syncStatus.includes('Cloud') ? 'text-green-400' : 'text-slate-400'}`}>
                                     {syncStatus === 'Saving...' ? <Icons.Spinner /> : <Icons.CloudCheck />} 
                                     <span className="hidden md:inline">{syncStatus}</span>
                                 </div>
