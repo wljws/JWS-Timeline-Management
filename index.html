@@ -464,6 +464,55 @@
 
             const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
             const [newTeamMemberName, setNewTeamMemberName] = useState('');
+            const [editingMember, setEditingMember] = useState({ oldName: null, newName: '' });
+
+            const updateTeamMemberName = (oldName, newName) => {
+                const trimmedNewName = newName.trim();
+                if (!trimmedNewName || trimmedNewName === oldName || trimmedNewName === 'Unassigned') return;
+
+                // Prevent creating duplicate team member names silently
+                if (teamMembers.some(m => (m.name || m) === trimmedNewName)) {
+                    return; 
+                }
+
+                recordHistory();
+
+                // 1. Update the main team member registry
+                setTeamMembers(prev => prev.map(m => {
+                    const mName = typeof m === 'object' ? m.name : m;
+                    if (mName === oldName) {
+                        return typeof m === 'object' ? { ...m, name: trimmedNewName } : { name: trimmedNewName, isLocked: false };
+                    }
+                    return m;
+                }));
+
+                // 2. Cascade name change across all scheduled project tasks
+                setProjects(prev => prev.map(p => ({
+                    ...p,
+                    phases: p.phases.map(ph => ({
+                        ...ph,
+                        tasks: ph.tasks.map(t => {
+                            const currentAssignees = t.assignees || (t.assignee ? [t.assignee] : []);
+                            if (currentAssignees.includes(oldName)) {
+                                return {
+                                    ...t,
+                                    assignees: currentAssignees.map(a => a === oldName ? trimmedNewName : a),
+                                    assignee: ''
+                                };
+                            }
+                            return t;
+                        })
+                    }))
+                })));
+
+                // 3. Cascade name change across all manual ad-hoc tasks
+                setAdHocTasks(prev => prev.map(t => {
+                    if (t.assignee === oldName) {
+                        return { ...t, assignee: trimmedNewName };
+                    }
+                    return t;
+                }));
+            };
 
             // 1. Initialize DB Config
             useEffect(() => {
@@ -2458,12 +2507,41 @@
                                                             <div className="absolute top-1 right-1 opacity-100 md:opacity-0 md:group-hover/teamrow:opacity-100 transition-opacity z-40">
                                                                 <button onClick={() => addAdHocTask(assignee.name)} className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded" title="Add Manual Task"><Icons.Plus /></button>
                                                             </div>
-                                                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-sm shrink-0 mb-0.5">
-                                                                {assignee.name === 'Unassigned' ? '?' : assignee.name.charAt(0).toUpperCase()}
+                                                            <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold shadow-inner text-sm shrink-0 mb-0.5 tracking-tighter">
+                                                                {assignee.name === 'Unassigned' ? '?' : assignee.name.split(/\s+/).filter(Boolean).map(n => n[0]).join('').toUpperCase()}
                                                             </div>
-                                                            <h3 className={`font-bold text-[10px] md:text-xs text-center leading-tight w-full truncate ${assignee.name === 'Unassigned' ? 'text-slate-500 italic' : 'text-slate-800'}`} title={assignee.name}>
-                                                                {assignee.name}
-                                                            </h3>
+                                                            {editingMember.oldName === assignee.name ? (
+                                                                <input 
+                                                                    autoFocus
+                                                                    value={editingMember.newName}
+                                                                    onChange={e => setEditingMember(prev => ({...prev, newName: e.target.value}))}
+                                                                    onBlur={() => {
+                                                                        updateTeamMemberName(editingMember.oldName, editingMember.newName);
+                                                                        setEditingMember({ oldName: null, newName: '' });
+                                                                    }}
+                                                                    onKeyDown={e => {
+                                                                        if (e.key === 'Enter') {
+                                                                            updateTeamMemberName(editingMember.oldName, editingMember.newName);
+                                                                            setEditingMember({ oldName: null, newName: '' });
+                                                                        } else if (e.key === 'Escape') {
+                                                                            setEditingMember({ oldName: null, newName: '' });
+                                                                        }
+                                                                    }}
+                                                                    className="font-bold text-[10px] md:text-xs text-center leading-tight w-full truncate border-b border-blue-400 bg-transparent focus:outline-none text-slate-800"
+                                                                />
+                                                            ) : (
+                                                                <h3 
+                                                                    className={`font-bold text-[10px] md:text-xs text-center leading-tight w-full truncate ${assignee.name === 'Unassigned' || isLocked ? 'text-slate-500 italic' : 'text-slate-800 cursor-text hover:text-blue-600'}`} 
+                                                                    title={assignee.name === 'Unassigned' || isLocked ? assignee.name : "Click to edit name"}
+                                                                    onClick={() => {
+                                                                        if (assignee.name !== 'Unassigned' && !isLocked) {
+                                                                            setEditingMember({ oldName: assignee.name, newName: assignee.name });
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {assignee.name}
+                                                                </h3>
+                                                            )}
                                                             {assignee.name !== 'Unassigned' && (
                                                                 <div className="flex items-center justify-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0 mt-0.5">
                                                                     <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>{isLocked ? <Icons.Lock /> : <Icons.Unlock />}</button>
