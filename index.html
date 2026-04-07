@@ -378,6 +378,7 @@
             const [fbAPI, setFbAPI] = useState(null);
             const [db, setDb] = useState(null);
             const [user, setUser] = useState(null);
+            const [appId, setAppId] = useState('default-app-id');
             const isRemoteUpdate = useRef(false);
 
             const [isAltPressed, setIsAltPressed] = useState(false);
@@ -478,15 +479,26 @@
             const [newTeamMemberName, setNewTeamMemberName] = useState('');
 
             useEffect(() => {
-                const setupFirebase = async () => {
+                const initDb = async () => {
                     if (!window.firebaseAPI) {
                         await new Promise(resolve => window.addEventListener('firebaseLoaded', resolve, { once: true }));
                     }
                     const fb = window.firebaseAPI;
                     const firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config ? JSON.parse(__firebase_config) : null;
+                    const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    setAppId(currentAppId);
                     
                     if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
                         setSyncStatus('Local Only (No Cloud DB)');
+                        // Fallback to local storage load here
+                        const local = localStorage.getItem('timeline_data');
+                        if (local) {
+                            applyLoadedData(JSON.parse(local), false);
+                            setSyncStatus('Synced to Local Storage');
+                        } else {
+                            setSyncStatus('New Timeline');
+                        }
+                        setIsDataLoaded(true);
                         return; 
                     }
                     
@@ -509,9 +521,10 @@
                     } catch (e) {
                         console.error("Firebase init error", e);
                         setSyncStatus('Cloud Connection Error');
+                        setIsDataLoaded(true); // unblock UI on error
                     }
                 };
-                setupFirebase();
+                initDb();
             }, []);
 
             const applyLoadedData = (data, isHistoryRestore = false) => {
@@ -579,42 +592,72 @@
                 }
             };
 
+            // Cloud Data Fetching
             useEffect(() => {
-                const loadData = async () => {
-                    setSyncStatus('Loading...');
-                    try {
+                if (!user || !db || !fbAPI) return;
+                
+                setSyncStatus('Loading from Cloud...');
+                const docRef = fbAPI.doc(db, 'artifacts', appId, 'users', user.uid, 'appData', 'timeline');
+                
+                const unsubscribe = fbAPI.onSnapshot(docRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        if (isRemoteUpdate.current) {
+                            isRemoteUpdate.current = false; // Reset after expected echo
+                        } else {
+                            applyLoadedData(docSnap.data(), false);
+                            setSyncStatus('Synced to Cloud');
+                        }
+                    } else {
+                        // Document doesn't exist yet, check local storage as a migration fallback
                         const local = localStorage.getItem('timeline_data');
                         if (local) {
                             applyLoadedData(JSON.parse(local), false);
-                            setSyncStatus('Synced to Storage');
-                        } else {
-                            setSyncStatus('New Timeline');
                         }
-                    } catch(e) {
-                        setSyncStatus('Error Loading');
-                    } finally {
-                        setIsDataLoaded(true);
+                        setSyncStatus('New Cloud Timeline');
                     }
-                };
-                loadData();
-            }, []);
+                    setIsDataLoaded(true);
+                }, (error) => {
+                    console.error("Firestore error:", error);
+                    setSyncStatus('Cloud Sync Error');
+                    setIsDataLoaded(true);
+                });
+                
+                return () => unsubscribe();
+            }, [user, db, fbAPI, appId]);
 
+            // Save Data (Local & Cloud)
             useEffect(() => {
                 if (!isDataLoaded) return;
                 const timer = setTimeout(async () => {
                     setSyncStatus('Saving...');
                     const appState = {
-                        collections,
+                        collections: JSON.stringify(collections), // Stringified to bypass Firestore nested array limits
                         activeCollectionId,
                         viewMode,
                         zoomLevel,
                         currentTeamWeekStart: currentTeamWeekStart.toISOString()
                     };
-                    localStorage.setItem('timeline_data', JSON.stringify(appState));
-                    setSyncStatus('Synced to Storage');
+                    
+                    // Always backup locally
+                    localStorage.setItem('timeline_data', JSON.stringify({ ...appState, collections }));
+
+                    if (user && db && fbAPI) {
+                        setSyncStatus('Saving to Cloud...');
+                        try {
+                            const docRef = fbAPI.doc(db, 'artifacts', appId, 'users', user.uid, 'appData', 'timeline');
+                            isRemoteUpdate.current = true; // Mark as our own update so onSnapshot doesn't jump
+                            await fbAPI.setDoc(docRef, appState);
+                            setSyncStatus('Synced to Cloud');
+                        } catch (e) {
+                            console.error('Save to cloud failed:', e);
+                            setSyncStatus('Cloud Save Failed (Saved Locally)');
+                        }
+                    } else {
+                        setSyncStatus('Synced to Local Storage');
+                    }
                 }, 1500); 
                 return () => clearTimeout(timer);
-            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded]);
+            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded, user, db, fbAPI, appId]);
 
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
