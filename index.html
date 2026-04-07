@@ -233,6 +233,7 @@
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
             Trash: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
             Copy: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>,
+            Link: ({ className, title }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><title>{title}</title><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"></path></svg>,
             Flag: ({ className }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>,
             Undo: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg>,
             Redo: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M21 7v6h-6"></path><path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path></svg>,
@@ -345,6 +346,7 @@
             const [selectedPhaseIds, setSelectedPhaseIds] = useState(new Set());
             const [openDropdownId, setOpenDropdownId] = useState(null);
             const [copyProjectMenuId, setCopyProjectMenuId] = useState(null);
+            const [copyAsSynced, setCopyAsSynced] = useState(false);
 
             // Modal States
             const [modalData, setModalData] = useState(null);
@@ -433,14 +435,49 @@
             };
 
             const setProjects = (newProjectsOrUpdater) => {
-                setCollections(prevCols => prevCols.map(c => {
-                    if (c.id === activeCollectionIdRef.current) {
-                        const currentProjects = c.projects || [];
-                        const nextProjects = typeof newProjectsOrUpdater === 'function' ? newProjectsOrUpdater(currentProjects) : newProjectsOrUpdater;
-                        return { ...c, projects: nextProjects };
-                    }
-                    return c;
-                }));
+                setCollections(prevCols => {
+                    const activeCol = prevCols.find(c => c.id === activeCollectionIdRef.current);
+                    if (!activeCol) return prevCols;
+                    
+                    const currentProjects = activeCol.projects || [];
+                    const nextProjects = typeof newProjectsOrUpdater === 'function' ? newProjectsOrUpdater(currentProjects) : newProjectsOrUpdater;
+
+                    // Intercept updates: Build a map of any synced projects that exist in the active collection's new array
+                    const syncedMap = new Map();
+                    nextProjects.forEach(p => {
+                        if (p.syncId) {
+                            // Find the one that actually changed (if multiple share the syncId in the same collection)
+                            const oldP = currentProjects.find(cp => cp.id === p.id);
+                            if (!oldP || oldP !== p) syncedMap.set(p.syncId, p);
+                        }
+                    });
+                    
+                    // Fallback: If no explicit changes detected, but they exist, grab the first of each
+                    nextProjects.forEach(p => {
+                        if (p.syncId && !syncedMap.has(p.syncId)) syncedMap.set(p.syncId, p);
+                    });
+
+                    // Distribute updates across all collections and internal clones simultaneously
+                    return prevCols.map(c => {
+                        const isTargetActive = c.id === activeCollectionIdRef.current;
+                        const sourceProjects = isTargetActive ? nextProjects : (c.projects || []);
+                        
+                        let changed = false;
+                        const updatedProjects = sourceProjects.map(p => {
+                            if (p.syncId && syncedMap.has(p.syncId)) {
+                                const syncedData = syncedMap.get(p.syncId);
+                                if (p !== syncedData) {
+                                    changed = true;
+                                    return { ...syncedData, id: p.id }; // Retain local project ID, overwrite all other fields
+                                }
+                            }
+                            return p;
+                        });
+                        
+                        if (isTargetActive || changed) return { ...c, projects: updatedProjects };
+                        return c;
+                    });
+                });
             };
 
             const setAdHocTasks = (newTasksOrUpdater) => {
@@ -1189,40 +1226,63 @@
                 if (modalData && modalData.projectId === projectId) setModalData(null);
             };
 
-            const handleCopyProject = (projectId, targetCollectionId) => {
+            const handleCopyProject = (projectId, targetCollectionId, isSynced = false) => {
                 recordHistory();
-                const projectToCopy = projects.find(p => p.id === projectId);
-                if (!projectToCopy) return;
+                setCollections(prevCols => {
+                    const activeCol = prevCols.find(c => c.id === activeCollectionIdRef.current);
+                    const projectToCopy = activeCol.projects.find(p => p.id === projectId);
+                    if (!projectToCopy) return prevCols;
 
-                // Deep copy with fresh IDs to prevent collisions
-                const clonedProject = {
-                    ...projectToCopy,
-                    id: generateId(),
-                    title: `${projectToCopy.title} (Copy)`,
-                    phases: projectToCopy.phases.map(ph => ({
-                        ...ph,
-                        id: generateId(),
-                        tasks: ph.tasks.map(t => ({
-                            ...t,
+                    let clonedProject;
+                    let activeColProjects = activeCol.projects;
+
+                    if (isSynced) {
+                        const syncId = projectToCopy.syncId || generateId();
+                        clonedProject = { ...projectToCopy, id: generateId(), syncId: syncId };
+                        
+                        // Ensure the original project gets the shared syncId too if this is its first time being linked
+                        if (!projectToCopy.syncId) {
+                            activeColProjects = activeColProjects.map(p => p.id === projectId ? { ...p, syncId } : p);
+                        }
+                    } else {
+                        // Independent Copy
+                        clonedProject = {
+                            ...projectToCopy,
                             id: generateId(),
-                            allocations: (t.allocations || []).map(a => ({
-                                ...a,
+                            syncId: null,
+                            title: `${projectToCopy.title} (Copy)`,
+                            phases: projectToCopy.phases.map(ph => ({
+                                ...ph,
                                 id: generateId(),
-                                subTasks: (a.subTasks || []).map(st => ({ ...st, id: generateId() }))
+                                tasks: ph.tasks.map(t => ({
+                                    ...t,
+                                    id: generateId(),
+                                    allocations: (t.allocations || []).map(a => ({
+                                        ...a,
+                                        id: generateId(),
+                                        subTasks: (a.subTasks || []).map(st => ({ ...st, id: generateId() }))
+                                    }))
+                                })),
+                                milestones: (ph.milestones || []).map(m => ({ ...m, id: generateId() }))
                             }))
-                        })),
-                        milestones: (ph.milestones || []).map(m => ({ ...m, id: generateId() }))
-                    }))
-                };
-
-                setCollections(prevCols => prevCols.map(c => {
-                    if (c.id === targetCollectionId) {
-                        return { ...c, projects: [...(c.projects || []), clonedProject] };
+                        };
                     }
-                    return c;
-                }));
 
+                    return prevCols.map(c => {
+                        if (c.id === targetCollectionId && c.id === activeCollectionIdRef.current) {
+                            return { ...c, projects: [...activeColProjects, clonedProject] };
+                        }
+                        if (c.id === activeCollectionIdRef.current) {
+                            return { ...c, projects: activeColProjects };
+                        }
+                        if (c.id === targetCollectionId) {
+                            return { ...c, projects: [...(c.projects || []), clonedProject] };
+                        }
+                        return c;
+                    });
+                });
                 setCopyProjectMenuId(null);
+                setCopyAsSynced(false);
             };
 
             const handleGridClick = (e, projectId, phaseId) => {
@@ -2249,19 +2309,25 @@
                                                                 </div>
                                                             </div>
 
+                                                            {project.syncId && <Icons.Link className="text-blue-500 w-3.5 h-3.5 mr-1.5 shrink-0" title="Linked Project (Synced)" />}
+
                                                             <input type="checkbox" checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" title="Select All Phases to shift timeline" />
                                                             <input value={project.title} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className="flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate min-w-0" />
                                                             <button onClick={() => addPhase(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase"><Icons.Plus /></button>
                                                             
-                                                            <div className="relative group/copy mr-1 shrink-0" onMouseLeave={() => setCopyProjectMenuId(null)}>
+                                                            <div className="relative group/copy mr-1 shrink-0" onMouseLeave={() => { setCopyProjectMenuId(null); setCopyAsSynced(false); }}>
                                                                 <button onClick={(e) => { e.stopPropagation(); setCopyProjectMenuId(copyProjectMenuId === project.id ? null : project.id); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-blue-600 flex items-center justify-center" title="Copy Project to Collection">
                                                                     <Icons.Copy />
                                                                 </button>
                                                                 {copyProjectMenuId === project.id && (
                                                                     <div className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-200 shadow-xl rounded-md py-1 z-50 max-h-48 overflow-y-auto" onMouseDown={e => e.stopPropagation()}>
-                                                                        <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Copy to Collection...</div>
+                                                                        <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
+                                                                            <input type="checkbox" id={`sync-toggle-${project.id}`} checked={copyAsSynced} onChange={(e) => setCopyAsSynced(e.target.checked)} className="cursor-pointer accent-blue-500 w-3.5 h-3.5 shrink-0" />
+                                                                            <label htmlFor={`sync-toggle-${project.id}`} className="text-xs text-slate-700 font-bold cursor-pointer select-none leading-tight">Link Synced Copy<br/><span className="font-normal text-[9px] text-slate-400">Edits replicate across collections</span></label>
+                                                                        </div>
+                                                                        <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-1">Select Target Collection</div>
                                                                         {collections.map(c => (
-                                                                            <div key={c.id} onClick={(e) => { e.stopPropagation(); handleCopyProject(project.id, c.id); }} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 flex items-center justify-between text-slate-700 font-medium">
+                                                                            <div key={c.id} onClick={(e) => { e.stopPropagation(); handleCopyProject(project.id, c.id, copyAsSynced); }} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 flex items-center justify-between text-slate-700 font-medium">
                                                                                 <span className="truncate">{c.title}</span>
                                                                                 {c.id === activeCollectionId && <span className="text-[9px] text-slate-400 font-normal ml-2 shrink-0">(Current)</span>}
                                                                             </div>
@@ -2552,7 +2618,8 @@
                                                                                     onDragStart={(e) => onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null, item.isAdHoc)}
                                                                                     onDragEnd={() => setDraggedTeamItem(null)}
                                                                                 >
-                                                                                    <div className="font-bold truncate text-[8px] drop-shadow-sm w-full leading-tight mb-[1px] flex justify-between pr-4" title={item.project.title}>
+                                                                                    <div className="font-bold truncate text-[8px] drop-shadow-sm w-full leading-tight mb-[1px] flex justify-between pr-4 items-center gap-1" title={item.project.title}>
+                                                                                        {item.project.syncId && <Icons.Link className="w-2.5 h-2.5 shrink-0" />}
                                                                                         <span className="truncate">{item.project.title}</span>
                                                                                     </div>
                                                                                     <button 
@@ -2664,7 +2731,10 @@
                                                                 >
                                                                     <div className="flex flex-col h-full justify-center">
                                                                         <div className="flex justify-between items-start gap-1">
-                                                                            <div className="truncate drop-shadow-md text-[11px] font-bold">{item.project.title}</div>
+                                                                            <div className="truncate drop-shadow-md text-[11px] font-bold flex items-center gap-1">
+                                                                                {item.project.syncId && <Icons.Link className="w-2.5 h-2.5 shrink-0" />}
+                                                                                {item.project.title}
+                                                                            </div>
                                                                             {totalSub > 0 && <div className="text-[8px] bg-black/30 px-1 rounded-sm font-semibold shrink-0 mt-0.5">{doneSub}/{totalSub}</div>}
                                                                         </div>
                                                                         <div className="truncate drop-shadow-md font-medium text-[9px] opacity-95">{item.task.text}</div>
