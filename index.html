@@ -127,14 +127,6 @@
         }
 
         .drop-zone-active { background-color: rgba(59, 130, 246, 0.1); }
-        
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translate(-50%, 20px); }
-            to { opacity: 1; transform: translate(-50%, 0); }
-        }
-        .animate-fade-in-up {
-            animation: fadeInUp 0.3s ease-out forwards;
-        }
     </style>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/mobile-drag-drop@3.0.0-rc.0/default.css">
     <script src="https://cdn.jsdelivr.net/npm/mobile-drag-drop@3.0.0-rc.0/index.min.js"></script>
@@ -374,7 +366,6 @@
             const [saveHistory, setSaveHistory] = useState([]);
             const [showHistoryModal, setShowHistoryModal] = useState(false);
             const [confirmRestoreIdx, setConfirmRestoreIdx] = useState(null);
-            const [toastMessage, setToastMessage] = useState(null);
 
             // Undo/Redo and Drag references
             const [past, setPast] = useState([]);
@@ -388,6 +379,23 @@
             const [db, setDb] = useState(null);
             const [user, setUser] = useState(null);
             const isRemoteUpdate = useRef(false);
+
+            const [isAltPressed, setIsAltPressed] = useState(false);
+
+            useEffect(() => {
+                const handleKeyDown = (e) => { if (e.key === 'Alt') setIsAltPressed(true); };
+                const handleKeyUp = (e) => { if (e.key === 'Alt') setIsAltPressed(false); };
+                const handleBlur = () => setIsAltPressed(false); // Reset if user tabs out
+                
+                window.addEventListener('keydown', handleKeyDown);
+                window.addEventListener('keyup', handleKeyUp);
+                window.addEventListener('blur', handleBlur);
+                return () => {
+                    window.removeEventListener('keydown', handleKeyDown);
+                    window.removeEventListener('keyup', handleKeyUp);
+                    window.removeEventListener('blur', handleBlur);
+                };
+            }, []);
 
             // --- Core State: Collections ---
             const [collections, setCollections] = useState([
@@ -404,22 +412,12 @@
             ]);
             const [activeCollectionId, setActiveCollectionId] = useState('default');
 
-            // --- Robust Isolation via Refs ---
+            // --- Robust Isolation via Refs (Fixes closure issues and ReferenceErrors) ---
             const collectionsRef = useRef(collections);
             const activeCollectionIdRef = useRef(activeCollectionId);
 
             useEffect(() => { collectionsRef.current = collections; }, [collections]);
             useEffect(() => { activeCollectionIdRef.current = activeCollectionId; }, [activeCollectionId]);
-
-            // Toast effect
-            useEffect(() => {
-                if (toastMessage) {
-                    const timer = setTimeout(() => setToastMessage(null), 4000);
-                    return () => clearTimeout(timer);
-                }
-            }, [toastMessage]);
-
-            const showToast = (msg) => setToastMessage(msg);
 
             // Derived states for active collection
             const activeCollection = useMemo(() => collections.find(c => c.id === activeCollectionId) || collections[0], [collections, activeCollectionId]);
@@ -571,7 +569,7 @@
                     }
                     setActiveCollectionId(nextActiveId);
                     
-                    if (isHistoryRestore) showToast('Successfully restored previous version from history!');
+                    if (isHistoryRestore) alert('Successfully restored previous version from history!');
                 }
             };
 
@@ -871,14 +869,14 @@
                 const updatedHistory = [newHistoryEntry, ...saveHistory].slice(0, 15); 
                 setSaveHistory(updatedHistory);
                 localStorage.setItem('timeline_version_history', JSON.stringify(updatedHistory));
-                showToast('Local Snapshot Created!');
+                alert('Local Snapshot Created!');
             };
 
             const exportToPDF = async () => {
                 setIsExporting(true);
                 try {
                     const target = scrollContainerRef.current?.firstElementChild;
-                    if (!target) { showToast("Nothing to export."); setIsExporting(false); return; }
+                    if (!target) { alert("Nothing to export."); setIsExporting(false); return; }
                     const originalWidth = target.style.width;
                     const originalHeight = target.style.height;
                     target.style.width = target.scrollWidth + 'px';
@@ -898,7 +896,7 @@
                     pdf.save(`Timeline_${activeCollection.title.replace(/[^a-z0-9]/gi, '_')}.pdf`);
                 } catch (error) {
                     console.error("PDF Export Error:", error);
-                    showToast("Failed to export PDF.");
+                    alert("Failed to export PDF.");
                 } finally {
                     setIsExporting(false);
                 }
@@ -1083,14 +1081,17 @@
             const onDragStartTeamItem = (e, projectId, phaseId, task, allocationId, origStart, origEnd, isAdHoc = false) => {
                 e.stopPropagation();
                 recordHistory();
-                setDraggedTeamItem({ projectId, phaseId, task, taskId: task.id, allocationId, origStart, origEnd, isAdHoc });
-                e.dataTransfer.effectAllowed = "move";
+                const isCopyModeInit = e.altKey || isAltPressed;
+                setDraggedTeamItem({ projectId, phaseId, task, taskId: task.id, allocationId, origStart, origEnd, isAdHoc, isCopyMode: isCopyModeInit });
+                e.dataTransfer.effectAllowed = "copyMove";
             };
 
             const onDropTeamGrid = (e, targetAssignee, colIndex) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (!draggedTeamItem) return;
+
+                const isCopy = e.altKey || isAltPressed || draggedTeamItem.isCopyMode;
 
                 const dayOffset = Math.floor(colIndex / 2);
                 const isPM = colIndex % 2 !== 0;
@@ -1110,48 +1111,94 @@
                 if (draggedTeamItem.isAdHoc) {
                     const finalAssignees = targetAssignee !== 'Unassigned' ? [targetAssignee] : [];
                     if (finalAssignees.length > 0) {
-                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, null, draggedTeamItem.taskId)) {
-                            showToast(`Cannot assign manual task here. The assignee already has an overlapping task in this time slot.`);
+                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, null, isCopy ? null : draggedTeamItem.taskId)) {
+                            alert(`Cannot assign manual task here. The assignee already has an overlapping task in this time slot.`);
                             setDraggedTeamItem(null);
                             return;
                         }
                     }
-                    setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: newStart, end: newEnd, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    
+                    if (isCopy) {
+                        const newTask = {
+                            ...draggedTeamItem.task,
+                            id: generateId(),
+                            assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee,
+                            start: newStart,
+                            end: newEnd,
+                            subTasks: (draggedTeamItem.task.subTasks || []).map(st => ({...st, id: generateId(), done: false}))
+                        };
+                        setAdHocTasks(prev => [...prev, newTask]);
+                    } else {
+                        setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: newStart, end: newEnd, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    }
                     setDraggedTeamItem(null);
                     return;
                 }
 
-                const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
-                if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) {
-                    finalAssignees.push(targetAssignee);
-                }
-                if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
-
-                if (finalAssignees.length > 0) {
-                    if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, draggedTeamItem.allocationId, null)) {
-                        showToast(`Cannot assign task here. One or more assignees already have an overlapping task in this time slot.`);
-                        setDraggedTeamItem(null);
-                        return;
+                if (isCopy) {
+                    const finalAssignees = targetAssignee !== 'Unassigned' ? [targetAssignee] : [];
+                    if (finalAssignees.length > 0) {
+                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, null, null)) {
+                            alert(`Cannot copy task here. The assignee already has an overlapping task in this time slot.`);
+                            setDraggedTeamItem(null);
+                            return;
+                        }
                     }
-                }
 
-                setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
-                        ...ph, tasks: ph.tasks.map(t => {
-                            if (t.id === draggedTeamItem.taskId) {
-                                let newAllocations = [...(t.allocations || [])];
-                                if (draggedTeamItem.allocationId) {
-                                    newAllocations = newAllocations.map(a => a.id === draggedTeamItem.allocationId ? { ...a, start: newStart, end: newEnd } : a);
-                                } else {
-                                    newAllocations.push({ id: generateId(), start: newStart, end: newEnd, subTasks: [] });
+                    const draggedAlloc = (draggedTeamItem.task.allocations || []).find(a => a.id === draggedTeamItem.allocationId);
+                    
+                    const newTask = {
+                        ...draggedTeamItem.task,
+                        id: generateId(),
+                        assignees: finalAssignees,
+                        assignee: '',
+                        allocations: [{
+                            id: generateId(),
+                            start: newStart,
+                            end: newEnd,
+                            subTasks: (draggedAlloc?.subTasks || []).map(st => ({...st, id: generateId(), done: false}))
+                        }]
+                    };
+                    const syncedTask = syncTaskDates(newTask);
+
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: [...ph.tasks, syncedTask]
+                        } : ph)
+                    } : p));
+                } else {
+                    const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
+                    if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) {
+                        finalAssignees.push(targetAssignee);
+                    }
+                    if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
+
+                    if (finalAssignees.length > 0) {
+                        if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, draggedTeamItem.allocationId, null)) {
+                            alert(`Cannot assign task here. One or more assignees already have an overlapping task in this time slot.`);
+                            setDraggedTeamItem(null);
+                            return;
+                        }
+                    }
+
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: ph.tasks.map(t => {
+                                if (t.id === draggedTeamItem.taskId) {
+                                    let newAllocations = [...(t.allocations || [])];
+                                    if (draggedTeamItem.allocationId) {
+                                        newAllocations = newAllocations.map(a => a.id === draggedTeamItem.allocationId ? { ...a, start: newStart, end: newEnd } : a);
+                                    } else {
+                                        newAllocations.push({ id: generateId(), start: newStart, end: newEnd, subTasks: [] });
+                                    }
+                                    const updatedTask = { ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations };
+                                    return syncTaskDates(updatedTask);
                                 }
-                                const updatedTask = { ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations };
-                                return syncTaskDates(updatedTask);
-                            }
-                            return t;
-                        })
-                    } : ph)
-                } : p));
+                                return t;
+                            })
+                        } : ph)
+                    } : p));
+                }
 
                 setDraggedTeamItem(null);
             };
@@ -1161,28 +1208,60 @@
                 e.stopPropagation();
                 if (!draggedTeamItem) return;
 
+                const isCopy = e.altKey || isAltPressed || draggedTeamItem.isCopyMode;
+
                 if (draggedTeamItem.isAdHoc) {
-                    setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: null, end: null, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    if (isCopy) {
+                        const newTask = {
+                            ...draggedTeamItem.task,
+                            id: generateId(),
+                            assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee,
+                            start: null,
+                            end: null,
+                            subTasks: (draggedTeamItem.task.subTasks || []).map(st => ({...st, id: generateId(), done: false}))
+                        };
+                        setAdHocTasks(prev => [...prev, newTask]);
+                    } else {
+                        setAdHocTasks(prev => prev.map(t => t.id === draggedTeamItem.taskId ? { ...t, start: null, end: null, assignee: targetAssignee === 'Unassigned' ? '' : targetAssignee } : t));
+                    }
                     setDraggedTeamItem(null);
                     return;
                 }
 
-                const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
-                if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) finalAssignees.push(targetAssignee);
-                if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
+                if (isCopy) {
+                    const finalAssignees = targetAssignee !== 'Unassigned' ? [targetAssignee] : [];
+                    const newTask = {
+                        ...draggedTeamItem.task,
+                        id: generateId(),
+                        assignees: finalAssignees,
+                        assignee: '',
+                        allocations: []
+                    };
+                    const syncedTask = syncTaskDates(newTask);
 
-                setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
-                        ...ph, tasks: ph.tasks.map(t => {
-                            if (t.id === draggedTeamItem.taskId && draggedTeamItem.allocationId) {
-                                const newAllocations = (t.allocations || []).filter(a => a.id !== draggedTeamItem.allocationId);
-                                return syncTaskDates({ ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations });
-                            }
-                            if (t.id === draggedTeamItem.taskId) return { ...t, assignees: finalAssignees, assignee: '' };
-                            return t;
-                        })
-                    } : ph)
-                } : p));
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: [...ph.tasks, syncedTask]
+                        } : ph)
+                    } : p));
+                } else {
+                    const finalAssignees = [...(draggedTeamItem.task.assignees || (draggedTeamItem.task.assignee ? [draggedTeamItem.task.assignee] : []))];
+                    if (targetAssignee !== 'Unassigned' && !finalAssignees.includes(targetAssignee)) finalAssignees.push(targetAssignee);
+                    if (targetAssignee === 'Unassigned') finalAssignees.length = 0; 
+
+                    setProjects(prev => prev.map(p => p.id === draggedTeamItem.projectId ? {
+                        ...p, phases: p.phases.map(ph => ph.id === draggedTeamItem.phaseId ? {
+                            ...ph, tasks: ph.tasks.map(t => {
+                                if (t.id === draggedTeamItem.taskId && draggedTeamItem.allocationId) {
+                                    const newAllocations = (t.allocations || []).filter(a => a.id !== draggedTeamItem.allocationId);
+                                    return syncTaskDates({ ...t, assignees: finalAssignees, assignee: '', allocations: newAllocations });
+                                }
+                                if (t.id === draggedTeamItem.taskId) return { ...t, assignees: finalAssignees, assignee: '' };
+                                return t;
+                            })
+                        } : ph)
+                    } : p));
+                }
 
                 setDraggedTeamItem(null);
             };
@@ -1546,7 +1625,7 @@
                     if (finalAssignees.length > 0) {
                         const allocId = taskToUpdate.allocations?.[0]?.id; 
                         if (checkTeamOverlap(projects, adHocTasks, finalAssignees, newStart, newEnd, allocId, null)) {
-                            showToast(`Cannot set dates. One or more assignees already have a task overlapping this range.`);
+                            alert(`Cannot set dates. One or more assignees already have a task overlapping this range.`);
                             return;
                         }
                     }
@@ -1641,30 +1720,6 @@
                         })
                     } : ph)
                 } : p));
-            };
-
-            const removeAllocation = (projectId, phaseId, taskId, allocId) => {
-                recordHistory();
-                setProjects(projects.map(p => p.id === projectId ? {
-                    ...p, phases: p.phases.map(ph => ph.id === phaseId ? {
-                        ...ph, tasks: ph.tasks.map(t => {
-                            if (t.id === taskId) {
-                                const newAllocations = (t.allocations || []).filter(a => a.id !== allocId);
-                                return syncTaskDates({ ...t, allocations: newAllocations });
-                            }
-                            return t;
-                        })
-                    } : ph)
-                } : p));
-                setTeamModalData(null);
-                showToast("Removed from schedule.");
-            };
-
-            const unscheduleAdHocTask = (taskId) => {
-                recordHistory();
-                setAdHocTasks(prev => prev.map(t => t.id === taskId ? { ...t, start: null, end: null } : t));
-                setTeamModalData(null);
-                showToast("Removed from schedule.");
             };
 
             const toggleSubTask = (allocId, subId) => {
@@ -2148,7 +2203,7 @@
                                     </div>
                                     <button onClick={nextWeek} className="p-1 md:p-1.5 rounded hover:bg-slate-200 text-slate-600 transition-colors"><Icons.ChevronRight /></button>
                                 </div>
-                                <div className="w-full md:w-64 text-center md:text-right text-[9px] md:text-[10px] text-slate-400">Hold 0.3s to drag. Snap to Half-Days. Click to add sub-tasks.</div>
+                                <div className="w-full md:w-auto text-center md:text-right text-[9px] md:text-[10px] text-slate-400">Hold 0.3s to drag. <strong>Alt+Drag</strong> to duplicate. Click block for sub-tasks.</div>
                             </div>
 
                             <div className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
@@ -2208,7 +2263,11 @@
                                                 <div 
                                                     className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover/teamrow:bg-slate-50/50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-hidden" 
                                                     style={{ width: currentLeftWidth }}
-                                                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/30'); }}
+                                                    onDragOver={(e) => { 
+                                                        e.preventDefault(); 
+                                                        e.currentTarget.classList.add('bg-blue-50/30'); 
+                                                        e.dataTransfer.dropEffect = (e.altKey || isAltPressed || draggedTeamItem?.isCopyMode) ? 'copy' : 'move';
+                                                    }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/30')}
                                                     onDrop={(e) => {
                                                         e.preventDefault(); e.stopPropagation();
@@ -2272,7 +2331,11 @@
 
                                                 <div 
                                                     className="flex-1 relative min-w-[600px] team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors"
-                                                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('bg-blue-50/20'); }}
+                                                    onDragOver={(e) => { 
+                                                        e.preventDefault(); 
+                                                        e.currentTarget.classList.add('bg-blue-50/20'); 
+                                                        e.dataTransfer.dropEffect = (e.altKey || isAltPressed || draggedTeamItem?.isCopyMode) ? 'copy' : 'move';
+                                                    }}
                                                     onDragLeave={(e) => e.currentTarget.classList.remove('bg-blue-50/20')}
                                                     onDrop={(e) => {
                                                         e.preventDefault(); e.stopPropagation();
@@ -2553,9 +2616,8 @@
                                             <button onClick={() => deleteAdHocTask(task.id)} className="text-sm font-medium text-red-600 hover:text-red-800 flex items-center justify-center border border-dashed border-red-200 hover:bg-red-50 rounded p-3 gap-2 mt-4 w-full transition-colors"><Icons.Trash /> Delete Manual Task</button>
                                         </div>
 
-                                        <div className="bg-slate-50 p-4 border-t border-slate-200 pb-8 md:pb-4 flex gap-3">
-                                            <button onClick={() => unscheduleAdHocTask(task.id)} className="w-1/2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm md:text-base font-bold py-3 rounded-lg shadow-sm transition-colors">Remove from Week</button>
-                                            <button onClick={() => setTeamModalData(null)} className="w-1/2 bg-slate-800 hover:bg-slate-700 text-white text-sm md:text-base font-bold py-3 rounded-lg shadow-md transition-colors">Done</button>
+                                        <div className="bg-slate-50 p-4 border-t border-slate-200 pb-8 md:pb-4">
+                                            <button onClick={() => setTeamModalData(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-base font-bold py-3 rounded-lg shadow-md">Done</button>
                                         </div>
                                     </div>
                                 </div>
@@ -2609,9 +2671,8 @@
                                         <button onClick={() => addSubTask(allocation.id)} className="text-sm font-medium text-blue-600 hover:text-blue-800 flex items-center justify-center border border-dashed border-blue-200 rounded p-3 gap-2 mt-4 w-full"><Icons.Plus /> Add Sub-Task</button>
                                     </div>
 
-                                    <div className="bg-slate-50 p-4 border-t border-slate-200 pb-8 md:pb-4 flex gap-3">
-                                        <button onClick={() => removeAllocation(project.id, phase.id, task.id, allocation.id)} className="w-1/2 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 text-sm md:text-base font-bold py-3 rounded-lg shadow-sm transition-colors">Remove from Week</button>
-                                        <button onClick={() => setTeamModalData(null)} className="w-1/2 bg-slate-800 hover:bg-slate-700 text-white text-sm md:text-base font-bold py-3 rounded-lg shadow-md transition-colors">Done</button>
+                                    <div className="bg-slate-50 p-4 border-t border-slate-200 pb-8 md:pb-4">
+                                        <button onClick={() => setTeamModalData(null)} className="w-full bg-slate-800 hover:bg-slate-700 text-white text-base font-bold py-3 rounded-lg shadow-md">Done</button>
                                     </div>
                                 </div>
                             </div>
@@ -2675,13 +2736,6 @@
                                     )}
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* --- TOAST NOTIFICATIONS --- */}
-                    {toastMessage && (
-                        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-[100] flex items-center gap-2 text-sm font-medium animate-fade-in-up transition-all">
-                            <Icons.CloudCheck /> {toastMessage}
                         </div>
                     )}
                 </div>
