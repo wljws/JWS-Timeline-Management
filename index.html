@@ -551,7 +551,8 @@
             const applyLoadedData = (data, isHistoryRestore = false) => {
                 if (data.viewMode) setViewMode(data.viewMode);
                 if (data.zoomLevel) setZoomLevel(data.zoomLevel);
-                if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
+                // Intentionally ignoring data.currentTeamWeekStart so the app ALWAYS opens to the current week
+                // if (data.currentTeamWeekStart) setCurrentTeamWeekStart(new Date(data.currentTeamWeekStart));
 
                 let loadedCollections = [];
                 if (data.collections) {
@@ -1094,18 +1095,29 @@
                 if (scrollContainerRef.current && viewMode === 'projects') {
                     const daysFromStart = diffDays(timelineStart, today);
                     if (daysFromStart >= 0) {
-                        const targetScroll = (daysFromStart * zoomLevel) - 150;
-                        scrollContainerRef.current.scrollLeft = Math.max(0, targetScroll);
+                        // Center today's date perfectly in the viewport
+                        const targetScroll = (daysFromStart * zoomLevel) - (window.innerWidth / 2) + currentLeftWidth;
+                        scrollContainerRef.current.scrollTo({
+                            left: Math.max(0, targetScroll),
+                            behavior: 'smooth'
+                        });
                     }
                 }
             };
 
             useEffect(() => {
-                if (!initialScrollDone.current && scrollContainerRef.current && viewMode === 'projects') {
-                    setTimeout(() => { scrollToToday(); }, 50);
-                    initialScrollDone.current = true;
+                if (isDataLoaded && !initialScrollDone.current) {
+                    if (viewMode === 'projects' && scrollContainerRef.current) {
+                        // Give the browser 250ms to fully paint the wide grid before forcing the scroll
+                        setTimeout(() => { 
+                            scrollToToday(); 
+                        }, 250);
+                        initialScrollDone.current = true;
+                    } else if (viewMode !== 'projects') {
+                        initialScrollDone.current = true;
+                    }
                 }
-            }, [timelineStart, today, zoomLevel, viewMode]);
+            }, [isDataLoaded, viewMode, timelineStart, today, zoomLevel, currentLeftWidth]);
 
             const togglePhaseSelection = (phaseId) => {
                 setSelectedPhaseIds(prev => {
