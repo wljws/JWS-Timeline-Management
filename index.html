@@ -369,7 +369,7 @@
             const isRemoteUpdate = useRef(false);
 
             const [isAltPressed, setIsAltPressed] = useState(false);
-            const skipFocusRef = useRef(false);
+            const interactionTimeRef = useRef(0);
 
             useEffect(() => {
                 const handleKeyDown = (e) => { if (e.key === 'Alt') setIsAltPressed(true); };
@@ -2677,19 +2677,14 @@
                                                 <div className="flex flex-wrap items-center gap-2 mt-2">
                                                     <input 
                                                         type="date" value={toYMD(modalData.phase.start)} disabled={modalData.phase.isLocked}
-                                                        onKeyDown={(e) => {
-                                                            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
-                                                                skipFocusRef.current = true;
-                                                            }
-                                                        }}
-                                                        onClick={() => { skipFocusRef.current = false; }}
+                                                        onKeyDown={() => { interactionTimeRef.current = Date.now(); }}
+                                                        onMouseDown={() => { interactionTimeRef.current = Date.now(); }}
                                                         onChange={(e) => {
                                                             updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end));
-                                                            if (e.target.value && !skipFocusRef.current) {
+                                                            if (e.target.value && (Date.now() - interactionTimeRef.current > 200)) {
                                                                 const endInput = document.getElementById('phase-end-date');
                                                                 if (endInput) { endInput.focus(); try { endInput.showPicker(); } catch(err) {} }
                                                             }
-                                                            skipFocusRef.current = false;
                                                         }}
                                                         className={`text-sm md:text-xs border border-slate-200 rounded p-2 md:p-1 text-slate-700 outline-none focus:border-blue-400 ${modalData.phase.isLocked ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`}
                                                     />
@@ -2780,19 +2775,14 @@
                                                                     type="date" 
                                                                     value={toYMD(task.start)} 
                                                                     disabled={modalData.phase.isLocked} 
-                                                                    onKeyDown={(e) => {
-                                                                        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
-                                                                            skipFocusRef.current = true;
-                                                                        }
-                                                                    }}
-                                                                    onClick={() => { skipFocusRef.current = false; }}
+                                                                    onKeyDown={() => { interactionTimeRef.current = Date.now(); }}
+                                                                    onMouseDown={() => { interactionTimeRef.current = Date.now(); }}
                                                                     onChange={(e) => { 
                                                                         updateTaskDates(task.id, e.target.value, toYMD(task.end)); 
-                                                                        if (e.target.value && !skipFocusRef.current) { 
+                                                                        if (e.target.value && (Date.now() - interactionTimeRef.current > 200)) { 
                                                                             const endInput = document.getElementById(`task-end-${task.id}`); 
                                                                             if (endInput) { endInput.focus(); try { endInput.showPicker(); } catch(err) {} } 
                                                                         }
-                                                                        skipFocusRef.current = false;
                                                                     }} 
                                                                     className={`w-[110px] md:w-[80px] text-xs md:text-[10px] bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-1 py-1 focus:border-slate-300 focus:outline-none text-slate-500 ${modalData.phase.isLocked ? 'opacity-70 cursor-not-allowed' : ''}`} 
                                                                 />
