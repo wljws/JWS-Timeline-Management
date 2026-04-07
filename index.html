@@ -468,13 +468,13 @@
                 const initDb = () => {
                     // --- VERCEL KV CONFIGURATION ---
                     // Replace these with your actual Vercel KV REST API credentials
-                    const VERCEL_KV_REST_API_URL = "YOUR_KV_REST_API_URL"; 
-                    const VERCEL_KV_REST_API_TOKEN = "YOUR_KV_REST_API_TOKEN";
+                    const VERCEL_KV_REST_API_URL = "https://awaited-drake-76193.upstash.io"; 
+                    const VERCEL_KV_REST_API_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
                     const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'timeline-app-data';
                     setAppId(currentAppId);
                     
-                    if (VERCEL_KV_REST_API_URL === "YOUR_KV_REST_API_URL" || !VERCEL_KV_REST_API_TOKEN) {
+                    if (VERCEL_KV_REST_API_URL === "https://awaited-drake-76193.upstash.io" || !gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM) {
                         setSyncStatus('Local Only (No Cloud DB)');
                         // Fallback to local storage load here
                         const local = localStorage.getItem('timeline_data');
