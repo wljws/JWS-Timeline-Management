@@ -133,18 +133,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-        window.firebaseAPI = {
-            initializeApp,
-            getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
-            getFirestore, doc, setDoc, getDoc, collection, onSnapshot
-        };
-        window.dispatchEvent(new Event('firebaseLoaded'));
-    </script>
     <script>
         window.addEventListener('DOMContentLoaded', function() {
             var mdd = window.MobileDragDrop || window.mobileDragDrop;
@@ -374,12 +362,9 @@
             // Shared Data Loader Status
             const [isDataLoaded, setIsDataLoaded] = useState(false);
 
-            // Firebase Multiplayer State
-            const [fbAPI, setFbAPI] = useState(null);
-            const [db, setDb] = useState(null);
-            const [user, setUser] = useState(null);
+            // Vercel KV Config State
+            const [kvConfig, setKvConfig] = useState(null);
             const [appId, setAppId] = useState('default-app-id');
-            const isRemoteUpdate = useRef(false);
 
             const [isAltPressed, setIsAltPressed] = useState(false);
 
@@ -478,37 +463,18 @@
             const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
             const [newTeamMemberName, setNewTeamMemberName] = useState('');
 
+            // 1. Initialize DB Config
             useEffect(() => {
-                const initDb = async () => {
-                    if (!window.firebaseAPI) {
-                        await new Promise(resolve => window.addEventListener('firebaseLoaded', resolve, { once: true }));
-                    }
-                    const fb = window.firebaseAPI;
-                    
-                    // Setup Firebase Configuration
-                    let firebaseConfig = null;
-                    
-                    // A. Use Canvas Environment Cloud Database (if available)
-                    if (typeof __firebase_config !== 'undefined' && __firebase_config) {
-                        firebaseConfig = JSON.parse(__firebase_config);
-                    } 
-                    // B. OR Use Your Own Firebase Project (uncomment and fill in if hosting yourself)
-                    else {
-                        /* firebaseConfig = {
-                            apiKey: "YOUR_API_KEY",
-                            authDomain: "your-project.firebaseapp.com",
-                            projectId: "your-project",
-                            storageBucket: "your-project.appspot.com",
-                            messagingSenderId: "123456789",
-                            appId: "1:123456789:web:abcdef"
-                        };
-                        */
-                    }
+                const initDb = () => {
+                    // --- VERCEL KV CONFIGURATION ---
+                    // Replace these with your actual Vercel KV REST API credentials
+                    const VERCEL_KV_REST_API_URL = "YOUR_KV_REST_API_URL"; 
+                    const VERCEL_KV_REST_API_TOKEN = "YOUR_KV_REST_API_TOKEN";
 
-                    const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                    const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'timeline-app-data';
                     setAppId(currentAppId);
                     
-                    if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) {
+                    if (VERCEL_KV_REST_API_URL === "YOUR_KV_REST_API_URL" || !VERCEL_KV_REST_API_TOKEN) {
                         setSyncStatus('Local Only (No Cloud DB)');
                         // Fallback to local storage load here
                         const local = localStorage.getItem('timeline_data');
@@ -522,27 +488,10 @@
                         return; 
                     }
                     
-                    try {
-                        const app = fb.initializeApp(firebaseConfig);
-                        const authInstance = fb.getAuth(app);
-                        const dbInstance = fb.getFirestore(app);
-                        setDb(dbInstance);
-                        setFbAPI(fb);
-
-                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                            await fb.signInWithCustomToken(authInstance, __initial_auth_token);
-                        } else {
-                            await fb.signInAnonymously(authInstance);
-                        }
-
-                        fb.onAuthStateChanged(authInstance, (u) => {
-                            setUser(u);
-                        });
-                    } catch (e) {
-                        console.error("Firebase init error", e);
-                        setSyncStatus('Cloud Connection Error');
-                        setIsDataLoaded(true); // unblock UI on error
-                    }
+                    setKvConfig({
+                        url: VERCEL_KV_REST_API_URL,
+                        token: VERCEL_KV_REST_API_TOKEN
+                    });
                 };
                 initDb();
             }, []);
@@ -612,46 +561,51 @@
                 }
             };
 
-            // Cloud Data Fetching
+            // 2. Cloud Data Fetching (Vercel KV GET)
             useEffect(() => {
-                if (!user || !db || !fbAPI) return;
+                if (!kvConfig) return;
                 
-                setSyncStatus('Loading from Cloud...');
-                const docRef = fbAPI.doc(db, 'artifacts', appId, 'users', user.uid, 'appData', 'timeline');
-                
-                const unsubscribe = fbAPI.onSnapshot(docRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        if (isRemoteUpdate.current) {
-                            isRemoteUpdate.current = false; // Reset after expected echo
-                        } else {
-                            applyLoadedData(docSnap.data(), false);
+                const fetchKVData = async () => {
+                    setSyncStatus('Loading from Vercel KV...');
+                    try {
+                        const response = await fetch(`${kvConfig.url}/get/${appId}`, {
+                            headers: {
+                                Authorization: `Bearer ${kvConfig.token}`,
+                            },
+                        });
+                        
+                        const json = await response.json();
+                        
+                        if (json.result) {
+                            const data = JSON.parse(json.result);
+                            applyLoadedData(data, false);
                             setSyncStatus('Synced to Cloud');
+                        } else {
+                            // Key doesn't exist yet, check local storage as fallback
+                            const local = localStorage.getItem('timeline_data');
+                            if (local) {
+                                applyLoadedData(JSON.parse(local), false);
+                            }
+                            setSyncStatus('New Cloud Timeline');
                         }
-                    } else {
-                        // Document doesn't exist yet, check local storage as a migration fallback
-                        const local = localStorage.getItem('timeline_data');
-                        if (local) {
-                            applyLoadedData(JSON.parse(local), false);
-                        }
-                        setSyncStatus('New Cloud Timeline');
+                    } catch (error) {
+                        console.error("Vercel KV fetch error:", error);
+                        setSyncStatus('Cloud Sync Error');
+                    } finally {
+                        setIsDataLoaded(true);
                     }
-                    setIsDataLoaded(true);
-                }, (error) => {
-                    console.error("Firestore error:", error);
-                    setSyncStatus('Cloud Sync Error');
-                    setIsDataLoaded(true);
-                });
-                
-                return () => unsubscribe();
-            }, [user, db, fbAPI, appId]);
+                };
 
-            // Save Data (Local & Cloud)
+                fetchKVData();
+            }, [kvConfig, appId]);
+
+            // 3. Save Data (Local & Vercel KV POST)
             useEffect(() => {
                 if (!isDataLoaded) return;
                 const timer = setTimeout(async () => {
                     setSyncStatus('Saving...');
                     const appState = {
-                        collections: JSON.stringify(collections), // Stringified to bypass Firestore nested array limits
+                        collections: JSON.stringify(collections), 
                         activeCollectionId,
                         viewMode,
                         zoomLevel,
@@ -661,15 +615,19 @@
                     // Always backup locally
                     localStorage.setItem('timeline_data', JSON.stringify({ ...appState, collections }));
 
-                    if (user && db && fbAPI) {
-                        setSyncStatus('Saving to Cloud...');
+                    if (kvConfig) {
+                        setSyncStatus('Saving to Vercel KV...');
                         try {
-                            const docRef = fbAPI.doc(db, 'artifacts', appId, 'users', user.uid, 'appData', 'timeline');
-                            isRemoteUpdate.current = true; // Mark as our own update so onSnapshot doesn't jump
-                            await fbAPI.setDoc(docRef, appState);
+                            await fetch(`${kvConfig.url}/set/${appId}`, {
+                                method: 'POST',
+                                headers: {
+                                    Authorization: `Bearer ${kvConfig.token}`,
+                                },
+                                body: JSON.stringify(appState),
+                            });
                             setSyncStatus('Synced to Cloud');
                         } catch (e) {
-                            console.error('Save to cloud failed:', e);
+                            console.error('Save to Vercel KV failed:', e);
                             setSyncStatus('Cloud Save Failed (Saved Locally)');
                         }
                     } else {
@@ -677,7 +635,7 @@
                     }
                 }, 1500); 
                 return () => clearTimeout(timer);
-            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded, user, db, fbAPI, appId]);
+            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded, kvConfig, appId]);
 
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
