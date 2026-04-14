@@ -3355,7 +3355,7 @@
             const handleLogin = (e) => {
                 e.preventDefault();
                 const userLower = username.toLowerCase();
-                if (userLower === 'admin' && password === 'password') {
+                if (userLower === 'jwsadmin' && password === 'wangadmin') {
                     setUserRole('admin');
                     localStorage.setItem('timeline_role', 'admin');
                     setError('');
