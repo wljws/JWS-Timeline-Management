@@ -1185,9 +1185,23 @@
                     const captureScale = 2; // High-res capture
                     const canvas = await window.html2canvas(target, {
                         scale: captureScale, 
+                        windowWidth: window.innerWidth,
+                        windowHeight: window.innerHeight,
+                        width: target.clientWidth,
+                        height: target.clientHeight,
+                        x: 0,
+                        y: 0,
                         useCORS: true, 
+                        allowTaint: true,
                         logging: false, 
                         backgroundColor: '#ffffff',
+                        ignoreElements: (element) => {
+                            // Prevent Vercel injected elements (toolbar, analytics, speed insights) from crashing html2canvas
+                            if (element.tagName && element.tagName.toLowerCase().includes('vercel')) return true;
+                            if (element.id && element.id.toLowerCase().includes('vercel')) return true;
+                            if (element.tagName === 'SCRIPT' || element.tagName === 'NOSCRIPT' || element.tagName === 'STYLE') return true;
+                            return false;
+                        },
                         onclone: (clonedDoc) => {
                             // Inject a global stylesheet to forcefully override Tailwind CSS properties 
                             // (like text-rendering, kerning, and SVG filters) that are known to cause 
