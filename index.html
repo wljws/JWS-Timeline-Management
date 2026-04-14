@@ -233,6 +233,8 @@
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
             Trash: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
             Copy: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>,
+            Eye: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
+            EyeOff: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
             Link: ({ className, title }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><title>{title}</title><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"></path></svg>,
             Flag: ({ className }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="none" className={className}><path d="M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z"/></svg>,
             Undo: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M3 7v6h6"></path><path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"></path></svg>,
@@ -290,12 +292,10 @@
         };
 
         const STANDARD_TEMPLATE_PHASES = [
-            { title: 'Feasibility Studies', tasks: [{ text: 'Site Analysis', start: null, end: null }, { text: 'Initial Consultation', start: null, end: null }, { text: 'Budget Review', start: null, end: null }] },
-            { title: 'Concept Design', tasks: [{ text: 'Space Planning', start: null, end: null }, { text: 'Moodboards', start: null, end: null }, { text: 'Concept Presentation', start: null, end: null }] },
-            { title: 'Schematic Design', tasks: [{ text: 'Initial Floor Plans', start: null, end: null }, { text: 'Material Palettes', start: null, end: null }, { text: 'Client Feedback', start: null, end: null }] },
-            { title: 'Design Development', tasks: [{ text: 'Detailed Drawings', start: null, end: null }, { text: 'Custom Millwork Design', start: null, end: null }, { text: 'Finalize Materials', start: null, end: null }] },
-            { title: 'Tender Stage', tasks: [{ text: 'Issue Tender Packages', start: null, end: null }, { text: 'Review Bids', start: null, end: null }, { text: 'Contractor Selection', start: null, end: null }] },
-            { title: 'Construction Admin', tasks: [{ text: 'Site Visits', start: null, end: null }, { text: 'RFI Responses', start: null, end: null }, { text: 'Snagging/Defect List', start: null, end: null }] }
+            { title: 'Feasibility', tasks: [{ text: 'Feasibility Presentation', start: null, end: null }, { text: 'Initial Concept Narrative', start: null, end: null }, { text: 'Initial Block Planning', start: null, end: null }] },
+            { title: 'Concept Design', tasks: [{ text: 'Concept Presentation', start: null, end: null }, { text: 'Look & Feel Pages', start: null, end: null }, { text: 'Colour Plans', start: null, end: null }, { text: 'Colour Elevations', start: null, end: null }, { text: 'Rendering', start: null, end: null }, { text: 'Furniture Selections', start: null, end: null }, { text: 'Digital Material Board', start: null, end: null }] },
+            { title: 'Schematic Design', tasks: [{ text: 'Coordinated Plans (GA, FFP, RCP)', start: null, end: null }, { text: 'Revised Elevations', start: null, end: null }, { text: 'Digital Material Board', start: null, end: null }, { text: 'Table of Materials', start: null, end: null }] },
+            { title: 'Design Development', tasks: [{ text: 'Architectural Details', start: null, end: null }, { text: 'Joinery Details', start: null, end: null }, { text: 'Door Details', start: null, end: null }, { text: 'Full Specification', start: null, end: null }, { text: 'Physical Materials', start: null, end: null }] }
         ];
 
         const generateDefaultProjects = () => ([
@@ -326,18 +326,28 @@
             }
         ]);
 
+        // Helper to initialize local UI preferences without jumping
+        const getLocalPrefs = () => {
+            try {
+                const val = localStorage.getItem('timeline_data');
+                return val ? JSON.parse(val) : null;
+            } catch(e) { return null; }
+        };
+
         // --- Main Application Component ---
         const TimelineApp = ({ onLogout, userRole }) => {
+            const localPrefs = useMemo(() => getLocalPrefs(), []);
             const isReadOnly = userRole === 'viewer';
-            const [viewMode, setViewMode] = useState('projects'); 
+            
+            const [viewMode, setViewMode] = useState(localPrefs?.viewMode || 'projects'); 
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
-            const [zoomLevel, setZoomLevel] = useState(40); 
+            const [zoomLevel, setZoomLevel] = useState(localPrefs?.zoomLevel || 40); 
             const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
             
             const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
             const currentLeftWidth = isLeftPanelCollapsed ? (viewMode === 'team' ? 120 : 48) : leftColWidth;
             
-            const [draggedProjectIndex, setDraggedProjectIndex] = useState(null);
+            const [draggedProjectId, setDraggedProjectId] = useState(null);
             const [draggedPhase, setDraggedPhase] = useState(null);
             const [draggedTaskIndex, setDraggedTaskIndex] = useState(null);
             const [draggedMilestoneIndex, setDraggedMilestoneIndex] = useState(null);
@@ -348,6 +358,7 @@
             const [openDropdownId, setOpenDropdownId] = useState(null);
             const [copyProjectMenuId, setCopyProjectMenuId] = useState(null);
             const [copyAsSynced, setCopyAsSynced] = useState(false);
+            const [showHiddenProjects, setShowHiddenProjects] = useState(false);
 
             // Modal States
             const [modalData, setModalData] = useState(null);
@@ -356,9 +367,15 @@
             
             const [isExporting, setIsExporting] = useState(false);
             const [syncStatus, setSyncStatus] = useState('Connecting...'); 
-            const [saveHistory, setSaveHistory] = useState([]);
+            const [saveHistory, setSaveHistory] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('timeline_version_history');
+                    return saved ? JSON.parse(saved) : [];
+                } catch(e) { return []; }
+            });
             const [showHistoryModal, setShowHistoryModal] = useState(false);
             const [confirmRestoreIdx, setConfirmRestoreIdx] = useState(null);
+            const importFileRef = useRef(null);
 
             // Undo/Redo and Drag references
             const [past, setPast] = useState([]);
@@ -404,7 +421,7 @@
                     adHocTasks: [] // Isolated manual tasks state
                 }
             ]);
-            const [activeCollectionId, setActiveCollectionId] = useState('default');
+            const [activeCollectionId, setActiveCollectionId] = useState(localPrefs?.activeCollectionId || 'default');
 
             // --- Robust Isolation via Refs (Fixes closure issues and ReferenceErrors) ---
             const collectionsRef = useRef(collections);
@@ -590,8 +607,10 @@
             }, []);
 
             const applyLoadedData = (data, isHistoryRestore = false) => {
-                if (data.viewMode) setViewMode(data.viewMode);
-                if (data.zoomLevel) setZoomLevel(data.zoomLevel);
+                if (isHistoryRestore) {
+                    if (data.viewMode) setViewMode(data.viewMode);
+                    if (data.zoomLevel) setZoomLevel(data.zoomLevel);
+                }
 
                 let loadedCollections = [];
                 if (data.collections) {
@@ -643,11 +662,15 @@
 
                     setCollections(processedCollections);
                     
-                    let nextActiveId = data.activeCollectionId || activeCollectionIdRef.current;
-                    if (!processedCollections.find(c => c.id === nextActiveId)) {
-                        nextActiveId = processedCollections[0].id;
+                    if (isHistoryRestore && data.activeCollectionId) {
+                        setActiveCollectionId(data.activeCollectionId);
+                    } else {
+                        // Ensure current activeCollectionId is still valid without aggressively changing it
+                        const stillExists = processedCollections.find(c => c.id === activeCollectionIdRef.current);
+                        if (!stillExists) {
+                            setActiveCollectionId(processedCollections[0].id);
+                        }
                     }
-                    setActiveCollectionId(nextActiveId);
                     
                     if (isHistoryRestore && !isReadOnly) alert('Successfully restored previous version from history!');
                 }
@@ -710,7 +733,21 @@
                 return () => clearInterval(pollInterval);
             }, [kvConfig, appId]);
 
-            // 3. Save Data (Local & Vercel KV POST)
+            // 3a. Save Local Preferences & UI State (Runs when you switch views)
+            useEffect(() => {
+                if (!isDataLoaded) return;
+                const localState = {
+                    collections: JSON.stringify(collections), 
+                    activeCollectionId,
+                    viewMode,
+                    zoomLevel,
+                    currentTeamWeekStart: currentTeamWeekStart.toISOString(),
+                    timestamp: lastSavedTimestampRef.current
+                };
+                localStorage.setItem('timeline_data', JSON.stringify(localState));
+            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded]);
+
+            // 3b. Save Data to Cloud (Runs ONLY when you edit Projects/Tasks/Data)
             useEffect(() => {
                 if (!isDataLoaded || isReadOnly) return; // Prevent any saving if the user is a Viewer
 
@@ -721,43 +758,34 @@
                 }
 
                 const timer = setTimeout(async () => {
+                    if (!kvConfig) return;
                     setSyncStatus('Saving...');
                     const saveTimestamp = Date.now();
-                    const appState = {
-                        collections: JSON.stringify(collections), 
-                        activeCollectionId,
-                        viewMode,
-                        zoomLevel,
-                        currentTeamWeekStart: currentTeamWeekStart.toISOString(),
-                        timestamp: saveTimestamp // Track exactly when this was written
+                    
+                    const cloudState = {
+                        collections: JSON.stringify(collections),
+                        timestamp: saveTimestamp
                     };
                     
                     lastSavedTimestampRef.current = saveTimestamp;
-                    
-                    // Always backup locally
-                    localStorage.setItem('timeline_data', JSON.stringify({ ...appState, collections }));
 
-                    if (kvConfig) {
-                        try {
-                            await fetch(kvConfig.url, {
-                                method: 'POST',
-                                headers: {
-                                    Authorization: `Bearer ${kvConfig.token}`,
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify(["SET", appId, JSON.stringify(appState)]),
-                            });
-                            setSyncStatus('Synced to Cloud');
-                        } catch (e) {
-                            console.error('Save to Vercel KV failed:', e);
-                            setSyncStatus('Cloud Save Failed (Saved Locally)');
-                        }
-                    } else {
-                        setSyncStatus('Synced to Local Storage');
+                    try {
+                        await fetch(kvConfig.url, {
+                            method: 'POST',
+                            headers: {
+                                Authorization: `Bearer ${kvConfig.token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(["SET", appId, JSON.stringify(cloudState)]),
+                        });
+                        setSyncStatus('Synced to Cloud');
+                    } catch (e) {
+                        console.error('Save to Vercel KV failed:', e);
+                        setSyncStatus('Cloud Save Failed');
                     }
                 }, 1500); 
                 return () => clearTimeout(timer);
-            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded, kvConfig, appId, isReadOnly]);
+            }, [collections, isDataLoaded, kvConfig, appId, isReadOnly]);
 
             // Scrolling Refs
             const scrollContainerRef = useRef(null);
@@ -845,8 +873,9 @@
                     assigneesMap.set(mName, { name: mName, scheduled: [], pool: [] });
                 });
 
-                // Standard Projects
-                projects.forEach(p => {
+                // Standard Projects (filter out hidden ones)
+                const activeProjects = projects.filter(p => !p.isHidden);
+                activeProjects.forEach(p => {
                     p.phases.forEach(ph => {
                         ph.tasks.forEach(t => {
                             const assigneesList = (t.assignees && t.assignees.length > 0) ? t.assignees : (t.assignee ? [t.assignee] : []);
@@ -1055,87 +1084,112 @@
 
             const createLocalSnapshot = () => {
                 if (isReadOnly) return;
+                const name = prompt("Enter a name for this snapshot (optional):", `Backup ${formatDate(new Date())}`);
+                if (name === null) return; // Cancelled
+                
                 const appState = { collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart: currentTeamWeekStart.toISOString() };
-                const newHistoryEntry = { timestamp: new Date().toISOString(), data: appState };
-                const updatedHistory = [newHistoryEntry, ...saveHistory].slice(0, 15); 
+                const newHistoryEntry = { id: generateId(), timestamp: new Date().toISOString(), name: name || `Backup ${formatDate(new Date())}`, data: appState };
+                const updatedHistory = [newHistoryEntry, ...saveHistory].slice(0, 30); 
                 setSaveHistory(updatedHistory);
                 localStorage.setItem('timeline_version_history', JSON.stringify(updatedHistory));
-                alert('Local Snapshot Created!');
+                setSyncStatus('Snapshot Saved!');
+                setTimeout(() => setSyncStatus(isReadOnly ? 'Viewing Live Cloud Data' : 'Synced to Cloud'), 2000);
+            };
+
+            const deleteSnapshot = (e, id) => {
+                e.stopPropagation();
+                const updated = saveHistory.filter(h => h.id !== id && h.timestamp !== id);
+                setSaveHistory(updated);
+                localStorage.setItem('timeline_version_history', JSON.stringify(updated));
+            };
+
+            const exportToJSON = () => {
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({ collections, activeCollectionId }));
+                const downloadAnchorNode = document.createElement('a');
+                downloadAnchorNode.setAttribute("href", dataStr);
+                downloadAnchorNode.setAttribute("download", "timeline_backup_" + toYMD(new Date()) + ".json");
+                document.body.appendChild(downloadAnchorNode); 
+                downloadAnchorNode.click();
+                downloadAnchorNode.remove();
+            };
+
+            const handleImportJSON = (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    try {
+                        const parsed = JSON.parse(event.target.result);
+                        if (parsed && parsed.collections) {
+                            applyLoadedData(parsed, true);
+                            setShowHistoryModal(false);
+                            alert("Successfully imported local timeline data!");
+                        } else {
+                            alert("Invalid backup file format.");
+                        }
+                    } catch(err) {
+                        alert("Error reading file.");
+                    }
+                    e.target.value = null; // reset
+                };
+                reader.readAsText(file);
             };
 
             const exportToPDF = async () => {
                 setIsExporting(true);
                 try {
-                    const scrollContainer = scrollContainerRef.current;
-                    const target = scrollContainer?.firstElementChild;
+                    const target = document.getElementById('main-app-container');
                     if (!target) { console.error("Nothing to export."); setIsExporting(false); return; }
 
-                    // Save scroll position to prevent capturing a scrolled/cut-off state
-                    const prevScrollLeft = scrollContainer.scrollLeft;
-                    const prevScrollTop = scrollContainer.scrollTop;
-                    scrollContainer.scrollLeft = 0;
-                    scrollContainer.scrollTop = 0;
-
-                    // Dynamically calculate scale to prevent exceeding browser canvas limits
-                    const maxDim = Math.max(target.scrollWidth, target.scrollHeight);
-                    let captureScale = 2;
-                    if (maxDim > 6000) captureScale = 1.5;
-                    if (maxDim > 10000) captureScale = 1;
-                    if (maxDim > 15000) captureScale = 0.8;
-
+                    const captureScale = 2; // High-res capture
                     const canvas = await window.html2canvas(target, {
                         scale: captureScale, 
-                        width: target.scrollWidth, 
-                        height: target.scrollHeight, 
-                        windowWidth: target.scrollWidth, 
-                        windowHeight: target.scrollHeight, 
-                        scrollX: 0,
-                        scrollY: 0,
                         useCORS: true, 
                         logging: false, 
                         backgroundColor: '#ffffff',
                         onclone: (clonedDoc) => {
-                            // Fix html2canvas text overlapping bugs by explicitly replacing 'truncate' with explicit clip styles
-                            const elements = clonedDoc.querySelectorAll('.truncate');
-                            elements.forEach(el => {
-                                el.classList.remove('truncate');
-                                el.style.whiteSpace = 'nowrap';
-                                el.style.overflow = 'hidden';
-                                el.style.textOverflow = 'clip';
-                            });
+                            // Inject a global stylesheet to forcefully override Tailwind CSS properties 
+                            // (like text-rendering, kerning, and SVG filters) that are known to cause 
+                            // text compression and overlap bugs in html2canvas.
+                            const style = clonedDoc.createElement('style');
+                            style.innerHTML = `
+                                * {
+                                    text-rendering: auto !important;
+                                    letter-spacing: normal !important;
+                                    font-family: Arial, Helvetica, sans-serif !important;
+                                    font-feature-settings: "liga" 0 !important;
+                                    font-variant-ligatures: none !important;
+                                    filter: none !important; /* Prevents text bugs caused by Tailwind drop-shadows */
+                                }
+                                .truncate {
+                                    white-space: nowrap !important;
+                                    overflow: hidden !important;
+                                    text-overflow: clip !important;
+                                }
+                            `;
+                            clonedDoc.head.appendChild(style);
                         }
                     });
 
-                    // Restore original scroll
-                    scrollContainer.scrollLeft = prevScrollLeft;
-                    scrollContainer.scrollTop = prevScrollTop;
-
-                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.98);
                     const { jsPDF } = window.jspdf;
                     
-                    // jsPDF uses points (pt). Convert from px to pt (1px = 0.75pt).
+                    // 1 pixel = 0.75 points in jsPDF
                     const pxToPt = 0.75;
-                    let pdfWidth = (canvas.width / captureScale) * pxToPt; 
-                    let pdfHeight = (canvas.height / captureScale) * pxToPt;
+                    const pdfWidth = (canvas.width / captureScale) * pxToPt; 
+                    const pdfHeight = (canvas.height / captureScale) * pxToPt;
                     
                     if (pdfWidth === 0 || pdfHeight === 0) throw new Error("Canvas generation failed (0 size)");
-
-                    const MAX_PDF_DIM = 14400; // jsPDF absolute maximum limit
-                    if (pdfWidth > MAX_PDF_DIM || pdfHeight > MAX_PDF_DIM) {
-                        const ratio = Math.min(MAX_PDF_DIM / pdfWidth, MAX_PDF_DIM / pdfHeight);
-                        pdfWidth = pdfWidth * ratio;
-                        pdfHeight = pdfHeight * ratio;
-                    }
 
                     const orientation = pdfWidth > pdfHeight ? 'l' : 'p';
                     const pdf = new jsPDF({ orientation: orientation, unit: 'pt', format: [pdfWidth, pdfHeight] });
                     
                     pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-                    pdf.save(`Timeline_${activeCollection.title.replace(/[^a-z0-9]/gi, '_')}.pdf`);
+                    pdf.save(`Timeline_${activeCollection.title.replace(/[^a-z0-9]/gi, '_')}_Screenshot.pdf`);
                 } catch (error) {
                     console.error("PDF Export Error:", error);
                     setSyncStatus('Export Failed');
-                    setTimeout(() => setSyncStatus('Synced to Storage'), 3000);
+                    setTimeout(() => setSyncStatus(isReadOnly ? 'Viewing Mode' : 'Synced to Storage'), 3000);
                 } finally {
                     setIsExporting(false);
                 }
@@ -1202,6 +1256,12 @@
                 if (modalData && modalData.phase.id === phaseId) {
                     setModalData(prev => ({ ...prev, phase: { ...prev.phase, isLocked: !prev.phase.isLocked } }));
                 }
+            };
+
+            const toggleProjectVisibility = (id) => {
+                if (isReadOnly) return;
+                recordHistory();
+                setProjects(projects.map(p => p.id === id ? { ...p, isHidden: !p.isHidden } : p));
             };
 
             const toggleProjectExpand = (id) => setProjects(projects.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
@@ -1324,22 +1384,24 @@
             };
 
             // --- Drag and Drop Logic (Rows & Phases - Projects View) ---
-            const onDragStartRow = (e, index) => {
+            const onDragStartRow = (e, projectId) => {
                 recordHistory();
-                setDraggedProjectIndex(index);
+                setDraggedProjectId(projectId);
                 e.dataTransfer.effectAllowed = "move";
             };
-            const onDragOverRow = (e, index) => {
+            const onDragOverRow = (e, targetProjectId) => {
                 e.preventDefault();
-                if (draggedProjectIndex === null || draggedProjectIndex === index) return;
+                if (!draggedProjectId || draggedProjectId === targetProjectId) return;
+                const draggedIdx = projects.findIndex(p => p.id === draggedProjectId);
+                const targetIdx = projects.findIndex(p => p.id === targetProjectId);
+                if (draggedIdx === -1 || targetIdx === -1) return;
+                
                 const newProjects = [...projects];
-                const draggedItem = newProjects[draggedProjectIndex];
-                newProjects.splice(draggedProjectIndex, 1);
-                newProjects.splice(index, 0, draggedItem);
-                setDraggedProjectIndex(index);
+                const [draggedItem] = newProjects.splice(draggedIdx, 1);
+                newProjects.splice(targetIdx, 0, draggedItem);
                 setProjects(newProjects);
             };
-            const onDragEndRow = () => { setDraggedProjectIndex(null); };
+            const onDragEndRow = () => { setDraggedProjectId(null); };
 
             const onDragStartPhase = (e, projectId, phaseIndex) => {
                 e.stopPropagation();
@@ -2128,9 +2190,11 @@
 
             const gridWidth = totalDays * zoomLevel;
             const activeProject = modalData ? projects.find(p => p.id === modalData.projectId) : null;
+            const visibleProjects = projects.filter(p => showHiddenProjects ? true : !p.isHidden);
+            const hiddenCount = projects.filter(p => p.isHidden).length;
 
             return (
-                <div className="flex flex-col h-[100dvh] w-full absolute inset-0 overflow-hidden bg-slate-50">
+                <div id="main-app-container" className="flex flex-col h-[100dvh] w-full absolute inset-0 overflow-hidden bg-slate-50">
                     <datalist id="standard-phases-list">
                         {STANDARD_TEMPLATE_PHASES.map((p, i) => <option key={i} value={p.title} />)}
                     </datalist>
@@ -2320,7 +2384,7 @@
 
                                 {/* CONTENT ROWS */}
                                 <div className="relative z-20 pb-32 flex flex-col w-max min-w-full">
-                                    {projects.map((project, index) => {
+                                    {visibleProjects.map((project) => {
                                         const allPhasesSelected = project.phases.length > 0 && project.phases.every(ph => selectedPhaseIds.has(ph.id));
                                         const chronoIndices = getChronologicalIndices(project.phases);
 
@@ -2328,12 +2392,12 @@
                                         <div 
                                             key={project.id}
                                             draggable={!isReadOnly}
-                                            onDragStart={(e) => !isReadOnly && onDragStartRow(e, index)}
-                                            onDragOver={(e) => !isReadOnly && onDragOverRow(e, index)}
+                                            onDragStart={(e) => !isReadOnly && onDragStartRow(e, project.id)}
+                                            onDragOver={(e) => !isReadOnly && onDragOverRow(e, project.id)}
                                             onDragEnd={onDragEndRow}
-                                            className={`flex flex-col relative border-b border-slate-200 bg-transparent hover:z-40 ${draggedProjectIndex === index ? 'opacity-50 bg-slate-100 z-50' : 'z-10'}`}
+                                            className={`flex flex-col relative border-b border-slate-200 bg-transparent hover:z-40 ${draggedProjectId === project.id ? 'opacity-50 bg-slate-100 z-50' : 'z-10'}`}
                                         >
-                                            <div className="flex w-full group relative z-20">
+                                            <div className={`flex w-full group relative z-20 ${project.isHidden ? 'opacity-60 bg-slate-100' : ''}`}>
                                                 <div className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover:bg-slate-50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 flex items-center h-[48px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-visible" style={{ width: currentLeftWidth, paddingLeft: isLeftPanelCollapsed ? '0' : '0.5rem' }}>
                                                     {isLeftPanelCollapsed ? (
                                                         <div className="w-full flex justify-center cursor-pointer hover:bg-slate-100 h-full items-center" onClick={() => toggleProjectExpand(project.id)} title={`Expand - ${project.title}`}>
@@ -2401,6 +2465,9 @@
                                                                     </div>
 
                                                                     <button onClick={() => deleteProject(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2 shrink-0" title="Delete Project"><Icons.Trash /></button>
+                                                                    <button onClick={() => toggleProjectVisibility(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-slate-600 shrink-0" title={project.isHidden ? "Unhide Project" : "Hide Project"}>
+                                                                        {project.isHidden ? <Icons.Eye /> : <Icons.EyeOff />}
+                                                                    </button>
                                                                 </>
                                                             )}
                                                         </div>
@@ -2567,11 +2634,18 @@
                                     })}
 
                                     <div className="flex w-full mt-2 mb-6">
-                                        <div className="flex-shrink-0 sticky left-0 z-30 px-3 py-2 transition-[width] duration-300 ease-in-out overflow-hidden" style={{ width: currentLeftWidth }}>
+                                        <div className="flex-shrink-0 sticky left-0 z-30 px-3 py-2 transition-[width] duration-300 ease-in-out overflow-hidden flex items-center gap-2" style={{ width: currentLeftWidth }}>
                                             {!isLeftPanelCollapsed && !isReadOnly && (
-                                                <button onClick={addProject} className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg p-2 text-sm font-medium transition-colors whitespace-nowrap">
-                                                    <Icons.Plus /> New Project
-                                                </button>
+                                                <>
+                                                    <button onClick={addProject} className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg p-2 text-sm font-medium transition-colors whitespace-nowrap">
+                                                        <Icons.Plus /> New Project
+                                                    </button>
+                                                    {hiddenCount > 0 && (
+                                                        <button onClick={() => setShowHiddenProjects(!showHiddenProjects)} className="flex items-center justify-center gap-1 border-2 border-slate-200 hover:bg-slate-100 text-slate-500 rounded-lg p-2 text-sm font-medium transition-colors whitespace-nowrap px-4" title="Toggle Hidden Projects">
+                                                            {showHiddenProjects ? <Icons.EyeOff /> : <Icons.Eye />} {hiddenCount}
+                                                        </button>
+                                                    )}
+                                                </>
                                             )}
                                         </div>
                                     </div>
@@ -3182,19 +3256,38 @@
                     {/* History Backup Modal */}
                     {showHistoryModal && (
                         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[70] flex justify-center items-center md:p-4" onMouseDown={() => { setShowHistoryModal(false); setConfirmRestoreIdx(null); }}>
-                            <div className="bg-white md:rounded-xl shadow-2xl w-full h-full md:h-auto md:max-h-[85vh] md:max-w-[550px] overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
+                            <div className="bg-white md:rounded-xl shadow-2xl w-full h-full md:h-auto md:max-h-[85vh] md:max-w-[650px] overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
                                 <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0">
-                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icons.History /> Version History</h2>
-                                    <button onClick={() => { setShowHistoryModal(false); setConfirmRestoreIdx(null); }} className="p-1 hover:bg-white/20 rounded-full transition-colors"><Icons.X /></button>
+                                    <h2 className="text-lg font-bold flex items-center gap-2"><Icons.History /> Version History & Backups</h2>
+                                    <div className="flex gap-2 items-center">
+                                        {!isReadOnly && (
+                                            <>
+                                                <input type="file" accept=".json" style={{display: 'none'}} ref={importFileRef} onChange={handleImportJSON} />
+                                                <button onClick={() => importFileRef.current?.click()} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-bold transition-colors flex items-center gap-1 hidden md:flex" title="Import from JSON File">
+                                                    <Icons.CloudDownload /> <span className="hidden md:inline">Import</span>
+                                                </button>
+                                            </>
+                                        )}
+                                        <button onClick={exportToJSON} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-bold transition-colors flex items-center gap-1 hidden md:flex" title="Export to JSON File">
+                                            <Icons.Download /> <span className="hidden md:inline">Export</span>
+                                        </button>
+                                        <button onClick={() => { setShowHistoryModal(false); setConfirmRestoreIdx(null); }} className="p-1 hover:bg-white/20 rounded-full transition-colors ml-2"><Icons.X /></button>
+                                    </div>
                                 </div>
                                 
                                 <div className="p-5 overflow-y-auto flex-1 bg-slate-50">
-                                    <p className="text-xs text-slate-500 mb-4 bg-blue-50 border border-blue-100 p-3 rounded shadow-sm">
-                                        Select a previous save to restore your timeline to that exact moment. <strong>Warning:</strong> Restoring a version will overwrite your current unsaved progress.
-                                    </p>
+                                    <div className="flex flex-col md:flex-row gap-2 mb-4 bg-blue-50 border border-blue-100 p-3 rounded shadow-sm text-xs text-slate-600">
+                                        <p className="flex-1">
+                                            Select a previous save to restore your timeline to that exact moment. <strong>Warning:</strong> Restoring overwrites your current unsaved progress.
+                                        </p>
+                                        <div className="flex gap-2 md:hidden">
+                                            {!isReadOnly && <button onClick={() => importFileRef.current?.click()} className="flex-1 py-1.5 bg-white border border-slate-300 rounded font-bold">Import</button>}
+                                            <button onClick={exportToJSON} className="flex-1 py-1.5 bg-white border border-slate-300 rounded font-bold">Export</button>
+                                        </div>
+                                    </div>
                                     
                                     {saveHistory.length === 0 ? (
-                                        <div className="text-center py-12 text-slate-400 italic">No backup history available yet. Save your project to create a backup.</div>
+                                        <div className="text-center py-12 text-slate-400 italic">No local backup history available yet. Click "Snap" to create a backup.</div>
                                     ) : (
                                         <div className="space-y-3">
                                             {saveHistory.map((hist, idx) => {
@@ -3213,14 +3306,22 @@
                                                 }
 
                                                 return (
-                                                <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-slate-200 bg-white rounded-lg hover:border-blue-300 transition-colors shadow-sm gap-3 sm:gap-0">
+                                                <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-slate-200 bg-white rounded-lg hover:border-blue-300 transition-colors shadow-sm gap-3 sm:gap-0 relative group">
+                                                    {!isReadOnly && (
+                                                        <button onClick={(e) => deleteSnapshot(e, hist.id || hist.timestamp)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Snapshot">
+                                                            <Icons.Trash />
+                                                        </button>
+                                                    )}
                                                     <div>
-                                                        <div className="font-bold text-sm text-slate-800 mb-1">{formatDateTime(hist.timestamp)}</div>
+                                                        <div className="font-bold text-sm text-slate-800 mb-1">
+                                                            {hist.name ? <span className="text-blue-600 mr-2">{hist.name}</span> : ''}
+                                                            <span className="text-xs text-slate-500 font-normal">{formatDateTime(hist.timestamp)}</span>
+                                                        </div>
                                                         <div className="text-[11px] font-medium text-slate-500">
                                                             <span className="text-slate-700">{projectCount}</span> Projects • <span className="text-slate-700">{taskCount}</span> Tasks
                                                         </div>
                                                     </div>
-                                                    <div>
+                                                    <div className="pr-4 sm:pr-8">
                                                         {confirmRestoreIdx === idx && !isReadOnly ? (
                                                             <div className="flex items-center gap-2 w-full sm:w-auto">
                                                                 <button onClick={() => setConfirmRestoreIdx(null)} className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded text-xs font-bold transition-colors">Cancel</button>
@@ -3228,7 +3329,7 @@
                                                             </div>
                                                         ) : (
                                                             <button onClick={() => { if (!isReadOnly) setConfirmRestoreIdx(idx); }} disabled={isReadOnly} className={`w-full sm:w-auto px-4 py-1.5 rounded text-xs font-bold transition-all shadow-sm ${isReadOnly ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white'}`}>
-                                                                Restore
+                                                                Restore Local Save
                                                             </button>
                                                         )}
                                                     </div>
@@ -3254,11 +3355,11 @@
             const handleLogin = (e) => {
                 e.preventDefault();
                 const userLower = username.toLowerCase();
-                if (userLower === 'jwsadmin' && password === 'wangadmin') {
+                if (userLower === 'admin' && password === 'password') {
                     setUserRole('admin');
                     localStorage.setItem('timeline_role', 'admin');
                     setError('');
-                } else if (userLower === 'viewer' && password === 'wangcommon') {
+                } else if (userLower === 'viewer' && password === 'viewer') {
                     setUserRole('viewer');
                     localStorage.setItem('timeline_role', 'viewer');
                     setError('');
