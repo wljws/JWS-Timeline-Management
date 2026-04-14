@@ -338,7 +338,13 @@
         // --- Main Application Component ---
         const TimelineApp = ({ onLogout, userRole }) => {
             const localPrefs = useMemo(() => getLocalPrefs(), []);
-            const isReadOnly = userRole === 'viewer';
+            const actualIsReadOnly = userRole === 'viewer';
+            const [viewingSnapshot, setViewingSnapshot] = useState(null);
+            const [stashedLiveData, setStashedLiveData] = useState(null);
+            
+            const isReadOnly = actualIsReadOnly || !!viewingSnapshot;
+            const viewingSnapshotRef = useRef(viewingSnapshot);
+            useEffect(() => { viewingSnapshotRef.current = viewingSnapshot; }, [viewingSnapshot]);
             
             const [viewMode, setViewMode] = useState(localPrefs?.viewMode || 'projects'); 
             const [leftColTitle, setLeftColTitle] = useState("Projects & Phases");
@@ -675,7 +681,7 @@
                         }
                     }
                     
-                    if (isHistoryRestore && !isReadOnly) alert('Successfully restored previous version from history!');
+                    if (isHistoryRestore && !actualIsReadOnly && !viewingSnapshot) alert('Successfully restored previous version from history!');
                 }
             };
 
@@ -703,17 +709,22 @@
                             // If this is a background poll, only update if the cloud version is NEWER than our local save
                             if (!isInitialLoad) {
                                 if (data.timestamp && data.timestamp > lastSavedTimestampRef.current) {
-                                    isRemoteUpdate.current = true; // Tell the save function to ignore this incoming echo
-                                    applyLoadedData(data, false);
-                                    lastSavedTimestampRef.current = data.timestamp;
-                                    setSyncStatus('Live Sync: Updated from Cloud');
-                                    setTimeout(() => setSyncStatus(isReadOnly ? 'Viewing Live Cloud Data' : 'Synced to Cloud'), 2500);
+                                    if (viewingSnapshotRef.current) {
+                                        lastSavedTimestampRef.current = data.timestamp;
+                                        setSyncStatus('Live Sync: New cloud data available');
+                                    } else {
+                                        isRemoteUpdate.current = true; // Tell the save function to ignore this incoming echo
+                                        applyLoadedData(data, false);
+                                        lastSavedTimestampRef.current = data.timestamp;
+                                        setSyncStatus('Live Sync: Updated from Cloud');
+                                        setTimeout(() => setSyncStatus(actualIsReadOnly ? 'Viewing Live Cloud Data' : 'Synced to Cloud'), 2500);
+                                    }
                                 }
                             } else {
                                 // Initial load
                                 applyLoadedData(data, false);
                                 lastSavedTimestampRef.current = data.timestamp || 0;
-                                setSyncStatus(isReadOnly ? 'Viewing Live Cloud Data' : 'Synced to Cloud');
+                                setSyncStatus(actualIsReadOnly ? 'Viewing Live Cloud Data' : 'Synced to Cloud');
                             }
                         } else if (isInitialLoad) {
                             // Key doesn't exist yet, check local storage as fallback
@@ -738,7 +749,7 @@
 
             // 3a. Save Local Preferences & UI State (Runs when you switch views)
             useEffect(() => {
-                if (!isDataLoaded) return;
+                if (!isDataLoaded || viewingSnapshot) return; // Prevent local save if viewing a snapshot
                 const localState = {
                     collections: JSON.stringify(collections), 
                     activeCollectionId,
@@ -748,11 +759,11 @@
                     timestamp: lastSavedTimestampRef.current
                 };
                 localStorage.setItem('timeline_data', JSON.stringify(localState));
-            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded]);
+            }, [collections, activeCollectionId, viewMode, zoomLevel, currentTeamWeekStart, isDataLoaded, viewingSnapshot]);
 
             // 3b. Save Data to Cloud (Runs ONLY when you edit Projects/Tasks/Data)
             useEffect(() => {
-                if (!isDataLoaded || isReadOnly) return; // Prevent any saving if the user is a Viewer
+                if (!isDataLoaded || actualIsReadOnly || viewingSnapshot) return; // Prevent saving if Viewer or viewing snapshot
 
                 // Prevent Echo: If state changed because we just pulled new data from the cloud, DO NOT save it right back.
                 if (isRemoteUpdate.current) {
@@ -1077,6 +1088,33 @@
                     return pChanged ? { ...p, phases: nextPhases } : p;
                 });
                 if (hasChanges) setProjects(nextProjects);
+            };
+
+            const handleViewSnapshot = (snapshot) => {
+                setStashedLiveData({
+                    collectionsJson: JSON.stringify(collectionsRef.current),
+                    activeCollectionId: activeCollectionIdRef.current,
+                    viewMode,
+                    zoomLevel
+                });
+                applyLoadedData(snapshot.data, false);
+                setViewingSnapshot(snapshot);
+                setShowHistoryModal(false);
+            };
+
+            const handleExitSnapshotView = () => {
+                if (stashedLiveData) {
+                    isRemoteUpdate.current = true; // prevent echo save on exit
+                    applyLoadedData({
+                        collections: stashedLiveData.collectionsJson,
+                        activeCollectionId: stashedLiveData.activeCollectionId,
+                        viewMode: stashedLiveData.viewMode,
+                        zoomLevel: stashedLiveData.zoomLevel
+                    }, false);
+                }
+                setViewingSnapshot(null);
+                setStashedLiveData(null);
+                setSyncStatus(actualIsReadOnly ? 'Viewing Live Cloud Data' : 'Synced to Cloud');
             };
 
             const formatDateTime = (isoString) => {
@@ -2219,6 +2257,17 @@
                         {STANDARD_TEMPLATE_PHASES.map((p, i) => <option key={i} value={p.title} />)}
                     </datalist>
 
+                    {viewingSnapshot && (
+                        <div className="flex-shrink-0 bg-amber-500 text-white px-4 py-2 flex flex-col md:flex-row md:justify-between items-center z-[100] relative text-sm font-medium shadow-md gap-2">
+                            <div className="flex items-center gap-2">
+                                <Icons.Eye /> You are currently viewing a read-only snapshot: {viewingSnapshot.name || formatDateTime(viewingSnapshot.timestamp)}
+                            </div>
+                            <button onClick={handleExitSnapshotView} className="bg-black/20 hover:bg-black/30 px-3 py-1 rounded transition-colors text-xs font-bold uppercase tracking-wider whitespace-nowrap">
+                                Return to Live Timeline
+                            </button>
+                        </div>
+                    )}
+
                     {/* --- MAIN HEADER --- */}
                     <div className="flex-shrink-0 bg-slate-900 text-white px-2 py-1.5 md:px-4 md:py-2 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-1.5 md:gap-2">
                         <div className="relative group/collection z-50 flex items-center" onMouseLeave={() => setShowCollectionDropdown(false)}>
@@ -3343,7 +3392,7 @@
                                 <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0">
                                     <h2 className="text-lg font-bold flex items-center gap-2"><Icons.History /> Version History & Backups</h2>
                                     <div className="flex gap-2 items-center">
-                                        {!isReadOnly && (
+                                        {!actualIsReadOnly && (
                                             <>
                                                 <input type="file" accept=".json" style={{display: 'none'}} ref={importFileRef} onChange={handleImportJSON} />
                                                 <button onClick={() => importFileRef.current?.click()} className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-bold transition-colors flex items-center gap-1 hidden md:flex" title="Import from JSON File">
@@ -3364,7 +3413,7 @@
                                             Select a previous save to restore your timeline to that exact moment. <strong>Warning:</strong> Restoring overwrites your current unsaved progress.
                                         </p>
                                         <div className="flex gap-2 md:hidden">
-                                            {!isReadOnly && <button onClick={() => importFileRef.current?.click()} className="flex-1 py-1.5 bg-white border border-slate-300 rounded font-bold">Import</button>}
+                                            {!actualIsReadOnly && <button onClick={() => importFileRef.current?.click()} className="flex-1 py-1.5 bg-white border border-slate-300 rounded font-bold">Import</button>}
                                             <button onClick={exportToJSON} className="flex-1 py-1.5 bg-white border border-slate-300 rounded font-bold">Export</button>
                                         </div>
                                     </div>
@@ -3390,7 +3439,7 @@
 
                                                 return (
                                                 <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-slate-200 bg-white rounded-lg hover:border-blue-300 transition-colors shadow-sm gap-3 sm:gap-0 relative group">
-                                                    {!isReadOnly && (
+                                                    {!actualIsReadOnly && (
                                                         <button onClick={(e) => deleteSnapshot(e, hist.id || hist.timestamp)} className="absolute top-2 right-2 text-slate-300 hover:text-red-500 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Snapshot">
                                                             <Icons.Trash />
                                                         </button>
@@ -3405,15 +3454,18 @@
                                                         </div>
                                                     </div>
                                                     <div className="pr-4 sm:pr-8">
-                                                        {confirmRestoreIdx === idx && !isReadOnly ? (
+                                                        {confirmRestoreIdx === idx && !actualIsReadOnly ? (
                                                             <div className="flex items-center gap-2 w-full sm:w-auto">
                                                                 <button onClick={() => setConfirmRestoreIdx(null)} className="flex-1 sm:flex-none px-3 py-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded text-xs font-bold transition-colors">Cancel</button>
-                                                                <button onClick={() => { applyLoadedData(hist.data, true); setShowHistoryModal(false); setConfirmRestoreIdx(null); }} className="flex-1 sm:flex-none px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 rounded text-xs font-bold transition-colors shadow-sm whitespace-nowrap">Confirm Restore</button>
+                                                                <button onClick={() => { applyLoadedData(hist.data, true); setShowHistoryModal(false); setConfirmRestoreIdx(null); if (viewingSnapshot) handleExitSnapshotView(); }} className="flex-1 sm:flex-none px-3 py-1.5 bg-red-600 text-white hover:bg-red-700 rounded text-xs font-bold transition-colors shadow-sm whitespace-nowrap">Confirm Restore</button>
                                                             </div>
                                                         ) : (
-                                                            <button onClick={() => { if (!isReadOnly) setConfirmRestoreIdx(idx); }} disabled={isReadOnly} className={`w-full sm:w-auto px-4 py-1.5 rounded text-xs font-bold transition-all shadow-sm ${isReadOnly ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white'}`}>
-                                                                Restore Local Save
-                                                            </button>
+                                                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                                                                <button onClick={() => handleViewSnapshot(hist)} className="w-full sm:w-auto px-4 py-1.5 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 rounded text-xs font-bold transition-all shadow-sm">View</button>
+                                                                <button onClick={() => { if (!actualIsReadOnly) setConfirmRestoreIdx(idx); }} disabled={actualIsReadOnly} className={`w-full sm:w-auto px-4 py-1.5 rounded text-xs font-bold transition-all shadow-sm ${actualIsReadOnly ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-50 text-blue-600 border border-blue-200 hover:bg-blue-600 hover:text-white'}`}>
+                                                                    Restore
+                                                                </button>
+                                                            </div>
                                                         )}
                                                     </div>
                                                 </div>
