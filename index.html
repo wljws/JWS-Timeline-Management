@@ -1182,24 +1182,20 @@
                     const target = document.getElementById('main-app-container');
                     if (!target) { console.error("Nothing to export."); setIsExporting(false); return; }
 
-                    const captureScale = 2; // High-res capture
+                    const captureScale = 1.5; // Slightly lower scale to prevent memory crashes on large screens
                     const canvas = await window.html2canvas(target, {
                         scale: captureScale, 
-                        windowWidth: window.innerWidth,
-                        windowHeight: window.innerHeight,
-                        width: target.clientWidth,
-                        height: target.clientHeight,
-                        x: 0,
-                        y: 0,
                         useCORS: true, 
-                        allowTaint: true,
                         logging: false, 
                         backgroundColor: '#ffffff',
                         ignoreElements: (element) => {
-                            // Prevent Vercel injected elements (toolbar, analytics, speed insights) from crashing html2canvas
-                            if (element.tagName && element.tagName.toLowerCase().includes('vercel')) return true;
-                            if (element.id && element.id.toLowerCase().includes('vercel')) return true;
-                            if (element.tagName === 'SCRIPT' || element.tagName === 'NOSCRIPT' || element.tagName === 'STYLE') return true;
+                            // Safely prevent Vercel injected elements from crashing html2canvas
+                            try {
+                                const tag = element?.tagName?.toLowerCase() || '';
+                                const id = element?.id?.toLowerCase() || '';
+                                if (tag.includes('vercel') || id.includes('vercel')) return true;
+                                if (['script', 'noscript', 'style', 'iframe'].includes(tag)) return true;
+                            } catch(e) {}
                             return false;
                         },
                         onclone: (clonedDoc) => {
@@ -1226,7 +1222,7 @@
                         }
                     });
 
-                    const imgData = canvas.toDataURL('image/jpeg', 0.98);
+                    const imgData = canvas.toDataURL('image/jpeg', 0.95);
                     const { jsPDF } = window.jspdf;
                     
                     // 1 pixel = 0.75 points in jsPDF
