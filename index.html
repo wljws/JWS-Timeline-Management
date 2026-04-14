@@ -1178,39 +1178,50 @@
 
             const exportToPDF = async () => {
                 setIsExporting(true);
+                setSyncStatus('Preparing PDF...');
+
                 try {
                     const target = document.getElementById('main-app-container');
-                    if (!target) { console.error("Nothing to export."); setIsExporting(false); return; }
+                    if (!target) throw new Error("No export target found");
 
-                    const captureScale = 1.5; // Slightly lower scale to prevent memory crashes on large screens
+                    const scrollContainer = document.getElementById('timeline-scroll-container');
+                    const sLeft = scrollContainer ? scrollContainer.scrollLeft : 0;
+                    const sTop = scrollContainer ? scrollContainer.scrollTop : 0;
+
+                    // Lower scale slightly to prevent memory limit crashes on extra wide screens
+                    const captureScale = 1.5; 
+                    
                     const canvas = await window.html2canvas(target, {
                         scale: captureScale, 
+                        width: target.clientWidth,
+                        height: target.clientHeight,
+                        windowWidth: window.innerWidth,
+                        windowHeight: window.innerHeight,
                         useCORS: true, 
+                        allowTaint: false,
                         logging: false, 
                         backgroundColor: '#ffffff',
                         ignoreElements: (element) => {
-                            // Safely prevent Vercel injected elements from crashing html2canvas
-                            try {
-                                const tag = element?.tagName?.toLowerCase() || '';
-                                const id = element?.id?.toLowerCase() || '';
-                                if (tag.includes('vercel') || id.includes('vercel')) return true;
-                                if (['script', 'noscript', 'style', 'iframe'].includes(tag)) return true;
-                            } catch(e) {}
+                            // Block Vercel injected UI tools from crashing the canvas parser
+                            const tag = (element.tagName || '').toLowerCase();
+                            const id = (element.id || '').toLowerCase();
+                            if (tag.includes('vercel') || id.includes('vercel') || id === 'nextjs-portal') return true;
+                            if (['script', 'noscript', 'iframe'].includes(tag)) return true;
                             return false;
                         },
                         onclone: (clonedDoc) => {
-                            // Inject a global stylesheet to forcefully override Tailwind CSS properties 
-                            // (like text-rendering, kerning, and SVG filters) that are known to cause 
-                            // text compression and overlap bugs in html2canvas.
+                            // 1. Remove Vercel DOM nodes to avoid CORS errors during cloning
+                            const vercelNodes = clonedDoc.querySelectorAll('vercel-live, [id*="vercel"], link[href*="vercel"]');
+                            vercelNodes.forEach(n => n.remove());
+
+                            // 2. Fix text compression by stripping Tailwind rendering optimizations for the snapshot
                             const style = clonedDoc.createElement('style');
                             style.innerHTML = `
                                 * {
                                     text-rendering: auto !important;
                                     letter-spacing: normal !important;
                                     font-family: Arial, Helvetica, sans-serif !important;
-                                    font-feature-settings: "liga" 0 !important;
                                     font-variant-ligatures: none !important;
-                                    filter: none !important; /* Prevents text bugs caused by Tailwind drop-shadows */
                                 }
                                 .truncate {
                                     white-space: nowrap !important;
@@ -1219,9 +1230,18 @@
                                 }
                             `;
                             clonedDoc.head.appendChild(style);
+
+                            // 3. Ensure the clone maintains the exact visual scroll position
+                            const clonedScroll = clonedDoc.getElementById('timeline-scroll-container');
+                            if (clonedScroll) {
+                                clonedScroll.scrollLeft = sLeft;
+                                clonedScroll.scrollTop = sTop;
+                            }
                         }
                     });
 
+                    setSyncStatus('Generating PDF...');
+                    
                     const imgData = canvas.toDataURL('image/jpeg', 0.95);
                     const { jsPDF } = window.jspdf;
                     
@@ -1230,17 +1250,23 @@
                     const pdfWidth = (canvas.width / captureScale) * pxToPt; 
                     const pdfHeight = (canvas.height / captureScale) * pxToPt;
                     
-                    if (pdfWidth === 0 || pdfHeight === 0) throw new Error("Canvas generation failed (0 size)");
+                    if (pdfWidth === 0 || pdfHeight === 0) throw new Error("Canvas is 0px");
 
                     const orientation = pdfWidth > pdfHeight ? 'l' : 'p';
                     const pdf = new jsPDF({ orientation: orientation, unit: 'pt', format: [pdfWidth, pdfHeight] });
                     
                     pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-                    pdf.save(`Timeline_${activeCollection.title.replace(/[^a-z0-9]/gi, '_')}_Screenshot.pdf`);
+                    pdf.save(`Timeline_${activeCollection.title.replace(/[^a-z0-9]/gi, '_')}.pdf`);
+                    
+                    setSyncStatus('PDF Downloaded');
+                    setTimeout(() => setSyncStatus(isReadOnly ? 'Viewing Mode' : 'Synced to Cloud'), 3000);
+                    
                 } catch (error) {
                     console.error("PDF Export Error:", error);
-                    setSyncStatus('Export Failed');
-                    setTimeout(() => setSyncStatus(isReadOnly ? 'Viewing Mode' : 'Synced to Storage'), 3000);
+                    // Output actual error string to the UI so it can be diagnosed if it fails again
+                    const errMsg = error.message ? error.message.substring(0, 30) : 'Unknown Error';
+                    setSyncStatus(`Export Failed: ${errMsg}`);
+                    setTimeout(() => setSyncStatus(isReadOnly ? 'Viewing Mode' : 'Synced to Cloud'), 5000);
                 } finally {
                     setIsExporting(false);
                 }
@@ -2402,7 +2428,7 @@
 
                     {/* --- MAIN CONTENT AREA --- */}
                     {viewMode === 'projects' ? (
-                        <div className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
+                        <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
                             <div className="relative min-w-full w-max min-h-full">
                                 
                                 {/* Grid Background */}
@@ -2754,7 +2780,7 @@
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
+                            <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
                                 <div className="relative min-w-full w-max min-h-full flex flex-col">
                                     <div className="flex sticky top-0 z-40 h-[60px] w-full min-w-full bg-white border-b border-slate-300 shadow-sm">
                                         <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-row shadow-[2px_0_5px_rgba(0,0,0,0.05)] transition-[width] duration-300 ease-in-out" style={{ width: currentLeftWidth }}>
