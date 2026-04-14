@@ -233,6 +233,7 @@
             X: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"></path></svg>,
             Trash: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"></path></svg>,
             Copy: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>,
+            Clipboard: ({ className }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>,
             Eye: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
             EyeOff: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
             Link: ({ className, title }) => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}><title>{title}</title><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"></path></svg>,
@@ -359,6 +360,8 @@
             const [copyProjectMenuId, setCopyProjectMenuId] = useState(null);
             const [copyAsSynced, setCopyAsSynced] = useState(false);
             const [showHiddenProjects, setShowHiddenProjects] = useState(false);
+            const [copiedScope, setCopiedScope] = useState(null);
+            const [selectedTaskIdsToCopy, setSelectedTaskIdsToCopy] = useState(new Set());
 
             // Modal States
             const [modalData, setModalData] = useState(null);
@@ -1298,7 +1301,10 @@
                 if (isReadOnly) return;
                 recordHistory();
                 setProjects(projects.filter(p => p.id !== projectId));
-                if (modalData && modalData.projectId === projectId) setModalData(null);
+                if (modalData && modalData.projectId === projectId) {
+                    setModalData(null);
+                    setSelectedTaskIdsToCopy(new Set());
+                }
             };
 
             const handleCopyProject = (projectId, targetCollectionId, isSynced = false) => {
@@ -1969,7 +1975,10 @@
                 setProjects(projects.map(p => p.id === projectId ? {
                     ...p, phases: p.phases.filter(ph => ph.id !== phaseId)
                 } : p));
-                if (modalData && modalData.phase.id === phaseId) setModalData(null);
+                if (modalData && modalData.phase.id === phaseId) {
+                    setModalData(null);
+                    setSelectedTaskIdsToCopy(new Set());
+                }
             };
 
             const toggleTask = (taskId) => {
@@ -2174,17 +2183,28 @@
             for (let i = 0; i < totalDays; i += 7) {
                 const weekStart = addDays(timelineStart, i);
                 const weekEnd = addDays(weekStart, 6);
-                weeks.push({ start: weekStart, end: weekEnd, label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`, daysFromStart: i });
                 const month = weekStart.getMonth();
+                
+                let weekOfMonth = 1;
                 if (month !== currentMonth) {
                     if (currentMonth !== -1) months[months.length - 1].colSpan = weeksInMonth * 7;
                     months.push({ name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), colSpan: 7 });
                     currentMonth = month;
                     weeksInMonth = 1;
+                    weekOfMonth = 1;
                 } else {
                     weeksInMonth++;
                     months[months.length - 1].colSpan = weeksInMonth * 7;
+                    weekOfMonth = weeksInMonth;
                 }
+                
+                weeks.push({ 
+                    start: weekStart, 
+                    end: weekEnd, 
+                    label: `${formatDate(weekStart)} - ${formatDate(weekEnd)}`, 
+                    daysFromStart: i,
+                    weekOfMonth: weekOfMonth
+                });
             }
             if (months.length > 0) months[months.length - 1].colSpan = weeksInMonth * 7;
 
@@ -2374,8 +2394,9 @@
                                         </div>
                                         <div className="flex h-[28px] bg-white text-[10px] text-slate-500 font-medium">
                                             {weeks.map((w, i) => (
-                                                <div key={i} className="flex justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1" style={{ width: 7 * zoomLevel }}>
-                                                    <span className="truncate">{w.label}</span>
+                                                <div key={i} className="flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel }}>
+                                                    <span className="truncate leading-none">{w.label}</span>
+                                                    <span className="truncate text-[8.5px] leading-none text-slate-400 mt-[3px]">Week {w.weekOfMonth}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -2951,7 +2972,7 @@
 
                     {/* --- MODALS --- */}
                     {modalData && activeProject && !teamModalData && (
-                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex justify-center items-center md:p-4" onMouseDown={() => setModalData(null)}>
+                        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] flex justify-center items-center md:p-4" onMouseDown={() => { setModalData(null); setSelectedTaskIdsToCopy(new Set()); }}>
                             <div className="bg-white md:rounded-xl shadow-2xl w-full h-full md:h-auto md:max-h-[90vh] md:max-w-[750px] overflow-hidden flex flex-col" onMouseDown={e => e.stopPropagation()}>
                                 <div className="p-4 text-white flex justify-between items-center" style={{ backgroundColor: getPhaseColor(activeProject.color, modalData.colorIndex) }}>
                                     <div className="flex-1 mr-4 flex items-center">
@@ -2963,7 +2984,7 @@
                                             <input list="standard-phases-list" value={modalData.phase.title} readOnly={isReadOnly} onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)} className="bg-transparent text-xl font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50" />
                                         </div>
                                     </div>
-                                    <button onClick={() => setModalData(null)} className="p-2 md:p-1 hover:bg-black/10 rounded-full transition-colors"><Icons.X /></button>
+                                    <button onClick={() => { setModalData(null); setSelectedTaskIdsToCopy(new Set()); }} className="p-2 md:p-1 hover:bg-black/10 rounded-full transition-colors"><Icons.X /></button>
                                 </div>
 
                                 <div className="p-4 md:p-5 flex-1 overflow-y-auto">
@@ -3021,7 +3042,22 @@
                                     </div>
 
                                     <div className="flex justify-between items-end mb-3 border-b border-slate-100 pb-1">
-                                        <div className="flex gap-2 w-full pr-7">
+                                        <div className="flex gap-2 w-full pr-7 items-center">
+                                            {!isReadOnly && (
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={modalData.phase.tasks.length > 0 && selectedTaskIdsToCopy.size === modalData.phase.tasks.length} 
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedTaskIdsToCopy(new Set(modalData.phase.tasks.map(t => t.id)));
+                                                        } else {
+                                                            setSelectedTaskIdsToCopy(new Set());
+                                                        }
+                                                    }} 
+                                                    className="w-4 h-4 ml-1 rounded border-slate-300 text-slate-600 focus:ring-slate-500 cursor-pointer accent-slate-500 flex-shrink-0"
+                                                    title="Select all tasks for copy"
+                                                />
+                                            )}
                                             <span className="w-6 md:w-4"></span>
                                             <span className="w-5 md:w-4"></span>
                                             <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider flex-1">Description</span>
@@ -3039,6 +3075,22 @@
                                                 return (
                                                 <div key={task.id} draggable={!modalData.phase.isLocked && !isReadOnly} onDragStart={(e) => onDragStartTask(e, tIdx)} onDragOver={(e) => onDragOverTask(e, tIdx)} onDragEnd={onDragEndTask} className={`flex flex-col md:flex-row md:items-center gap-2 group py-2 md:py-1 hover:bg-slate-50 border border-slate-100 md:border-transparent rounded md:rounded-none p-2 md:p-0 ${draggedTaskIndex === tIdx ? 'opacity-50' : ''}`}>
                                                     <div className="flex items-center gap-2 w-full md:w-auto flex-1">
+                                                        {!isReadOnly && (
+                                                            <input 
+                                                                type="checkbox" 
+                                                                checked={selectedTaskIdsToCopy.has(task.id)}
+                                                                onChange={() => {
+                                                                    setSelectedTaskIdsToCopy(prev => {
+                                                                        const next = new Set(prev);
+                                                                        if (next.has(task.id)) next.delete(task.id);
+                                                                        else next.add(task.id);
+                                                                        return next;
+                                                                    });
+                                                                }}
+                                                                className="w-4 h-4 ml-1 rounded border-slate-300 text-slate-600 focus:ring-slate-500 cursor-pointer accent-slate-500 flex-shrink-0"
+                                                                title="Select task for copy"
+                                                            />
+                                                        )}
                                                         {!isReadOnly && <div className={`w-6 flex justify-center text-slate-400 ${modalData.phase.isLocked ? 'opacity-0' : 'cursor-grab opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-slate-600'}`}><Icons.Grip /></div>}
                                                         <input type="checkbox" checked={task.done} disabled={modalData.phase.isLocked || isReadOnly} onChange={() => toggleTask(task.id)} className="w-5 h-5 md:w-4 md:h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-50 cursor-pointer accent-blue-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed" />
                                                         <input value={task.text} readOnly={modalData.phase.isLocked || isReadOnly} onChange={(e) => updateTaskText(task.id, e.target.value)} placeholder="Task Description" className={`flex-1 text-base md:text-sm bg-transparent border-b border-slate-200 md:border-transparent focus:border-slate-300 focus:outline-none py-1.5 md:py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'} ${(modalData.phase.isLocked || isReadOnly) ? 'opacity-70 cursor-not-allowed' : ''}`} />
@@ -3095,9 +3147,40 @@
                                         )}
                                     </div>
                                     {!isReadOnly && (
-                                        <button onClick={addTask} disabled={modalData.phase.isLocked} className={`text-sm md:text-xs font-medium flex items-center justify-center border border-dashed border-blue-200 w-full p-3 rounded gap-2 mt-2 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed border-slate-200' : 'text-blue-600 hover:bg-blue-50'}`}>
-                                            <Icons.Plus /> Add New Task
-                                        </button>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            <button onClick={addTask} disabled={modalData.phase.isLocked} className={`flex-1 text-sm md:text-xs font-medium flex items-center justify-center border border-dashed border-blue-200 p-3 rounded gap-2 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed border-slate-200' : 'text-blue-600 hover:bg-blue-50'}`}>
+                                                <Icons.Plus /> Add New Task
+                                            </button>
+                                            <button onClick={() => {
+                                                if (selectedTaskIdsToCopy.size === 0) {
+                                                    alert("Please select at least one task to copy using the checkboxes on the left.");
+                                                    return;
+                                                }
+                                                const tasksToCopy = modalData.phase.tasks.filter(t => selectedTaskIdsToCopy.has(t.id));
+                                                setCopiedScope(tasksToCopy);
+                                                setSelectedTaskIdsToCopy(new Set());
+                                            }} className="px-4 text-sm md:text-xs font-medium flex items-center justify-center border border-slate-200 rounded gap-1.5 text-slate-600 hover:bg-slate-50 transition-colors whitespace-nowrap" title="Copy selected tasks to clipboard">
+                                                <Icons.Copy /> Copy Selected ({selectedTaskIdsToCopy.size})
+                                            </button>
+                                            {copiedScope && copiedScope.length > 0 && (
+                                                <button onClick={() => {
+                                                    recordHistory();
+                                                    const newTasks = copiedScope.map(ct => ({
+                                                        id: generateId(),
+                                                        text: ct.text,
+                                                        done: false,
+                                                        assignees: [],
+                                                        assignee: '',
+                                                        start: null,
+                                                        end: null,
+                                                        allocations: []
+                                                    }));
+                                                    updateTasksInState([...modalData.phase.tasks, ...newTasks]);
+                                                }} disabled={modalData.phase.isLocked} className={`px-4 text-sm md:text-xs font-medium flex items-center justify-center border border-blue-200 rounded gap-1.5 whitespace-nowrap ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed border-slate-200' : 'text-blue-600 hover:bg-blue-50'} transition-colors`} title="Paste copied tasks">
+                                                    <Icons.Clipboard /> Paste Scope ({copiedScope.length})
+                                                </button>
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                                 
@@ -3105,7 +3188,7 @@
                                     {!isReadOnly ? (
                                         <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-sm md:text-xs text-red-500 hover:text-red-700 font-medium p-2">Delete Phase</button>
                                     ) : <div></div>}
-                                    <button onClick={() => setModalData(null)} className="bg-slate-800 hover:bg-slate-700 text-white text-base md:text-sm font-medium px-8 py-3 md:py-2 rounded-lg md:rounded shadow-sm">Done</button>
+                                    <button onClick={() => { setModalData(null); setSelectedTaskIdsToCopy(new Set()); }} className="bg-slate-800 hover:bg-slate-700 text-white text-base md:text-sm font-medium px-8 py-3 md:py-2 rounded-lg md:rounded shadow-sm">Done</button>
                                 </div>
                             </div>
                         </div>
