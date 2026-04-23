@@ -2841,15 +2841,7 @@
                                             </div>
                                             
                                             {collection.projects.map(project => {
-                                                const hasTimeline = project.calculatedStart && project.calculatedEnd;
-                                                let left = 0, width = 0, isVisible = false, durationWeeks = 0;
-                                                if (hasTimeline) {
-                                                    left = diffExactDays(timelineStart, project.calculatedStart) * zoomLevel;
-                                                    const durationDays = diffExactDays(project.calculatedStart, project.calculatedEnd) + 1;
-                                                    width = durationDays * zoomLevel;
-                                                    isVisible = left + width >= 0 && left <= gridWidth;
-                                                    durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
-                                                }
+                                                const chronoIndices = getChronologicalIndices(project.phases || []);
                                                 
                                                 return (
                                                     <div key={project.id} className="flex flex-col relative border-b border-slate-100 bg-transparent hover:bg-slate-50 transition-colors z-10 h-[48px]">
@@ -2863,17 +2855,53 @@
                                                                 )}
                                                             </div>
                                                             <div className="flex-shrink-0 relative h-[48px]" style={{ width: gridWidth }}>
-                                                                {isVisible && (
-                                                                    <div 
-                                                                        className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-default`}
-                                                                        style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel/2)}px`, backgroundColor: getPhaseColor(project.color, 2) }}
-                                                                        title={`${project.title} (${formatDate(project.calculatedStart)} - ${formatDate(project.calculatedEnd)})`}
-                                                                    >
-                                                                        <div className="truncate drop-shadow-md flex items-center gap-1">
-                                                                            {project.title} ({durationWeeks}w)
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                                {(project.phases || []).map((phase, phaseIndex) => {
+                                                                    const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
+                                                                    const isCompleted = phase.tasks && phase.tasks.length > 0 && phase.tasks.every(t => t.done);
+                                                                    const hasTimeline = phase.start && phase.end;
+                                                                    let left = 0, width = 0, isVisible = false, durationWeeks = 0;
+                                                                    if (hasTimeline) {
+                                                                        left = diffExactDays(timelineStart, phase.start) * zoomLevel;
+                                                                        const durationDays = diffExactDays(phase.start, phase.end) + 1;
+                                                                        width = durationDays * zoomLevel;
+                                                                        isVisible = left + width >= 0 && left <= gridWidth;
+                                                                        durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
+                                                                    }
+
+                                                                    return (
+                                                                        <React.Fragment key={phase.id}>
+                                                                            {isVisible && (
+                                                                                <div 
+                                                                                    className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-default ${isCompleted ? 'completed-block' : ''}`}
+                                                                                    style={{ left: `${left}px`, width: `${Math.max(width, zoomLevel/2)}px`, backgroundColor: getPhaseColor(project.color, colorIndex) }}
+                                                                                    title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
+                                                                                >
+                                                                                    <div className="truncate drop-shadow-md flex items-center gap-1">
+                                                                                        {phase.isLocked && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)
+                                                                                    </div>
+                                                                                    <div className="absolute bottom-0 left-0 right-0 h-2 pointer-events-none">
+                                                                                        {(phase.tasks || []).flatMap((task, tIdx) => {
+                                                                                            return (task.allocations || []).map((alloc, aIdx) => {
+                                                                                                if (!alloc.start || !alloc.end) return null;
+                                                                                                const allocLeft = diffExactDays(phase.start, alloc.start) * zoomLevel;
+                                                                                                const allocWidth = ((alloc.end.getTime() - alloc.start.getTime()) / (1000 * 60 * 60 * 24)) * zoomLevel;
+                                                                                                return <div key={`${task.id}_${alloc.id}`} className="absolute h-[2px] bg-white/70 shadow-sm rounded-full" style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} />
+                                                                                            });
+                                                                                        })}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                            {(phase.milestones || []).map(milestone => {
+                                                                                if (!milestone.date) return null;
+                                                                                return (
+                                                                                    <div key={milestone.id} className="absolute top-[8px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }} title={milestone.label}>
+                                                                                        <Icons.Flag className="text-amber-400" />
+                                                                                    </div>
+                                                                                )
+                                                                            })}
+                                                                        </React.Fragment>
+                                                                    )
+                                                                })}
                                                             </div>
                                                         </div>
                                                     </div>
@@ -3140,7 +3168,8 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            )})}
+                                            )
+                                        })}
 
                                         <div className="flex w-full mt-4 mb-8">
                                             <div className="flex-shrink-0 sticky left-0 z-30 flex transition-[width] duration-300 ease-in-out overflow-hidden" style={{ width: currentLeftWidth }}>
