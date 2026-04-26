@@ -6,20 +6,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-let redisClient: ReturnType<typeof createClient> | null = null;
-
+// Ensure credentials exist for the KV client
 const KV_URL = "https://awaited-drake-76193.upstash.io";
 const KV_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
-function getRedisClient() {
-  if (!redisClient) {
-    redisClient = createClient({
-      url: process.env.KV_REST_API_URL || KV_URL,
-      token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
-    });
-  }
-  return redisClient;
-}
+const kv = createClient({
+  url: process.env.KV_REST_API_URL || KV_URL,
+  token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
+})
 
 async function startServer() {
   const app = express();
@@ -34,13 +28,12 @@ async function startServer() {
       const timestamp = new Date().toISOString();
       const snapshotId = `snapshot_${timestamp}`;
       
-      const redis = getRedisClient();
-      await redis.set(snapshotId, data);
+      await kv.set(snapshotId, data);
       
       // Keep a list of all snapshots
-      const snapshots = (await redis.get("all_snapshots") as string[]) || [];
+      const snapshots = (await kv.get("all_snapshots") as string[]) || [];
       snapshots.push(snapshotId);
-      await redis.set("all_snapshots", snapshots);
+      await kv.set("all_snapshots", snapshots);
 
       res.json({ success: true, snapshotId });
     } catch (error: any) {
@@ -51,8 +44,7 @@ async function startServer() {
 
   app.get("/api/snapshots", async (req, res) => {
     try {
-      const redis = getRedisClient();
-      const snapshots = (await redis.get("all_snapshots") as string[]) || [];
+      const snapshots = (await kv.get("all_snapshots") as string[]) || [];
       res.json({ snapshots });
     } catch (error: any) {
       console.error(error);
@@ -63,11 +55,10 @@ async function startServer() {
   // Current local history save
   app.post("/api/save-history", async (req, res) => {
     try {
-      const redis = getRedisClient();
       const { history, timestamp } = req.body;
       const ts = timestamp || Date.now();
       const data = { collections: typeof history === 'string' ? history : JSON.stringify(history), timestamp: ts };
-      await redis.set("timeline-app-data", data);
+      await kv.set("timeline-app-data", data);
       res.json({ success: true });
     } catch (error: any) {
       console.error(error);
@@ -77,11 +68,7 @@ async function startServer() {
 
   app.get("/api/history", async (req, res) => {
     try {
-      console.log("Fetching history from KV...");
-      const redis = getRedisClient();
-      console.log("KV client retrieved, calling kv.get...");
-      const data = await redis.get("timeline-app-data");
-      console.log("Data fetched:", data);
+      const data = await kv.get("timeline-app-data");
       res.json({ result: data });
     } catch (error: any) {
       console.error("Error in /api/history:", error);
