@@ -195,7 +195,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                       {project.syncId && <Icons.Link className="text-blue-500 w-3.5 h-3.5 mr-1.5 shrink-0" title="Linked Project (Synced)" />}
 
                       <input type="checkbox" disabled={isReadOnly} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Select All Phases to shift timeline" />
-                      <input value={project.title} readOnly={isReadOnly} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate min-w-0 ${isReadOnly ? 'cursor-default' : ''}`} />
+                      <input value={project.title} readOnly={isReadOnly} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 min-w-0 ${isReadOnly ? 'cursor-default' : ''}`} />
                       
                       {!isReadOnly && (
                         <div className="flex items-center shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 md:absolute md:right-0 md:top-0 md:bottom-0 md:pl-10 md:pr-1 md:bg-gradient-to-r from-white/0 via-white to-white group-hover:from-slate-50/0 group-hover:via-slate-50 group-hover:to-slate-50 pointer-events-none *:pointer-events-auto transition-opacity">
