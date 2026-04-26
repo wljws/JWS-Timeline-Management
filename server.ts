@@ -1,26 +1,17 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { Redis } from "@upstash/redis";
+import { kv } from "@vercel/kv";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-// Hardcoded credentials for external users - User must fill these!
-const HARDCODED_URL = "https://awaited-drake-76193.upstash.io";
-const HARDCODED_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
+// Hardcoded credentials - setting directly to process.env so @vercel/kv picks it up
+process.env.KV_REST_API_URL = "https://awaited-drake-76193.upstash.io";
+process.env.KV_REST_API_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
 function getRedisClient() {
-  const url = HARDCODED_URL;
-  const token = HARDCODED_TOKEN;
-
-  if (!url || !token) {
-    throw new Error("Upstash Redis credentials not set in hardcoded values.");
-  }
-  return new Redis({
-    url,
-    token,
-  });
+  return kv;
 }
 
 async function startServer() {
