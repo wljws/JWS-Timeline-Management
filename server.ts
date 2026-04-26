@@ -70,11 +70,14 @@ async function startServer() {
 
   app.get("/api/history", async (req, res) => {
     try {
+      console.log("Fetching history from KV...");
       const redis = getRedisClient();
+      console.log("KV client retrieved, calling kv.get...");
       const data = await redis.get("timeline-app-data");
+      console.log("Data fetched:", data);
       res.json({ result: data });
     } catch (error: any) {
-      console.error(error);
+      console.error("Error in /api/history:", error);
       res.status(500).json({ error: error.message });
     }
   });
