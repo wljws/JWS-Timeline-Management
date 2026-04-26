@@ -1,0 +1,6 @@
+{
+  "name": "Interior Design Timeline Manager",
+  "description": "A collaborative project timeline and resource management tool for interior design teams, featuring multi-collection support and Vercel KV live synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
