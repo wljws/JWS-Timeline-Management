@@ -8,11 +8,14 @@ dotenv.config();
 
 let redisClient: ReturnType<typeof createClient> | null = null;
 
+const KV_URL = "https://awaited-drake-76193.upstash.io";
+const KV_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
+
 function getRedisClient() {
   if (!redisClient) {
     redisClient = createClient({
-      url: process.env.KV_REST_API_URL || "https://awaited-drake-76193.upstash.io",
-      token: process.env.KV_REST_API_TOKEN || "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM",
+      url: process.env.KV_REST_API_URL || KV_URL,
+      token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
     });
   }
   return redisClient;
