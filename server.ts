@@ -13,12 +13,10 @@ const KV_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMX
 
 function getRedisClient() {
   if (!redisClient) {
-    console.log("Creating KV client with URL:", process.env.KV_REST_API_URL || KV_URL);
     redisClient = createClient({
       url: process.env.KV_REST_API_URL || KV_URL,
       token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
     });
-    console.log("KV client created.");
   }
   return redisClient;
 }
