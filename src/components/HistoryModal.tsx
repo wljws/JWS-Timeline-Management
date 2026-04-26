@@ -58,9 +58,17 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
         <div className="p-5 overflow-y-auto flex-1 bg-slate-50">
           {!actualIsReadOnly && (
             <div className="mb-6 bg-white border border-blue-200 rounded-lg p-4 shadow-sm">
-              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
-                <Icons.Target className="text-blue-600 w-4 h-4" /> Snapshot Controls
-              </h3>
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Icons.Target className="text-blue-600 w-4 h-4" /> Snapshot Controls
+                </h3>
+                <button 
+                  onClick={() => { exportToJSON(); }}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold transition-all border border-slate-200 flex items-center gap-1.5"
+                >
+                  <Icons.Clipboard className="w-3.5 h-3.5" /> Export All (JSON)
+                </button>
+              </div>
               <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center">
                 <div className="flex-1">
                   <button 

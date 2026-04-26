@@ -981,9 +981,6 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
               <Icons.Target className="w-3.5 h-3.5" /> <span className="hidden md:inline">Settings</span>
             </button>
             <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
-            <button onClick={exportToJSON} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Export as JSON Data">
-              <Icons.Clipboard className="w-3.5 h-3.5" /> <span className="hidden md:inline">Export JSON</span>
-            </button>
           </div>
 
           <button onClick={onLogout} className="text-xs font-medium text-slate-300 hover:text-white px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded transition-colors ml-1 mr-1" title="Log Out">
