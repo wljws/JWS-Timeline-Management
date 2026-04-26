@@ -6,9 +6,13 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Hardcoded credentials - setting directly to process.env so @vercel/kv picks it up
-process.env.KV_REST_API_URL = "https://awaited-drake-76193.upstash.io";
-process.env.KV_REST_API_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
+// Hardcoded credentials - setting directly to process.env so @vercel/kv picks it up (if not already set)
+if (!process.env.KV_REST_API_URL) {
+  process.env.KV_REST_API_URL = "https://awaited-drake-76193.upstash.io";
+}
+if (!process.env.KV_REST_API_TOKEN) {
+  process.env.KV_REST_API_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
+}
 
 function getRedisClient() {
   return kv;
