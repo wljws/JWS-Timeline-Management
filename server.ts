@@ -7,8 +7,8 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Hardcoded credentials for external users - User must fill these!
-const HARDCODED_URL = "";
-const HARDCODED_TOKEN = "";
+const HARDCODED_URL = "https://awaited-drake-76193.upstash.io";
+const HARDCODED_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
 function getRedisClient() {
   const url = process.env.UPSTASH_REDIS_REST_URL || HARDCODED_URL;
