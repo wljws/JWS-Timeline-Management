@@ -6,13 +6,20 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+// Hardcoded credentials for external users - User must fill these!
+const HARDCODED_URL = "";
+const HARDCODED_TOKEN = "";
+
 function getRedisClient() {
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
-    throw new Error("Upstash Redis credentials not set in environment variables.");
+  const url = process.env.UPSTASH_REDIS_REST_URL || HARDCODED_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN || HARDCODED_TOKEN;
+
+  if (!url || !token) {
+    throw new Error("Upstash Redis credentials not set in environment variables or hardcoded values.");
   }
   return new Redis({
-    url: process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    url,
+    token,
   });
 }
 
