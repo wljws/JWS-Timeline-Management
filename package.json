@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node dist/server.cjs",
-    "build:server": "esbuild server.ts --platform=node --target=node16 --outfile=dist/server.cjs --format=cjs --bundle --external:express --external:@vercel/kv --external:vite",
+    "build:server": "esbuild server.ts --platform=node --target=node16 --outfile=dist/server.cjs --format=cjs --bundle --external:express --external:@upstash/redis --external:vite",
     "build": "vite build && npm run build:server",
     "preview": "vite preview",
     "clean": "rm -rf dist",
@@ -15,6 +15,7 @@
   "dependencies": {
     "@google/genai": "^1.29.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@upstash/redis": "^1.37.0",
     "@vercel/kv": "^3.0.0",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",

@@ -1,10 +1,20 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
-import { kv } from "@vercel/kv";
+import { Redis } from "@upstash/redis";
 import dotenv from "dotenv";
 
 dotenv.config();
+
+function getRedisClient() {
+  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+    throw new Error("Upstash Redis credentials not set in environment variables.");
+  }
+  return new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -19,16 +29,13 @@ async function startServer() {
       const timestamp = new Date().toISOString();
       const snapshotId = `snapshot_${timestamp}`;
       
-      if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-        return res.status(500).json({ error: "Vercel KV credentials not set in environment variables." });
-      }
-
-      await kv.set(snapshotId, data);
+      const redis = getRedisClient();
+      await redis.set(snapshotId, data);
       
       // Keep a list of all snapshots
-      const snapshots = (await kv.get("all_snapshots") as string[]) || [];
+      const snapshots = (await redis.get("all_snapshots") as string[]) || [];
       snapshots.push(snapshotId);
-      await kv.set("all_snapshots", snapshots);
+      await redis.set("all_snapshots", snapshots);
 
       res.json({ success: true, snapshotId });
     } catch (error: any) {
@@ -39,10 +46,8 @@ async function startServer() {
 
   app.get("/api/snapshots", async (req, res) => {
     try {
-      if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-        return res.status(500).json({ error: "Vercel KV credentials not set in environment variables." });
-      }
-      const snapshots = (await kv.get("all_snapshots") as string[]) || [];
+      const redis = getRedisClient();
+      const snapshots = (await redis.get("all_snapshots") as string[]) || [];
       res.json({ snapshots });
     } catch (error: any) {
       console.error(error);
@@ -53,13 +58,11 @@ async function startServer() {
   // Current local history save
   app.post("/api/save-history", async (req, res) => {
     try {
-      if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-        return res.status(500).json({ error: "Vercel KV credentials not set in environment variables." });
-      }
+      const redis = getRedisClient();
       const { history, timestamp } = req.body;
       const ts = timestamp || Date.now();
       const data = { collections: typeof history === 'string' ? history : JSON.stringify(history), timestamp: ts };
-      await kv.set("timeline-app-data", data);
+      await redis.set("timeline-app-data", data);
       res.json({ success: true });
     } catch (error: any) {
       console.error(error);
@@ -69,10 +72,8 @@ async function startServer() {
 
   app.get("/api/history", async (req, res) => {
     try {
-      if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-        return res.status(500).json({ error: "Vercel KV credentials not set in environment variables." });
-      }
-      const data = await kv.get("timeline-app-data");
+      const redis = getRedisClient();
+      const data = await redis.get("timeline-app-data");
       res.json({ result: data });
     } catch (error: any) {
       console.error(error);

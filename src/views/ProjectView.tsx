@@ -198,15 +198,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                       <input value={project.title} readOnly={isReadOnly} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 truncate min-w-0 ${isReadOnly ? 'cursor-default' : ''}`} />
                       
                       {!isReadOnly && (
-                        <>
-                          <button onClick={() => addPhase(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase"><Icons.Plus /></button>
+                        <div className="flex items-center shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 md:absolute md:right-0 md:top-0 md:bottom-0 md:pl-10 md:pr-1 md:bg-gradient-to-r from-white/0 via-white to-white group-hover:from-slate-50/0 group-hover:via-slate-50 group-hover:to-slate-50 pointer-events-none *:pointer-events-auto transition-opacity">
+                          <button onClick={() => addPhase(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase"><Icons.Plus /></button>
                           
                           <div className="relative group/copy mr-1 shrink-0" onMouseLeave={() => { setCopyProjectMenuId(null); setCopyAsSynced(false); }}>
-                            <button onClick={(e) => { e.stopPropagation(); setCopyProjectMenuId(copyProjectMenuId === project.id ? null : project.id); }} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-blue-600 flex items-center justify-center" title="Copy Project to Collection">
+                            <button onClick={(e) => { e.stopPropagation(); setCopyProjectMenuId(copyProjectMenuId === project.id ? null : project.id); }} className="p-2 md:p-1 text-slate-400 hover:text-blue-600 flex items-center justify-center" title="Copy Project to Collection">
                               <Icons.Copy />
                             </button>
                             {copyProjectMenuId === project.id && (
-                              <div className="absolute top-full right-0 pt-1.5 w-56 z-50" onMouseDown={e => e.stopPropagation()}>
+                              <div className="absolute top-full right-0 pt-1.5 w-56 z-[100]" onMouseDown={e => e.stopPropagation()}>
                                 <div className="bg-white border border-slate-200 shadow-xl rounded-md py-1 max-h-48 overflow-y-auto">
                                   <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
                                     <input type="checkbox" id={`sync-toggle-${project.id}`} checked={copyAsSynced} onChange={(e) => setCopyAsSynced(e.target.checked)} className="cursor-pointer accent-blue-500 w-3.5 h-3.5 shrink-0" />
@@ -224,11 +224,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             )}
                           </div>
 
-                          <button onClick={() => deleteProject(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2 shrink-0" title="Delete Project"><Icons.Trash /></button>
-                          <button onClick={() => toggleProjectVisibility(project.id)} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 p-2 md:p-1 text-slate-400 hover:text-slate-600 shrink-0" title={project.isHidden ? "Unhide Project" : "Hide Project"}>
+                          <button onClick={() => deleteProject(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2 shrink-0" title="Delete Project"><Icons.Trash /></button>
+                          <button onClick={() => toggleProjectVisibility(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-slate-600 shrink-0" title={project.isHidden ? "Unhide Project" : "Hide Project"}>
                             {project.isHidden ? <Icons.Eye /> : <Icons.EyeOff />}
                           </button>
-                        </>
+                        </div>
                       )}
                     </div>
                   )}

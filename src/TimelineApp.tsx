@@ -120,12 +120,39 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (isRemoteUpdate.current || isReadOnly) return;
     const c = collectionsRef.current.find(col => col.id === activeCollectionIdRef.current);
     if (c) {
-      setPast(p => [...p, { projects: c.projects || [], adHocTasks: c.adHocTasks || [] }]);
+      setPast(p => [...p, { projects: c.projects || [], adHocTasks: c.adHocTasks || [], teamMembers: c.teamMembers || [] }]);
       setFuture([]);
-      
-      // Save to Vercel KV
-      saveStateToKV(collectionsRef.current);
     }
+  };
+
+  const handleUndo = () => {
+    if (past.length === 0 || isReadOnly) return;
+    const previous = past[past.length - 1];
+    const newPast = past.slice(0, past.length - 1);
+    const c = collectionsRef.current.find(col => col.id === activeCollectionIdRef.current);
+    if (!c) return;
+
+    setFuture(f => [{ projects: c.projects || [], adHocTasks: c.adHocTasks || [], teamMembers: c.teamMembers || [] }, ...f]);
+    setPast(newPast);
+
+    setProjects(previous.projects);
+    setAdHocTasks(previous.adHocTasks);
+    setTeamMembers(previous.teamMembers || []);
+  };
+
+  const handleRedo = () => {
+    if (future.length === 0 || isReadOnly) return;
+    const next = future[0];
+    const newFuture = future.slice(1);
+    const c = collectionsRef.current.find(col => col.id === activeCollectionIdRef.current);
+    if (!c) return;
+
+    setPast(p => [...p, { projects: c.projects || [], adHocTasks: c.adHocTasks || [], teamMembers: c.teamMembers || [] }]);
+    setFuture(newFuture);
+
+    setProjects(next.projects);
+    setAdHocTasks(next.adHocTasks);
+    setTeamMembers(next.teamMembers || []);
   };
 
   const createManualSnapshot = () => {
@@ -139,25 +166,6 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     };
     setSaveHistory(prev => [newSnapshot, ...prev]);
     localStorage.setItem('timeline_version_history', JSON.stringify([newSnapshot, ...saveHistory]));
-  };
-
-  const saveStateToKV = async (cols: any[]) => {
-    try {
-      setSyncStatus('Saving to Cloud...');
-      const res = await fetch('/api/save-history', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: cols }),
-      });
-      if (res.ok) {
-        setSyncStatus('Saved to Cloud');
-        setTimeout(() => setSyncStatus('Synced'), 2000);
-      } else {
-        setSyncStatus('Sync Failed');
-      }
-    } catch(e) {
-      setSyncStatus('Sync Failed');
-    }
   };
 
 
@@ -567,6 +575,34 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     } catch (e) { console.error(e); } finally { setIsExporting(false); }
   };
 
+  const exportToJSON = () => {
+    const data = JSON.stringify({ collections, activeCollectionId });
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Timeline_Backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const parsed = JSON.parse(evt.target?.result as string);
+        applyLoadedData(parsed, true);
+        if (importFileRef.current) importFileRef.current.value = '';
+      } catch (err) {
+        console.error("Error parsing JSON:", err);
+        alert("Failed to parse JSON file.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
   const onDragStartRow = (e: any, projectId: string) => {
     recordHistory();
     setDraggedProjectId(projectId);
@@ -878,9 +914,20 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             </button>
           </div>
 
-          <button onClick={onLogout} className="text-xs font-medium text-slate-300 hover:text-white px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded transition-colors ml-1" title="Log Out">
+          <button onClick={onLogout} className="text-xs font-medium text-slate-300 hover:text-white px-2 py-1 bg-slate-800 hover:bg-slate-700 rounded transition-colors ml-1 mr-1" title="Log Out">
             Logout
           </button>
+
+          {!isReadOnly && (
+            <div className="flex items-center gap-1 border-x border-slate-700 px-2 mx-1">
+              <button onClick={handleUndo} disabled={past.length === 0} className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 transition-colors" title="Undo">
+                <Icons.Undo />
+              </button>
+              <button onClick={handleRedo} disabled={future.length === 0} className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 transition-colors" title="Redo">
+                <Icons.Redo />
+              </button>
+            </div>
+          )}
 
           {(viewMode === 'projects' || viewMode === 'overview') && (
             <div className="flex items-center gap-1.5 md:gap-2">
@@ -1046,9 +1093,14 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         <HistoryModal
           setShowHistoryModal={setShowHistoryModal} setConfirmRestoreIdx={setConfirmRestoreIdx}
           confirmRestoreIdx={confirmRestoreIdx} saveHistory={saveHistory} actualIsReadOnly={actualIsReadOnly}
-          importFileRef={importFileRef} handleImportJSON={() => {}} exportToJSON={() => {}}
-          handleViewSnapshot={() => {}} handleExitSnapshotView={() => {}} viewingSnapshot={viewingSnapshot}
-          applyLoadedData={applyLoadedData} deleteSnapshot={() => {}}
+          importFileRef={importFileRef} handleImportJSON={handleImportJSON} exportToJSON={exportToJSON}
+          handleViewSnapshot={(s) => setViewingSnapshot(s)} handleExitSnapshotView={() => setViewingSnapshot(null)} viewingSnapshot={viewingSnapshot}
+          applyLoadedData={applyLoadedData} deleteSnapshot={(e, id) => {
+            e.stopPropagation();
+            const newList = saveHistory.filter(s => s.id !== id);
+            setSaveHistory(newList);
+            localStorage.setItem('timeline_version_history', JSON.stringify(newList));
+          }}
         />
       )}
     </div>
