@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "start": "node dist/server.cjs",
+    "start": "tsx server.ts",
     "build:server": "esbuild server.ts --platform=node --target=node16 --outfile=dist/server.cjs --format=cjs --bundle --external:express --external:@upstash/redis --external:vite",
     "build": "vite build && npm run build:server",
     "preview": "vite preview",
