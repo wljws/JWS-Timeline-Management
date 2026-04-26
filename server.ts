@@ -11,11 +11,11 @@ const HARDCODED_URL = "https://awaited-drake-76193.upstash.io";
 const HARDCODED_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
 function getRedisClient() {
-  const url = process.env.UPSTASH_REDIS_REST_URL || HARDCODED_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || HARDCODED_TOKEN;
+  const url = HARDCODED_URL;
+  const token = HARDCODED_TOKEN;
 
   if (!url || !token) {
-    throw new Error("Upstash Redis credentials not set in environment variables or hardcoded values.");
+    throw new Error("Upstash Redis credentials not set in hardcoded values.");
   }
   return new Redis({
     url,
