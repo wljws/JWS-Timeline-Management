@@ -1188,6 +1188,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       {showPDFModal && (
         <PDFExportModal 
           projects={projects}
+          phaseColors={phaseColors}
           onClose={() => setShowPDFModal(false)}
         />
       )}

@@ -1,41 +1,50 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Icons } from '../icons';
 import { Project, Phase, Milestone, Task } from '../types';
+import { getPhaseColor, COLOR_PALETTES } from '../constants';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
 interface PDFExportModalProps {
   projects: Project[];
+  phaseColors: Record<string, string>;
   onClose: () => void;
 }
 
-export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, onClose }) => {
+export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, phaseColors, onClose }) => {
   const [selectedProjectId, setSelectedProjectId] = useState<string>(projects[0]?.id || 'all');
   const [pageSize, setPageSize] = useState<'a4' | 'a3' | 'letter'>('a3');
   const [orientation, setOrientation] = useState<'p' | 'l'>('l');
   const [isExporting, setIsExporting] = useState(false);
   
-  const exportRef = useRef<HTMLDivElement>(null);
-
-  // Default timeline bounds for export (could be made dynamic later)
-  const today = new Date();
-  const timelineStart = useMemo(() => {
-    const d = new Date(today);
+  // Date selection states
+  const [startDateStr, setStartDateStr] = useState<string>(() => {
+    const d = new Date();
     d.setMonth(d.getMonth() - 1);
     d.setDate(1);
-    return d;
-  }, []);
-  const timelineEnd = useMemo(() => {
-    const d = new Date(timelineStart);
-    d.setMonth(d.getMonth() + 12);
-    return d;
-  }, [timelineStart]);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDateStr, setEndDateStr] = useState<string>(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 11);
+    d.setDate(28); // Roughly 1 year total
+    return d.toISOString().split('T')[0];
+  });
+
+  const exportRef = useRef<HTMLDivElement>(null);
+
+  const timelineStart = useMemo(() => new Date(startDateStr), [startDateStr]);
+  const timelineEnd = useMemo(() => new Date(endDateStr), [endDateStr]);
 
   const totalDays = Math.ceil((timelineEnd.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24));
   const zoomLevel = 30; // Fixed zoom for export consistency
   const gridWidth = totalDays * zoomLevel;
 
   const handleExport = async () => {
+    if (totalDays <= 0) {
+      alert("End date must be after start date");
+      return;
+    }
     setIsExporting(true);
     try {
       if (!exportRef.current) return;
@@ -80,18 +89,6 @@ export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, onClos
     }
   };
 
-  const getPhaseColor = (color: string) => {
-      const colors: any = {
-        blue: { bg: '#dbeafe', text: '#1e40af', border: '#3b82f6' },
-        emerald: { bg: '#dcfce7', text: '#166534', border: '#10b981' },
-        amber: { bg: '#fef3c7', text: '#92400e', border: '#f59e0b' },
-        rose: { bg: '#ffe4e6', text: '#9f1239', border: '#f43f5e' },
-        purple: { bg: '#f3e8ff', text: '#6b21a8', border: '#a855f7' },
-        slate: { bg: '#f1f5f9', text: '#334155', border: '#64748b' }
-      };
-      return colors[color] || colors.slate;
-  };
-
   const selectedProjects = useMemo(() => {
     if (selectedProjectId === 'all') return projects;
     return projects.filter(p => p.id === selectedProjectId);
@@ -101,6 +98,7 @@ export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, onClos
   const months = useMemo(() => {
     const list = [];
     let curr = new Date(timelineStart);
+    curr.setDate(1); // Start at beginning of month
     while (curr < timelineEnd) {
       list.push(new Date(curr));
       curr.setMonth(curr.getMonth() + 1);
@@ -133,6 +131,27 @@ export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, onClos
                 <option key={p.id} value={p.id}>{p.title}</option>
               ))}
             </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Timeline Start</label>
+              <input 
+                type="date"
+                value={startDateStr}
+                onChange={(e) => setStartDateStr(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Timeline End</label>
+              <input 
+                type="date"
+                value={endDateStr}
+                onChange={(e) => setEndDateStr(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -172,31 +191,36 @@ export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, onClos
           </button>
         </div>
 
-        {/* Hidden Export Render Area */}
-        <div style={{ position: 'absolute', left: '-9999px', top: '0' }}>
-          <div ref={exportRef} style={{ width: `${gridWidth + 300}px`, backgroundColor: 'white', padding: '20px', fontFamily: 'sans-serif' }}>
-            <div style={{ display: 'flex', border: '1px solid #e2e8f0' }}>
+        {/* Hidden Export Render Area - Fixed very far off-screen to avoid bleeding */}
+        <div style={{ position: 'fixed', left: '-50000px', top: '-50000px', pointerEvents: 'none', opacity: 0, zIndex: -1000 }}>
+          <div ref={exportRef} style={{ width: `${gridWidth + 300}px`, backgroundColor: 'white', padding: '40px', fontFamily: '"Inter", sans-serif' }}>
+            <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h1 style={{ fontSize: '24px', fontWeight: 'bold', color: '#1e293b' }}>Project Timeline Report</h1>
+              <div style={{ fontSize: '12px', color: '#64748b' }}>Generated on {new Date().toLocaleDateString()}</div>
+            </div>
+
+            <div style={{ display: 'flex', border: '1px solid #e2e8f0', borderRadius: '8px', overflow: 'hidden' }}>
               {/* Sidebar Header */}
               <div style={{ width: '300px', flexShrink: 0, borderRight: '1px solid #e2e8f0', backgroundColor: '#f8fafc', padding: '10px' }}>
-                 <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Projects & Phases</div>
+                 <div style={{ fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Projects & Phases</div>
               </div>
               
               {/* Timeline Header */}
               <div style={{ flex: 1, backgroundColor: '#f8fafc', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', justifyContent: 'center' }}>
-                  <div style={{ padding: '8px', fontSize: '14px', fontWeight: 'bold' }}>{timelineStart.getFullYear()}</div>
+                <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', justifyContent: 'center', backgroundColor: '#ffffff' }}>
+                  <div style={{ padding: '8px', fontSize: '14px', fontWeight: 'bold', color: '#1e293b' }}>{timelineStart.getFullYear()}</div>
                 </div>
                 <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
                   {months.map((m, i) => {
                     const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
                     return (
                       <div key={i} style={{ width: `${days * zoomLevel}px`, borderRight: '1px solid #e2e8f0', flexShrink: 0 }}>
-                        <div style={{ padding: '4px', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ padding: '6px', fontSize: '11px', fontWeight: 'bold', textAlign: 'center', borderBottom: '1px solid #f1f5f9', color: '#334155' }}>
                           {m.toLocaleDateString('en-US', { month: 'long' })}
                         </div>
                         <div style={{ display: 'flex' }}>
                           {[...Array(Math.ceil(days/7))].map((_, wi) => (
-                             <div key={wi} style={{ flex: 1, fontSize: '8px', textAlign: 'center', color: '#94a3b8', padding: '2px', borderRight: '1px solid #f1f5f9' }}>
+                             <div key={wi} style={{ flex: 1, fontSize: '8px', textAlign: 'center', color: '#94a3b8', padding: '3px', borderRight: '1px solid #f8fafc' }}>
                                W{wi+1}
                              </div>
                           ))}
@@ -210,63 +234,81 @@ export const PDFExportModal: React.FC<PDFExportModalProps> = ({ projects, onClos
 
             {/* Project Rows */}
             {selectedProjects.map(project => (
-              <div key={project.id}>
+              <div key={project.id} style={{ borderLeft: '1px solid #e2e8f0', borderRight: '1px solid #e2e8f0' }}>
                 {/* Project Title Row */}
-                <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', backgroundColor: '#ffffff' }}>
-                  <div style={{ width: '300px', borderRight: '1px solid #e2e8f0', padding: '12px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: project.color }} />
-                    <span style={{ fontWeight: 'bold', fontSize: '14px' }}>{project.title}</span>
+                <div style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', backgroundColor: '#fdfdfe' }}>
+                  <div style={{ width: '300px', borderRight: '1px solid #e2e8f0', padding: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <div style={{ width: '12px', height: '12px', borderRadius: '4px', backgroundColor: COLOR_PALETTES[project.color]?.[1] || project.color }} />
+                    <span style={{ fontWeight: '800', fontSize: '14px', color: '#0f172a' }}>{project.title}</span>
                   </div>
-                  <div style={{ flex: 1, position: 'relative', height: '40px' }}>
-                     {/* Background Grid Lines could go here */}
+                  <div style={{ flex: 1, position: 'relative', height: '44px' }}>
+                     {/* Horizontal alignment lines */}
+                     <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+                        {months.map((m, i) => {
+                          const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+                          return (
+                            <div key={i} style={{ width: `${days * zoomLevel}px`, height: '100%', borderRight: '1px solid #f1f5f9', flexShrink: 0 }} />
+                          );
+                        })}
+                     </div>
                   </div>
                 </div>
 
                 {/* Phases */}
-                {project.phases.map(phase => {
-                  const startOffset = phase.start ? Math.floor((phase.start.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-                  const duration = phase.end && phase.start ? Math.ceil((phase.end.getTime() - phase.start.getTime()) / (1000 * 60 * 60 * 24)) : 0;
-                  const colors = getPhaseColor(project.color);
+                {project.phases.map((phase, pIdx) => {
+                  if (!phase.start || !phase.end) return null;
+                  
+                  const startOffset = Math.floor((phase.start.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24));
+                  const duration = Math.ceil((phase.end.getTime() - phase.start.getTime()) / (1000 * 60 * 60 * 24));
+                  const bgColor = phaseColors[phase.title] || getPhaseColor(project.color, pIdx);
 
                   return (
-                    <div key={phase.id} style={{ display: 'flex', borderBottom: '1px solid #f8fafc' }}>
-                      <div style={{ width: '300px', borderRight: '1px solid #e2e8f0', padding: '8px 12px 8px 36px', display: 'flex', alignItems: 'center', backgroundColor: '#ffffff' }}>
-                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#cbd5e1', marginRight: '8px' }} />
-                        <span style={{ fontSize: '12px', color: '#475569' }}>{phase.title}</span>
+                    <div key={phase.id} style={{ display: 'flex', borderBottom: pIdx === project.phases.length - 1 ? 'none' : '1px solid #f8fafc' }}>
+                      <div style={{ width: '300px', borderRight: '1px solid #e2e8f0', padding: '8px 12px 8px 40px', display: 'flex', alignItems: 'center', backgroundColor: '#ffffff' }}>
+                        <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#cbd5e1', marginRight: '10px' }} />
+                        <span style={{ fontSize: '12px', color: '#475569', fontWeight: '500' }}>{phase.title}</span>
                       </div>
-                      <div style={{ flex: 1, position: 'relative', height: '40px', backgroundColor: '#ffffff' }}>
+                      <div style={{ flex: 1, position: 'relative', height: '36px', backgroundColor: '#ffffff' }}>
                         {/* Vertical Grid Lines */}
-                        {months.map((m, i) => {
-                          const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
-                          return (
-                            <div key={i} style={{ position: 'absolute', height: '100%', borderRight: '1px solid #f1f5f9', width: `${days * zoomLevel}px`, left: `${Math.ceil((m.getTime() - timelineStart.getTime()) / (1000 * 60 * 60 * 24)) * zoomLevel}px` }} />
-                          );
-                        })}
-                        {phase.start && (
+                        <div style={{ position: 'absolute', inset: 0, display: 'flex' }}>
+                          {months.map((m, i) => {
+                            const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+                            return (
+                              <div key={i} style={{ width: `${days * zoomLevel}px`, height: '100%', borderRight: '1px solid #f8fafc', flexShrink: 0 }} />
+                            );
+                          })}
+                        </div>
+                        
+                        {(startOffset + duration > 0 && startOffset < totalDays) && (
                           <div style={{
                             position: 'absolute',
-                            left: `${startOffset * zoomLevel}px`,
-                            width: `${duration * zoomLevel}px`,
-                            top: '8px',
+                            left: `${Math.max(0, startOffset) * zoomLevel}px`,
+                            width: `${Math.min(duration, totalDays - startOffset) * zoomLevel}px`,
+                            top: '6px',
                             height: '24px',
-                            backgroundColor: colors.bg,
-                            border: `1px solid ${colors.border}`,
-                            borderRadius: '4px',
-                            padding: '0 8px',
+                            backgroundColor: bgColor,
+                            border: `1px solid rgba(0,0,0,0.1)`,
+                            borderRadius: '6px',
+                            padding: '0 10px',
                             display: 'flex',
                             alignItems: 'center',
                             fontSize: '10px',
                             fontWeight: 'bold',
-                            color: colors.text,
-                            boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                            color: '#ffffff',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                            zIndex: 10,
+                            overflow: 'hidden',
+                            whiteSpace: 'nowrap'
                           }}>
-                            {phase.title} ({Math.round(duration/7 * 10)/10}w)
+                             <span style={{ marginRight: '4px' }}>{phase.title}</span>
+                             <span style={{ fontSize: '9px', fontWeight: 'normal', opacity: 0.9 }}>({Math.round(duration/7 * 10)/10}w)</span>
                           </div>
                         )}
                       </div>
                     </div>
                   );
                 })}
+                <div style={{ height: '4px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0' }} />
               </div>
             ))}
           </div>
