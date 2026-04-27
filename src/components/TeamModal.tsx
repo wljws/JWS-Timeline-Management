@@ -70,8 +70,12 @@ export const TeamModal: React.FC<TeamModalProps> = ({
             <div className="text-xs text-slate-600 mb-6 bg-slate-50 border border-slate-200 p-4 rounded shadow-sm flex items-center justify-between">
               <div>
                 <strong>Scheduled Block: </strong><br/>
-                <span className="text-sm mt-1 inline-block">
-                  {formatDate(task.start)} ({task.start?.getHours()! < 12 ? 'AM' : 'PM'}) {" - "} {formatDate(task.end)} ({task.end?.getHours()! < 12 ? 'AM' : 'PM'})
+                <span className="text-sm mt-1 inline-block italic">
+                  {task.start && task.end ? (
+                    `${formatDate(task.start)} (${task.start.getHours() < 12 ? 'AM' : 'PM'}) - ${formatDate(task.end)} (${task.end.getHours() < 12 ? 'AM' : 'PM'})`
+                  ) : (
+                    'Not Scheduled (In Pool)'
+                  )}
                 </span>
               </div>
               <label className="flex items-center gap-2 cursor-pointer ml-4 bg-white px-3 py-1.5 rounded border border-slate-200 hover:bg-blue-50 transition-colors">

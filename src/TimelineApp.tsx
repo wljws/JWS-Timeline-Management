@@ -481,23 +481,21 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     }));
   };
 
-  const handleBlockMouseDown = (e: any, projectId: string, phaseId: string, type: string, origStart: Date | null, origEnd: Date | null, taskId: string | null = null, allocationId: string | null = null, isAdHoc = false) => {
+  const handleBlockMouseDown = (e: any, projectId: string, phaseId: string, type: string, origStart: Date | null, origEnd: Date | null, taskId: string | null = null, allocationId: string | null = null, isAdHoc = false, assigneeName: string | null = null) => {
     if(!e.touches) e.preventDefault(); 
     e.stopPropagation();
     const phase = projects.find(p => p.id === projectId)?.phases.find(ph => ph.id === phaseId);
     if (phase?.isLocked && !allocationId) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const gridEl = e.currentTarget.closest('.team-row-container');
-    console.log("handleBlockMouseDown", viewMode, !!gridEl, gridEl?.getBoundingClientRect().width);
     const ppday = (viewMode === 'team' && gridEl) ? (gridEl.getBoundingClientRect().width / 5) : zoomLevel;
-    console.log("ppday calculation", ppday, zoomLevel);
     
     recordHistory();
     let blocksToMove = [];
     if (allocationId && taskId) {
-      blocksToMove = [{ projectId, phaseId, taskId, allocationId, origStart, origEnd, isAdHoc }];
+      blocksToMove = [{ projectId, phaseId, taskId, allocationId, origStart, origEnd, isAdHoc, assigneeName }];
     } else if (isAdHoc) {
-      blocksToMove = [{ taskId, origStart, origEnd, isAdHoc }];
+      blocksToMove = [{ taskId, origStart, origEnd, isAdHoc, assigneeName }];
     } else {
       blocksToMove = [{ projectId, phaseId, origStart: origStart!, origEnd: origEnd!, origTasks: phase?.tasks }];
     }
@@ -519,64 +517,94 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       const deltaX = clientX - draggingBlock.startX;
       const deltaDays = deltaX / draggingBlock.pixelsPerDay;
       console.log("handleMove", draggingBlock.type, deltaX, deltaDays, draggingBlock.pixelsPerDay);
-    if (deltaDays !== 0) {
-      setProjects(prev => prev.map(p => ({
-        ...p, phases: p.phases.map(ph => {
-          const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && (b.projectId ? b.projectId === p.id : true));
-          console.log("Project update check", ph.id, !!block, draggingBlock.type);
-          if (!block) return ph;
+      if (deltaDays !== 0) {
+        // Collision detection helper
+        const isOverlap = (start: Date, end: Date, currentAssignee: string, ignoreAllocId: string) => {
+          if (!currentAssignee || currentAssignee === 'PROJECT_POOL') return false;
           
-          if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
-            return { ...ph, start: addDays(block.origStart, deltaDays), end: addDays(block.origEnd, deltaDays) };
+          // Check other project allocations for this user
+          for (const p of projects) {
+            for (const ph of p.phases) {
+              for (const a of (ph.teamAllocations || [])) {
+                if (a.id === ignoreAllocId) continue;
+                if (a.assignee === currentAssignee) {
+                   if (start < a.end && end > a.start) return true;
+                }
+              }
+            }
           }
-          if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
-            return { ...ph, start: addDays(block.origStart, deltaDays) };
+          // Check adhoc tasks for this user
+          for (const t of adHocTasks) {
+            if (t.id === ignoreAllocId) continue;
+            if (t.assignee === currentAssignee && t.start && t.end) {
+              if (start < t.end && end > t.start) return true;
+            }
           }
-          if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
-            return { ...ph, end: addDays(block.origEnd, deltaDays) };
+          return false;
+        };
+
+        setProjects(prev => prev.map(p => ({
+          ...p, phases: p.phases.map(ph => {
+            const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && (b.projectId ? b.projectId === p.id : true));
+            if (!block) return ph;
+            
+            if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
+              return { ...ph, start: addDays(block.origStart, deltaDays), end: addDays(block.origEnd, deltaDays) };
+            }
+            if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
+              return { ...ph, start: addDays(block.origStart, deltaDays) };
+            }
+            if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
+              return { ...ph, end: addDays(block.origEnd, deltaDays) };
+            }
+            
+            if (block.taskId && block.allocationId) {
+               return {
+                 ...ph,
+                 teamAllocations: (ph.teamAllocations || []).map(a => {
+                   if (a.id !== block.allocationId) return a;
+                   let ns = a.start, ne = a.end;
+                   if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                     ns = addDays(block.origStart, deltaDays);
+                     ne = addDays(block.origEnd, deltaDays);
+                   } else if (draggingBlock.type === 'resize-alloc-right') {
+                     ne = addDays(block.origEnd, deltaDays);
+                   } else if (draggingBlock.type === 'resize-alloc-left') {
+                     ns = addDays(block.origStart, deltaDays);
+                   }
+                   if (ne && ns && ne < ns) ne = ns;
+                   
+                   // Apply collision constraint
+                   if (isOverlap(ns, ne, block.assigneeName, block.allocationId)) return a;
+
+                   return { ...a, start: ns, end: ne };
+                 })
+               };
+            }
+            return ph;
+          })
+        })));
+        
+        setAdHocTasks(prev => prev.map(t => {
+          const block = draggingBlock.blocksToMove.find((b: any) => b.isAdHoc && b.taskId === t.id);
+          if (!block) return t;
+          let ns = t.start || new Date(), ne = t.end || new Date();
+          if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+            ns = addDays(block.origStart, deltaDays);
+            ne = addDays(block.origEnd, deltaDays);
+          } else if (draggingBlock.type === 'resize-alloc-right') {
+            ne = addDays(block.origEnd, deltaDays);
+          } else if (draggingBlock.type === 'resize-alloc-left') {
+            ns = addDays(block.origStart, deltaDays);
           }
-          
-          if (block.taskId && block.allocationId) {
-             console.log("Updating allocation", block.allocationId, draggingBlock.type);
-             return {
-               ...ph,
-               teamAllocations: (ph.teamAllocations || []).map(a => {
-                 if (a.id !== block.allocationId) return a;
-                 console.log("Allocation match found", a.id);
-                 let ns = a.start, ne = a.end;
-                 if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-                   ns = addDays(block.origStart, deltaDays);
-                   ne = addDays(block.origEnd, deltaDays);
-                 } else if (draggingBlock.type === 'resize-alloc-right') {
-                   ne = addDays(block.origEnd, deltaDays);
-                 } else if (draggingBlock.type === 'resize-alloc-left') {
-                   ns = addDays(block.origStart, deltaDays);
-                 }
-                 if (ne && ns && ne < ns) ne = ns;
-                 return { ...a, start: ns, end: ne };
-               })
-             };
-          }
-          return ph;
-        })
-      })));
-      
-      setAdHocTasks(prev => prev.map(t => {
-        const block = draggingBlock.blocksToMove.find((b: any) => b.isAdHoc && b.taskId === t.id);
-        if (!block) return t;
-        let ns = t.start || new Date(), ne = t.end || new Date();
-        if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-          ns = addDays(block.origStart, deltaDays);
-          ne = addDays(block.origEnd, deltaDays);
-        } else if (draggingBlock.type === 'resize-alloc-right') {
-          ne = addDays(block.origEnd, deltaDays);
-        } else if (draggingBlock.type === 'resize-alloc-left') {
-          ns = addDays(block.origStart, deltaDays);
-        }
-        if (ne < ns) ne = ns;
-        return { ...t, start: ns, end: ne };
-      }));
-    }
+          if (ne < ns) ne = ns;
+
+          // Apply collision constraint
+          if (isOverlap(ns, ne, block.assigneeName, t.id)) return t;
+
+          return { ...t, start: ns, end: ne };
+        }));
+      }
     };
     const handleUp = () => { setIsResizingCol(false); setDraggingBlock(null); };
     if (draggingBlock || isResizingCol) {
@@ -733,8 +761,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     const start = addDays(currentTeamWeekStart, Math.floor(colIndex / 2));
     if (colIndex % 2 !== 0) start.setHours(13, 0, 0, 0); else start.setHours(9, 0, 0, 0);
     
+    // Force half-day duration (4 hours) if it's a new drop or doesn't have a duration
     let duration = 4 * 3600 * 1000;
-    if (origStart && origEnd) {
+    if (origStart && origEnd && !isAlt) {
       duration = new Date(origEnd).getTime() - new Date(origStart).getTime();
     }
     const end = new Date(new Date(start).getTime() + duration);
@@ -1155,9 +1184,64 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       {teamModalData && (
         <TeamModal
           teamModalData={teamModalData} isReadOnly={isReadOnly} projects={projects} adHocTasks={adHocTasks}
-          setTeamModalData={setTeamModalData} updateAdHocTaskProjectTitle={() => {}} updateAdHocTaskText={() => {}}
-          updateAdHocTaskColor={() => {}} updateAdHocTaskDone={() => {}} toggleSubTask={() => {}}
-          addSubTask={() => {}} updateSubTaskText={() => {}} deleteSubTask={() => {}} deleteAdHocTask={() => {}} usedColors={usedColors}
+          setTeamModalData={setTeamModalData} 
+          updateAdHocTaskProjectTitle={(id, title) => setAdHocTasks(prev => prev.map(t => t.id === id ? { ...t, projectTitle: title } : t))} 
+          updateAdHocTaskText={(id, text) => setAdHocTasks(prev => prev.map(t => t.id === id ? { ...t, text } : t))}
+          updateAdHocTaskColor={(id, color) => setAdHocTasks(prev => prev.map(t => t.id === id ? { ...t, color } : t))} 
+          updateAdHocTaskDone={(id, done) => setAdHocTasks(prev => prev.map(t => t.id === id ? { ...t, done } : t))} 
+          toggleSubTask={(taskId, subId) => {
+            setAdHocTasks(prev => prev.map(t => {
+              if (t.id === taskId) {
+                return { ...t, subTasks: (t.subTasks || []).map(s => s.id === subId ? { ...s, done: !s.done } : s) };
+              }
+              return t;
+            }));
+            setProjects(projects.map(p => ({
+              ...p, phases: p.phases.map(ph => ({
+                ...ph, teamAllocations: (ph.teamAllocations || []).map(a => {
+                  if (a.id === taskId) {
+                    return { ...a, subTasks: (a.subTasks || []).map(s => s.id === subId ? { ...s, done: !s.done } : s) };
+                  }
+                  return a;
+                })
+              }))
+            })));
+          }}
+          addSubTask={(taskId) => {
+            const ns = { id: generateId(), text: 'New Sub-task', done: false };
+            setAdHocTasks(prev => prev.map(t => t.id === taskId ? { ...t, subTasks: [...(t.subTasks || []), ns] } : t));
+            setProjects(projects.map(p => ({
+              ...p, phases: p.phases.map(ph => ({
+                ...ph, teamAllocations: (ph.teamAllocations || []).map(a => a.id === taskId ? { ...a, subTasks: [...(a.subTasks || []), ns] } : a)
+              }))
+            })));
+          }} 
+          updateSubTaskText={(taskId, subId, text) => {
+            setAdHocTasks(prev => prev.map(t => t.id === taskId ? { ...t, subTasks: (t.subTasks || []).map(s => s.id === subId ? { ...s, text } : s) } : t));
+            setProjects(projects.map(p => ({
+              ...p, phases: p.phases.map(ph => ({
+                ...ph, teamAllocations: (ph.teamAllocations || []).map(a => a.id === taskId ? { ...a, subTasks: (a.subTasks || []).map(s => s.id === subId ? { ...s, text } : s) } : a)
+              }))
+            })));
+          }} 
+          deleteSubTask={(taskId, subId) => {
+            setAdHocTasks(prev => prev.map(t => t.id === taskId ? { ...t, subTasks: (t.subTasks || []).filter(s => s.id !== subId) } : t));
+            setProjects(projects.map(p => ({
+              ...p, phases: p.phases.map(ph => ({
+                ...ph, teamAllocations: (ph.teamAllocations || []).map(a => a.id === taskId ? { ...a, subTasks: (a.subTasks || []).filter(s => s.id !== subId) } : a)
+              }))
+            })));
+          }} 
+          deleteAdHocTask={(id) => {
+            setAdHocTasks(prev => prev.filter(t => t.id !== id));
+            setProjects(projects.map(p => ({
+              ...p, phases: p.phases.map(ph => ({
+                ...ph, teamAllocations: (ph.teamAllocations || []).filter(a => a.id !== id)
+              }))
+            })));
+            setTeamModalData(null);
+          }}
+          usedColors={usedColors}
         />
       )}
 
