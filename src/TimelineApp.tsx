@@ -769,7 +769,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     const end = new Date(new Date(start).getTime() + duration);
 
     if (isAdHoc) {
-      if (isAlt) {
+      const isFromPool = !task.assignee || task.assignee === 'PROJECT_POOL';
+      if (isAlt || isFromPool) {
         setAdHocTasks(prev => [...prev, { ...task, id: generateId(), assignee: assigneeName, start, end }]);
       } else {
         setAdHocTasks(prev => prev.map(t => t.id === task.id ? { ...t, assignee: assigneeName, start, end } : t));
