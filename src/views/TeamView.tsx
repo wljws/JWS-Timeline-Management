@@ -106,22 +106,22 @@ export const TeamView: React.FC<TeamViewProps> = ({
               </div>
             </div>
             
-            <div className="flex-1 flex flex-col min-w-[400px] lg:min-w-0">
+                    <div className="flex-shrink-0 flex flex-col" style={{ width: zoomLevel * 25 }}>
               <div className="flex h-[32px] border-b border-slate-200 bg-slate-50">
                 {['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((day, i) => {
                   const date = addDays(currentTeamWeekStart, i);
                   const isTodayStr = toYMD(date) === toYMD(today);
                   return (
                     <div key={day} className={`flex-1 flex items-center justify-center border-r border-slate-200 last:border-r-0 ${isTodayStr ? 'bg-blue-50/50 text-blue-600' : 'text-slate-700'}`}>
-                      <div className="text-xs font-bold mr-1">{day}</div>
-                      <div className={`text-[10px] ${isTodayStr ? 'font-bold' : 'text-slate-500 font-medium'}`}>{date.getDate()}</div>
+                      <div className={`font-bold mr-1 ${zoomLevel < 25 ? 'text-[9px]' : 'text-xs'}`}>{day}</div>
+                      <div className={`${zoomLevel < 25 ? 'text-[8px]' : 'text-[10px]'} ${isTodayStr ? 'font-bold' : 'text-slate-500 font-medium'}`}>{date.getDate()}</div>
                     </div>
                   )
                 })}
               </div>
               <div className="flex h-[28px] bg-slate-50/50">
                 {[...Array(10)].map((_, i) => (
-                  <div key={i} className="flex-1 flex items-center justify-center text-[9px] text-slate-400 border-r border-slate-200 last:border-r-0 font-medium">{i % 2 === 0 ? 'AM' : 'PM'}</div>
+                  <div key={i} className="flex-1 flex items-center justify-center text-[9px] text-slate-400 border-r border-slate-200 last:border-r-0 font-medium">{zoomLevel < 20 ? (i % 2 === 0 ? 'A' : 'P') : (i % 2 === 0 ? 'AM' : 'PM')}</div>
                 ))}
               </div>
             </div>
@@ -213,7 +213,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                       </div>
                     )}
 
-                    <div className={`${isLeftPanelCollapsed ? 'w-full' : 'w-[40%] min-w-[100px]'} p-1 md:p-1.5 flex flex-col gap-0.5 md:gap-1 shrink-0 overflow-hidden items-center justify-center relative transition-all duration-300 ease-in-out`}>
+                    <div className={`${isLeftPanelCollapsed ? 'w-full' : 'w-[40%] min-w-[100px]'} p-1 flex flex-col items-center justify-center relative transition-all duration-300 ease-in-out`}>
                       {assignee.name === 'PROJECT_POOL' ? (
                         <>
                           <div className={`flex flex-col items-center justify-center ${isPoolCollapsed ? 'flex-row gap-2' : ''}`}>
@@ -232,71 +232,71 @@ export const TeamView: React.FC<TeamViewProps> = ({
                           </div>
                         </>
                       ) : (
-                        <>
-                          {!isReadOnly && <div className={`absolute top-0.5 left-0.5 w-4 flex justify-center items-center opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 shrink-0 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}><Icons.Grip /></div>}
-                          {!isReadOnly && (
-                            <div className="absolute top-0.5 right-0.5 opacity-100 md:opacity-0 md:group-hover/teamrow:opacity-100 transition-opacity z-40">
-                              <button onClick={() => addAdHocTask(assignee.name)} className="p-0.5 md:p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded" title="Add Manual Task"><Icons.Plus className="w-3 h-3 md:w-3.5 h-3.5" /></button>
+                        <div className="flex flex-col items-center justify-center w-full h-full relative group/personnel-cell">
+                          {!isReadOnly && <div className={`absolute top-0 left-0 w-4 h-4 flex justify-center items-center opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 z-50 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}><Icons.Grip className="w-2.5 h-2.5" /></div>}
+                          {!isReadOnly && assignee.name !== 'Unassigned' && (
+                            <div className="absolute top-0 right-0 opacity-0 group-hover/personnel-cell:opacity-100 transition-opacity z-50 flex flex-col gap-0.5">
+                              <button onClick={(e) => { e.stopPropagation(); addAdHocTask(assignee.name); }} className="p-0.5 text-blue-500 hover:bg-blue-50 rounded" title="Add Manual Task"><Icons.Plus className="w-3 h-3" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamMember(assignee.name); }} className="p-0.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="Remove Member"><Icons.Trash className="w-3 h-3" /></button>
+                              <button onClick={(e) => { e.stopPropagation(); toggleTeamMemberLock(assignee.name); }} className={`p-0.5 rounded ${isLocked ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`} title={isLocked ? "Unlock" : "Lock"}>{isLocked ? <Icons.Lock className="w-3 h-3" /> : <Icons.Unlock className="w-3 h-3" />}</button>
                             </div>
                           )}
+                          
                           <div className={`rounded-full flex items-center justify-center font-bold shadow-inner shrink-0 tracking-tighter ${assignee.name === 'Unassigned' ? 'bg-slate-100 text-slate-400' : 'bg-blue-100 text-blue-600'}`}
                             style={{ 
-                              width: `${Math.max(16, 28 * rowScale)}px`, 
-                              height: `${Math.max(16, 28 * rowScale)}px`,
-                              fontSize: `${Math.max(7, 12 * rowScale)}px`
+                              width: `${Math.max(14, 24 * rowScale)}px`, 
+                              height: `${Math.max(14, 24 * rowScale)}px`,
+                              fontSize: `${Math.max(6, 10 * rowScale)}px`
                             }}>
                             {assignee.name === 'Unassigned' ? '?' : assignee.name.split(/\s+/).filter(Boolean).map((n: string) => n[0]).join('').toUpperCase()}
                           </div>
-                          {rowScale >= 0.5 && (
-                            <>
-                              {editingMember.oldName === assignee.name ? (
-                                <input 
-                                  autoFocus
-                                  value={editingMember.newName}
-                                  onChange={e => setEditingMember((prev: any) => ({...prev, newName: e.target.value}))}
-                                  onBlur={() => {
+                          
+                          <div className="mt-0.5 w-full flex justify-center">
+                            {editingMember.oldName === assignee.name ? (
+                              <input 
+                                autoFocus
+                                value={editingMember.newName}
+                                onChange={e => setEditingMember((prev: any) => ({...prev, newName: e.target.value}))}
+                                onBlur={() => {
+                                  updateTeamMemberName(editingMember.oldName!, editingMember.newName);
+                                  setEditingMember({ oldName: null, newName: '' });
+                                }}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
                                     updateTeamMemberName(editingMember.oldName!, editingMember.newName);
                                     setEditingMember({ oldName: null, newName: '' });
-                                  }}
-                                  onKeyDown={e => {
-                                    if (e.key === 'Enter') {
-                                      updateTeamMemberName(editingMember.oldName!, editingMember.newName);
-                                      setEditingMember({ oldName: null, newName: '' });
-                                    } else if (e.key === 'Escape') {
-                                      setEditingMember({ oldName: null, newName: '' });
-                                    }
-                                  }}
-                                  className={`font-bold text-center leading-tight w-full truncate border-b border-blue-400 bg-transparent focus:outline-none text-slate-800 ${fontSizeClass} mt-0.5 md:mt-1`}
-                                />
-                              ) : (
-                                <h3 
-                                  className={`font-bold text-center leading-tight w-full truncate mt-0.5 md:mt-1 ${fontSizeClass} ${assignee.name === 'Unassigned' || isLocked ? 'text-slate-500 italic' : (isReadOnly ? 'text-slate-800' : 'text-slate-800 cursor-text hover:text-blue-600')}`} 
-                                  title={assignee.name === 'Unassigned' || isLocked || isReadOnly ? assignee.name : "Click to edit name"}
-                                  onClick={() => {
-                                    if (!isReadOnly && assignee.name !== 'Unassigned' && !isLocked) {
-                                      setEditingMember({ oldName: assignee.name, newName: assignee.name });
-                                    }
-                                  }}
-                                >
-                                  {assignee.name}
-                                </h3>
-                              )}
-                              {!isReadOnly && assignee.name !== 'Unassigned' && (
-                                <div className="flex items-center justify-center gap-1 opacity-100 md:opacity-0 group-hover/teamrow:opacity-100 transition-opacity shrink-0 mt-0.5 md:mt-1">
-                                  <button onClick={() => toggleTeamMemberLock(assignee.name)} className={`p-0.5 md:p-1 transition-colors ${isLocked ? 'text-amber-500' : 'text-slate-400 hover:text-amber-500'}`} title={isLocked ? "Unlock Position" : "Lock Position"}>{isLocked ? <Icons.Lock className="w-3 h-3" /> : <Icons.Unlock className="w-3 h-3" />}</button>
-                                  <button onClick={() => handleRemoveTeamMember(assignee.name)} className="p-0.5 md:p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0" title="Remove Team Member & Unassign Tasks"><Icons.Trash className="w-3 h-3" /></button>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </>
+                                  } else if (e.key === 'Escape') {
+                                    setEditingMember({ oldName: null, newName: '' });
+                                  }
+                                }}
+                                onClick={e => e.stopPropagation()}
+                                className={`font-bold text-center leading-tight w-full truncate border-b border-blue-400 bg-white/80 focus:outline-none text-slate-800 ${fontSizeClass} z-50`}
+                              />
+                            ) : (
+                              <h3 
+                                className={`font-bold text-center leading-tight w-full truncate ${fontSizeClass} ${assignee.name === 'Unassigned' || isLocked ? 'text-slate-500 italic' : (isReadOnly ? 'text-slate-800' : 'text-slate-800 cursor-text hover:text-blue-600 hover:underline decoration-dotted underline-offset-2')}`} 
+                                title={assignee.name === 'Unassigned' || isLocked || isReadOnly ? assignee.name : "Click to edit name"}
+                                onClick={(e) => {
+                                  if (!isReadOnly && assignee.name !== 'Unassigned' && !isLocked) {
+                                    e.stopPropagation();
+                                    setEditingMember({ oldName: assignee.name, newName: assignee.name });
+                                  }
+                                }}
+                              >
+                                {assignee.name}
+                              </h3>
+                            )}
+                          </div>
+                        </div>
                       )}
                     </div>
+
                   </div>
                 </div>
 
                 <div 
-                  className={`flex-1 relative team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors sm:min-w-0 min-w-[400px] ${assignee.name === 'PROJECT_POOL' ? 'flex items-center p-2' : ''}`}
+                  className={`flex-shrink-0 relative team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors sm:min-w-0 ${assignee.name === 'PROJECT_POOL' ? 'flex items-center p-2' : ''}`}
+                  style={{ width: zoomLevel * 25 }}
                   onDragOver={(e) => { 
                     if(isReadOnly) return;
                     e.preventDefault(); 

@@ -65,6 +65,10 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       return (saved as any) || 'off';
     } catch(e) { return 'off'; }
   });
+  const [editingMember, setEditingMember] = useState<{ oldName: string | null; newName: string }>({ oldName: null, newName: '' });
+  const [isAddingTeamMember, setIsAddingTeamMember] = useState(false);
+  const [newTeamMemberName, setNewTeamMemberName] = useState('');
+
   const [confirmRestoreIdx, setConfirmRestoreIdx] = useState<number | null>(null);
   const importFileRef = useRef<HTMLInputElement>(null);
 
@@ -719,6 +723,70 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     newProjects.splice(targetIdx, 0, draggedItem);
     setProjects(newProjects);
   };
+  const onDragStartTeamMember = (e: any, name: string) => {
+    if (isReadOnly) return;
+    setDraggedTeamMemberName(name);
+  };
+
+  const onDragOverTeamMember = (e: any, targetName: string) => {
+    e.preventDefault();
+    if (!draggedTeamMemberName || draggedTeamMemberName === targetName || isReadOnly) return;
+    const fromIdx = teamMembers.findIndex(m => m.name === draggedTeamMemberName);
+    const toIdx = teamMembers.findIndex(m => m.name === targetName);
+    if (fromIdx !== -1 && toIdx !== -1) {
+      const newList = [...teamMembers];
+      const [item] = newList.splice(fromIdx, 1);
+      newList.splice(toIdx, 0, item);
+      setTeamMembers(newList);
+    }
+  };
+
+  const onDragEndTeamMember = () => { setDraggedTeamMemberName(null); };
+
+  const handleAddTeamMember = () => {
+    if (!newTeamMemberName.trim() || isReadOnly) return;
+    recordHistory();
+    setTeamMembers([...teamMembers, { name: newTeamMemberName.trim(), isLocked: false }]);
+    setNewTeamMemberName('');
+    setIsAddingTeamMember(false);
+  };
+
+  const handleRemoveTeamMember = (name: string) => {
+    if (isReadOnly) return;
+    recordHistory();
+    setTeamMembers(teamMembers.filter(m => m.name !== name));
+    setAdHocTasks(prev => prev.map(t => t.assignee === name ? { ...t, assignee: 'PROJECT_POOL' } : t));
+    setProjects(prev => prev.map(p => ({
+      ...p,
+      phases: p.phases.map(ph => ({
+        ...ph,
+        assignees: (ph.assignees || []).filter((n: string) => n !== name),
+        teamAllocations: (ph.teamAllocations || []).map(a => a.assignee === name ? { ...a, assignee: 'PROJECT_POOL' } : a)
+      }))
+    })));
+  };
+
+  const updateTeamMemberName = (oldName: string, newName: string) => {
+    if (isReadOnly || !newName.trim() || oldName === newName) return;
+    recordHistory();
+    const cleanNewName = newName.trim();
+    setTeamMembers(teamMembers.map(m => m.name === oldName ? { ...m, name: cleanNewName } : m));
+    setAdHocTasks(prev => prev.map(t => t.assignee === oldName ? { ...t, assignee: cleanNewName } : t));
+    setProjects(prev => prev.map(p => ({
+      ...p,
+      phases: p.phases.map(ph => ({
+        ...ph,
+        assignees: (ph.assignees || []).map((n: string) => n === oldName ? cleanNewName : n),
+        teamAllocations: (ph.teamAllocations || []).map(a => a.assignee === oldName ? { ...a, assignee: cleanNewName } : a)
+      }))
+    })));
+  };
+
+  const toggleTeamMemberLock = (name: string) => {
+    if (isReadOnly) return;
+    setTeamMembers(teamMembers.map(m => m.name === name ? { ...m, isLocked: !m.isLocked } : m));
+  };
+
   const onDragEndRow = () => { setDraggedProjectId(null); };
 
   const onDragStartPhase = (e: any, projectId: string, phaseIndex: number) => {
@@ -1116,11 +1184,22 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           setIsLeftPanelCollapsed={setIsLeftPanelCollapsed} isReadOnly={isReadOnly} currentTeamWeekStart={currentTeamWeekStart}
           jumpToEarliestTask={() => {}} prevWeek={() => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, -7))}
           nextWeek={() => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, 7))} today={today}
-          draggedTeamMemberName={draggedTeamMemberName} onDragStartTeamMember={() => {}} onDragOverTeamMember={() => {}} onDragEndTeamMember={() => {}}
-          teamMembers={teamMembers} editingMember={{ oldName: null, newName: '' }} setEditingMember={() => {}}
-          updateTeamMemberName={() => {}} toggleTeamMemberLock={() => {}} handleRemoveTeamMember={() => {}}
-          isAddingTeamMember={false} setIsAddingTeamMember={() => {}} newTeamMemberName="" setNewTeamMemberName={() => {}}
-          handleAddTeamMember={() => {}} addAdHocTask={(name) => {
+          draggedTeamMemberName={draggedTeamMemberName} 
+          onDragStartTeamMember={onDragStartTeamMember} 
+          onDragOverTeamMember={onDragOverTeamMember} 
+          onDragEndTeamMember={onDragEndTeamMember}
+          teamMembers={teamMembers} 
+          editingMember={editingMember} 
+          setEditingMember={setEditingMember}
+          updateTeamMemberName={updateTeamMemberName} 
+          toggleTeamMemberLock={toggleTeamMemberLock} 
+          handleRemoveTeamMember={handleRemoveTeamMember}
+          isAddingTeamMember={isAddingTeamMember} 
+          setIsAddingTeamMember={setIsAddingTeamMember} 
+          newTeamMemberName={newTeamMemberName} 
+          setNewTeamMemberName={setNewTeamMemberName}
+          handleAddTeamMember={handleAddTeamMember} 
+          addAdHocTask={(name) => {
             recordHistory();
             setAdHocTasks(prev => [...prev, {
               id: generateId(), projectTitle: 'Manual Task', color: 'slate', text: 'New Task',
