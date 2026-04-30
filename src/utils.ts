@@ -2,7 +2,12 @@ import { Project, AdHocTask } from './types';
 
 export const addDays = (date: Date | string | number, days: number): Date => {
   const d = new Date(date);
-  return new Date(d.getTime() + days * 24 * 60 * 60 * 1000);
+  d.setDate(d.getDate() + Math.floor(days));
+  // If there's a fractional part, add it separately via time (for sub-day accuracy if needed)
+  if (days % 1 !== 0) {
+    return new Date(d.getTime() + (days % 1) * 24 * 60 * 60 * 1000);
+  }
+  return d;
 };
 
 export const diffDays = (date1: Date | string | number, date2: Date | string | number): number => {
@@ -11,6 +16,73 @@ export const diffDays = (date1: Date | string | number, date2: Date | string | n
   const d2 = new Date(date2);
   d2.setHours(0, 0, 0, 0);
   return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+export const countVisibleDays = (start: Date | string | number, end: Date | string | number, hideWeekends: boolean): number => {
+  if (!hideWeekends) return diffDays(start, end) + 1;
+  
+  let count = 0;
+  const curr = new Date(start);
+  curr.setHours(0,0,0,0);
+  const finish = new Date(end);
+  finish.setHours(0,0,0,0);
+  
+  while (curr <= finish) {
+    const day = curr.getDay();
+    if (day !== 0 && day !== 6) count++;
+    curr.setDate(curr.getDate() + 1);
+  }
+  return count;
+};
+
+export const getDayOffset = (timelineStart: Date, targetDate: Date, hideWeekends: boolean): number => {
+  if (!hideWeekends) return diffDays(timelineStart, targetDate);
+  
+  let count = 0;
+  const curr = new Date(timelineStart);
+  curr.setHours(0,0,0,0);
+  const target = new Date(targetDate);
+  target.setHours(0,0,0,0);
+  
+  if (target < curr) {
+    // Basic reverse handle if needed, though usually timeline only goes forward
+    while (curr > target) {
+      const day = curr.getDay();
+      if (day !== 0 && day !== 6) count--;
+      curr.setDate(curr.getDate() - 1);
+    }
+    return count;
+  }
+
+  while (curr < target) {
+    const day = curr.getDay();
+    if (day !== 0 && day !== 6) count++;
+    curr.setDate(curr.getDate() + 1);
+  }
+  return count;
+};
+
+export const getDateFromOffset = (timelineStart: Date, offset: number, hideWeekends: boolean): Date => {
+  if (!hideWeekends) return addDays(timelineStart, offset);
+  
+  const curr = new Date(timelineStart);
+  curr.setHours(0,0,0,0);
+  let count = 0;
+  
+  if (offset >= 0) {
+    while (count < offset) {
+      curr.setDate(curr.getDate() + 1);
+      const day = curr.getDay();
+      if (day !== 0 && day !== 6) count++;
+    }
+  } else {
+    while (count > offset) {
+      curr.setDate(curr.getDate() - 1);
+      const day = curr.getDay();
+      if (day !== 0 && day !== 6) count--;
+    }
+  }
+  return curr;
 };
 
 export const diffExactDays = (date1: Date | string | number, date2: Date | string | number): number => {

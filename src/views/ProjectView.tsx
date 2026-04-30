@@ -1,7 +1,7 @@
 import React from 'react';
 import { Project, Phase } from '../types';
 import { Icons } from '../icons';
-import { diffDays, abbreviatePhase } from '../utils';
+import { diffDays, abbreviatePhase, addDays, getDayOffset, countVisibleDays } from '../utils';
 import { getIndicatorColor, getPhaseColor, THEME_COLORS, COLOR_PALETTES } from '../constants';
 
 interface ProjectViewProps {
@@ -13,6 +13,7 @@ interface ProjectViewProps {
   timelineStart: Date;
   today: Date;
   totalDays: number;
+  hideWeekends?: boolean;
   isLeftPanelCollapsed: boolean;
   setIsLeftPanelCollapsed: (collapsed: boolean) => void;
   setIsResizingCol: (resizing: boolean) => void;
@@ -57,7 +58,7 @@ interface ProjectViewProps {
 
 export const ProjectView: React.FC<ProjectViewProps> = ({
   visibleProjects, currentLeftWidth, gridWidth, weeks, zoomLevel, timelineStart, today, totalDays,
-  isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, isReadOnly,
+  hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, isReadOnly,
   draggedProjectId, onDragStartRow, onDragOverRow, onDragEndRow, toggleProjectExpand, updateProjectColor,
   updateProjectTitle, addPhase, copyProjectMenuId, setCopyProjectMenuId, copyAsSynced, setCopyAsSynced,
   handleCopyProject, collections, activeCollectionId, deleteProject, toggleProjectVisibility,
@@ -73,11 +74,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         {/* Grid Background */}
         <div className="absolute top-[60px] bottom-0 flex pointer-events-none z-0" style={{ left: currentLeftWidth, width: gridWidth }}>
           {weeks.map((w, i) => (
-            <div key={i} className="h-full border-r border-slate-300 relative shrink-0" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
+            <div key={i} className="h-full border-r border-slate-300 relative shrink-0" style={{ width: (hideWeekends ? 5 : 7) * zoomLevel, minWidth: (hideWeekends ? 5 : 7) * zoomLevel }}>
               <div className="absolute inset-0 flex">
-                {[...Array(7)].map((_, dayIdx) => (
-                  <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed shrink-0" style={{ width: zoomLevel, minWidth: zoomLevel }}></div>
-                ))}
+                {[...Array(7)].map((_, dayIdx) => {
+                  const day = addDays(w.start, dayIdx).getDay();
+                  if (hideWeekends && (day === 0 || day === 6)) return null;
+                  return (
+                    <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed shrink-0" style={{ width: zoomLevel, minWidth: zoomLevel }}></div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -85,7 +90,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
         {/* Red Line */}
         {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
-          <div className="absolute top-[60px] bottom-0 w-[2px] bg-red-500 z-10 opacity-70 pointer-events-none transition-[left] duration-300 ease-in-out" style={{ left: currentLeftWidth + diffDays(timelineStart, today) * zoomLevel }}>
+          <div className="absolute top-[60px] bottom-0 w-[2px] bg-red-500 z-10 opacity-70 pointer-events-none transition-[left] duration-300 ease-in-out" style={{ left: currentLeftWidth + getDayOffset(timelineStart, today, !!hideWeekends) * zoomLevel }}>
             <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
           </div>
         )}
@@ -108,19 +113,19 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
               {(() => {
                 const months: any[] = [];
                 let currDate = new Date(timelineStart);
-                const endLimit = new Date(timelineStart.getTime() + totalDays * 24 * 60 * 60 * 1000);
+                const endLimit = addDays(timelineStart, totalDays);
                 
                 while (currDate < endLimit) {
                   const m = currDate.getMonth();
                   const y = currDate.getFullYear();
                   const lastDayOfMonth = new Date(y, m + 1, 0); // Last day of current month
-                  const endOfSegment = lastDayOfMonth >= endLimit ? new Date(endLimit.getTime() - 1) : lastDayOfMonth;
+                  const endOfSegment = lastDayOfMonth >= endLimit ? addDays(endLimit, -1) : lastDayOfMonth;
                   
-                  const segmentDays = diffDays(currDate, endOfSegment) + 1;
+                  const segmentWidth = countVisibleDays(currDate, endOfSegment, !!hideWeekends) * zoomLevel;
                   
                   months.push({ 
                     name: currDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), 
-                    width: segmentDays * zoomLevel 
+                    width: segmentWidth 
                   });
                   
                   currDate = new Date(y, m + 1, 1);
@@ -135,8 +140,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             </div>
             <div className="flex h-[28px] bg-white text-[10px] text-slate-500 font-medium">
               {weeks.map((w, i) => (
-                <div key={i} className="shrink-0 flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
-                  <span className="truncate leading-none">{w.label}</span>
+                <div key={i} className="shrink-0 flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: (hideWeekends ? 5 : 7) * zoomLevel, minWidth: (hideWeekends ? 5 : 7) * zoomLevel }}>
+                  <span className="truncate leading-none text-center px-1" title={w.label}>{w.label}</span>
                   <span className="truncate text-[8.5px] leading-none text-slate-400 mt-[3px]">Week {w.weekOfMonth}</span>
                 </div>
               ))}
@@ -245,9 +250,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                     const isSelected = selectedPhaseIds.has(phase.id);
                     let left = 0, width = 0, isVisible = false, durationWeeks = "";
                     if (hasTimeline) {
-                      left = diffDays(timelineStart, phase.start!) * zoomLevel;
+                      left = getDayOffset(timelineStart, phase.start!, !!hideWeekends) * zoomLevel;
                       const durationDays = diffDays(phase.start!, phase.end!) + 1;
-                      width = durationDays * zoomLevel;
+                      width = countVisibleDays(phase.start!, phase.end!, !!hideWeekends) * zoomLevel;
                       isVisible = left + width >= 0 && left <= gridWidth;
                       durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
                     }
@@ -289,8 +294,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                               {(phase.tasks || []).flatMap((task, tIdx) => {
                                 return (task.allocations || []).map((alloc, aIdx) => {
                                   if (!alloc.start || !alloc.end) return null;
-                                  const allocLeft = diffDays(phase.start!, alloc.start) * zoomLevel;
-                                  const allocWidth = diffDays(alloc.start, alloc.end) * zoomLevel;
+                                  const allocLeft = getDayOffset(phase.start!, alloc.start, !!hideWeekends) * zoomLevel;
+                                  const durationDays = diffDays(alloc.start, alloc.end) + 1;
+                                  const allocWidth = countVisibleDays(alloc.start, alloc.end, !!hideWeekends) * zoomLevel;
                                   return <div key={`${task.id}_${alloc.id}`} className="absolute h-[1.5px] bg-white/70 shadow-sm rounded-full" style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} />
                                 });
                               })}
@@ -300,7 +306,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         {(phase.milestones || []).map(milestone => {
                           if (!milestone.date) return null;
                           return (
-                            <div key={milestone.id} className="absolute top-[8px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }} title={milestone.label}>
+                            <div key={milestone.id} className="absolute top-[8px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${getDayOffset(timelineStart, milestone.date, !!hideWeekends) * zoomLevel}px`, transform: 'translateX(-50%)' }} title={milestone.label}>
                               <Icons.Flag className="text-amber-400" />
                             </div>
                           )
@@ -316,9 +322,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                 let left = 0, width = 0, durationWeeks = "";
                 if (hasTimeline) {
-                  left = diffDays(timelineStart, phase.start!) * zoomLevel;
+                  left = getDayOffset(timelineStart, phase.start!, !!hideWeekends) * zoomLevel;
                   const durationDays = diffDays(phase.start!, phase.end!) + 1;
-                  width = durationDays * zoomLevel;
+                  width = countVisibleDays(phase.start!, phase.end!, !!hideWeekends) * zoomLevel;
                   durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
                 }
                 const taskCount = phase.tasks.length;
@@ -396,22 +402,23 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             {(phase.tasks || []).flatMap((task, tIdx) => {
                               return (task.allocations || []).map((alloc, aIdx) => {
                                 if (!alloc.start || !alloc.end) return null;
-                                const allocLeft = diffDays(phase.start!, alloc.start) * zoomLevel;
-                                const allocWidth = diffDays(alloc.start, alloc.end) * zoomLevel;
+                                const allocLeft = getDayOffset(phase.start!, alloc.start, !!hideWeekends) * zoomLevel;
+                                const durationDays = diffDays(alloc.start, alloc.end) + 1;
+                                const allocWidth = countVisibleDays(alloc.start, alloc.end, !!hideWeekends) * zoomLevel;
                                 return <div key={`${task.id}_${alloc.id}`} className="absolute h-[1.5px] bg-white/70 shadow-sm rounded-full" style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} />
                               });
                             })}
                           </div>
                         </div>
                       )}
-                      {(phase.milestones || []).map(milestone => {
-                        if (!milestone.date) return null;
-                        return (
-                          <div key={milestone.id} className="absolute top-[8px] md:top-[6px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${diffDays(timelineStart, milestone.date) * zoomLevel}px`, transform: 'translateX(-50%)' }}>
-                            <Icons.Flag className="text-amber-400" />
-                          </div>
-                        )
-                      })}
+                        {(phase.milestones || []).map(milestone => {
+                          if (!milestone.date) return null;
+                          return (
+                            <div key={milestone.id} className="absolute top-[8px] md:top-[6px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${getDayOffset(timelineStart, milestone.date, !!hideWeekends) * zoomLevel}px`, transform: 'translateX(-50%)' }}>
+                              <Icons.Flag className="text-amber-400" />
+                            </div>
+                          )
+                        })}
                     </div>
                   </div>
                 )

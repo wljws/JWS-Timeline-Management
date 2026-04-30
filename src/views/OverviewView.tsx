@@ -1,6 +1,6 @@
 import React from 'react';
 import { Collection, Project } from '../types';
-import { diffDays, formatDate } from '../utils';
+import { diffDays, formatDate, addDays, getDayOffset, countVisibleDays } from '../utils';
 import { getIndicatorColor, getPhaseColor } from '../constants';
 
 interface OverviewViewProps {
@@ -12,6 +12,7 @@ interface OverviewViewProps {
   timelineStart: Date;
   today: Date;
   totalDays: number;
+  hideWeekends?: boolean;
   isLeftPanelCollapsed: boolean;
   setIsLeftPanelCollapsed: (collapsed: boolean) => void;
   setIsResizingCol: (resizing: boolean) => void;
@@ -21,14 +22,8 @@ interface OverviewViewProps {
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
   overviewData, currentLeftWidth, gridWidth, weeks, zoomLevel, timelineStart, today, totalDays,
-  isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, phaseColors
+  hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, phaseColors
 }) => {
-  const diffDaysLocal = (date1: Date, date2: Date): number => {
-    const d1 = new Date(date1); d1.setHours(0,0,0,0);
-    const d2 = new Date(date2); d2.setHours(0,0,0,0);
-    return Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
-  };
-
   return (
     <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
       <div className="relative min-w-full w-max min-h-full">
@@ -36,19 +31,23 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         {/* Grid Background */}
         <div className="absolute top-[60px] bottom-0 flex pointer-events-none z-0" style={{ left: currentLeftWidth, width: gridWidth }}>
           {weeks.map((w, i) => (
-            <div key={i} className="h-full border-r border-slate-300 relative shrink-0" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
+            <div key={i} className="h-full border-r border-slate-300 relative shrink-0" style={{ width: (hideWeekends ? 5 : 7) * zoomLevel, minWidth: (hideWeekends ? 5 : 7) * zoomLevel }}>
               <div className="absolute inset-0 flex">
-                {[...Array(7)].map((_, dayIdx) => (
-                  <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed shrink-0" style={{ width: zoomLevel, minWidth: zoomLevel }}></div>
-                ))}
+                {[...Array(7)].map((_, dayIdx) => {
+                  const day = addDays(w.start, dayIdx).getDay();
+                  if (hideWeekends && (day === 0 || day === 6)) return null;
+                  return (
+                    <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed shrink-0" style={{ width: zoomLevel, minWidth: zoomLevel }}></div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
 
         {/* Red Line */}
-        {diffDaysLocal(timelineStart, today) >= 0 && diffDaysLocal(timelineStart, today) <= totalDays && (
-          <div className="absolute top-[60px] bottom-0 w-[2px] bg-red-500 z-10 opacity-70 pointer-events-none transition-[left] duration-300 ease-in-out" style={{ left: currentLeftWidth + diffDaysLocal(timelineStart, today) * zoomLevel }}>
+        {diffDays(timelineStart, today) >= 0 && diffDays(timelineStart, today) <= totalDays && (
+          <div className="absolute top-[60px] bottom-0 w-[2px] bg-red-500 z-10 opacity-70 pointer-events-none transition-[left] duration-300 ease-in-out" style={{ left: currentLeftWidth + getDayOffset(timelineStart, today, !!hideWeekends) * zoomLevel }}>
             <div className="absolute -top-1 -left-1 w-2.5 h-2.5 bg-red-500 rounded-full shadow-sm"></div>
           </div>
         )}
@@ -71,20 +70,20 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               {(() => {
                 const months: any[] = [];
                 let currDate = new Date(timelineStart);
-                const endLimit = new Date(timelineStart.getTime() + totalDays * 24 * 60 * 60 * 1000);
+                const endLimit = addDays(timelineStart, totalDays);
                 
                 while (currDate < endLimit) {
                   const m = currDate.getMonth();
                   const y = currDate.getFullYear();
                   const lastDayOfMonth = new Date(y, m + 1, 0); // Last day of current month
-                  const endOfSegment = lastDayOfMonth >= endLimit ? new Date(endLimit.getTime() - 1) : lastDayOfMonth;
+                  const endOfSegment = lastDayOfMonth >= endLimit ? addDays(endLimit, -1) : lastDayOfMonth;
                   
                   // Ensure we calculate full days accurately
-                  const segmentDays = diffDays(currDate, endOfSegment) + 1;
+                  const segmentWidth = countVisibleDays(currDate, endOfSegment, !!hideWeekends) * zoomLevel;
                   
                   months.push({ 
                     name: currDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), 
-                    width: segmentDays * zoomLevel 
+                    width: segmentWidth 
                   });
                   
                   currDate = new Date(y, m + 1, 1); // Move to 1st of next month
@@ -99,8 +98,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
             <div className="flex h-[28px] bg-white text-[10px] text-slate-500 font-medium">
               {weeks.map((w, i) => (
-                <div key={i} className="shrink-0 flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
-                  <span className="truncate leading-none">{w.label}</span>
+                <div key={i} className="shrink-0 flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: (hideWeekends ? 5 : 7) * zoomLevel, minWidth: (hideWeekends ? 5 : 7) * zoomLevel }}>
+                  <span className="truncate leading-none text-center px-1" title={w.label}>{w.label}</span>
                   <span className="truncate text-[8.5px] leading-none text-slate-400 mt-[3px]">Week {w.weekOfMonth}</span>
                 </div>
               ))}
@@ -133,9 +132,9 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     <div className="flex-shrink-0 relative h-[48px]" style={{ width: gridWidth }}>
                         {project.phases.map((phase, pIdx) => {
                           if (!phase.start || !phase.end) return null;
-                          const left = diffDays(timelineStart, phase.start) * zoomLevel;
+                          const left = getDayOffset(timelineStart, phase.start, !!hideWeekends) * zoomLevel;
                           const durationDays = diffDays(phase.start, phase.end) + 1;
-                          const width = durationDays * zoomLevel;
+                          const width = countVisibleDays(phase.start, phase.end, !!hideWeekends) * zoomLevel;
                           const isVisible = left + width >= 0 && left <= gridWidth;
                           const durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
 

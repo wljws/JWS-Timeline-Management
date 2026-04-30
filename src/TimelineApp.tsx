@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Icons } from './icons';
 import { Project, Phase, Task, Allocation, Milestone, TeamMember, AdHocTask, Collection, ViewMode, Snapshot } from './types';
-import { addDays, diffDays, diffExactDays, formatDate, generateId, toYMD, fromYMD, abbreviatePhase, checkTeamOverlap } from './utils';
+import { addDays, diffDays, diffExactDays, formatDate, generateId, toYMD, fromYMD, abbreviatePhase, checkTeamOverlap, countVisibleDays, getDayOffset, getDateFromOffset } from './utils';
 import { THEME_COLORS, COLOR_PALETTES, STANDARD_TEMPLATE_PHASES, generateDefaultProjects, getPhaseColor, getIndicatorColor, DEFAULT_PHASE_COLORS } from './constants';
 import { PhaseModal } from './components/PhaseModal';
 import { TeamModal } from './components/TeamModal';
@@ -25,7 +25,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   
   const isReadOnly = actualIsReadOnly || !!viewingSnapshot;
   const [viewMode, setViewMode] = useState<ViewMode>('projects'); 
-  const [zoomLevel, setZoomLevel] = useState(40); 
+  const [zoomLevel, setZoomLevel] = useState(5); 
+  const [hideWeekends, setHideWeekends] = useState(false);
   const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   
@@ -442,15 +443,28 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
 
   // Timeline Bounds
   const today = useMemo(() => { const d = new Date(); d.setHours(0,0,0,0); return d; }, []);
-  const timelineStart = useMemo(() => new Date(today.getFullYear(), 0, 1), [today]);
+  const timelineStart = useMemo(() => {
+    const d = new Date(today.getFullYear(), 0, 1);
+    const day = d.getDay(); 
+    // Snap to previous Monday: if Sunday (0) go back 6, if Mon (1) go back 0, if Tue (2) go back 1...
+    const diff = (day === 0 ? -6 : 1 - day); 
+    return addDays(d, diff);
+  }, [today]);
   const timelineEnd = useMemo(() => new Date(today.getFullYear() + 2, 11, 31), [today]);
-  const totalDays = diffDays(timelineStart, timelineEnd) + 1;
-  const gridWidth = totalDays * zoomLevel;
+  const totalDays = useMemo(() => diffDays(timelineStart, timelineEnd) + 1, [timelineStart, timelineEnd]);
+  const gridWidth = useMemo(() => countVisibleDays(timelineStart, timelineEnd, hideWeekends) * zoomLevel, [timelineStart, timelineEnd, hideWeekends, zoomLevel]);
   const weeks = useMemo(() => {
     const ws: any[] = [];
     for (let i = 0; i < totalDays; i += 7) {
       const s = addDays(timelineStart, i);
-      ws.push({ start: s, label: `${formatDate(s)}`, daysFromStart: i, weekOfMonth: Math.floor(s.getDate() / 7) + 1 });
+      const e = addDays(s, 6);
+      ws.push({ 
+        start: s, 
+        end: e,
+        label: `${formatDate(s)} - ${formatDate(e)}`, 
+        daysFromStart: i, 
+        weekOfMonth: Math.floor(s.getDate() / 7) + 1 
+      });
     }
     return ws;
   }, [timelineStart, totalDays]);
@@ -467,9 +481,11 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (isReadOnly || e.target !== e.currentTarget || viewMode !== 'projects') return;
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
-    const daysFromStart = Math.floor(clickX / zoomLevel);
-    const weekIndex = Math.floor(daysFromStart / 7);
-    const newStart = addDays(timelineStart, weekIndex * 7);
+    const daysOffset = Math.floor(clickX / zoomLevel);
+    const clickedDate = getDateFromOffset(timelineStart, daysOffset, hideWeekends);
+    
+    // Default 1 week behavior
+    const newStart = clickedDate;
     const newEnd = addDays(newStart, 6);
     recordHistory();
     setProjects(projects.map(p => {
@@ -513,7 +529,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     const handleMove = (e: any) => {
       if (isResizingCol) {
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        setLeftColWidth(Math.max(120, Math.min(800, clientX)));
+        setLeftColWidth(Math.round(Math.max(120, Math.min(800, clientX))));
         return;
       }
       if (!draggingBlock) return;
@@ -553,13 +569,19 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             if (!block) return ph;
             
             if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
-              return { ...ph, start: addDays(block.origStart, deltaDays), end: addDays(block.origEnd, deltaDays) };
+              const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+              const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+              const newStart = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+              const newEnd = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
+              return { ...ph, start: newStart, end: newEnd };
             }
             if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
-              return { ...ph, start: addDays(block.origStart, deltaDays) };
+              const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+              return { ...ph, start: getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends) };
             }
             if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
-              return { ...ph, end: addDays(block.origEnd, deltaDays) };
+              const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+              return { ...ph, end: getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends) };
             }
             
             if (block.taskId && block.allocationId) {
@@ -568,13 +590,16 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                  teamAllocations: (ph.teamAllocations || []).map(a => {
                    if (a.id !== block.allocationId) return a;
                    let ns = a.start, ne = a.end;
+                   const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                   const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+
                    if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-                     ns = addDays(block.origStart, deltaDays);
-                     ne = addDays(block.origEnd, deltaDays);
+                     ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+                     ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
                    } else if (draggingBlock.type === 'resize-alloc-right') {
-                     ne = addDays(block.origEnd, deltaDays);
+                     ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
                    } else if (draggingBlock.type === 'resize-alloc-left') {
-                     ns = addDays(block.origStart, deltaDays);
+                     ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
                    }
                    if (ne && ns && ne < ns) ne = ns;
                    
@@ -593,13 +618,16 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           const block = draggingBlock.blocksToMove.find((b: any) => b.isAdHoc && b.taskId === t.id);
           if (!block) return t;
           let ns = t.start || new Date(), ne = t.end || new Date();
+          const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+          const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+
           if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-            ns = addDays(block.origStart, deltaDays);
-            ne = addDays(block.origEnd, deltaDays);
+            ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+            ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
           } else if (draggingBlock.type === 'resize-alloc-right') {
-            ne = addDays(block.origEnd, deltaDays);
+            ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
           } else if (draggingBlock.type === 'resize-alloc-left') {
-            ns = addDays(block.origStart, deltaDays);
+            ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
           }
           if (ne < ns) ne = ns;
 
@@ -631,7 +659,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (isDataLoaded) {
       if (viewMode === 'projects' || viewMode === 'overview') {
         const timer = setTimeout(() => {
-          const dayOffset = diffDays(timelineStart, today);
+          const dayOffset = getDayOffset(timelineStart, today, hideWeekends);
           if (scrollContainerRef.current) scrollContainerRef.current.scrollLeft = (dayOffset * zoomLevel) - 200;
         }, 100);
         return () => clearTimeout(timer);
@@ -1108,8 +1136,17 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             <div className="flex items-center gap-1.5 md:gap-2">
               <button 
                 onClick={() => {
-                  const dayOffset = diffDays(timelineStart, today);
-                  if (scrollContainerRef.current) scrollContainerRef.current.scrollLeft = (dayOffset * zoomLevel) - 200;
+                  if (viewMode === 'team') {
+                    const d = new Date(); d.setHours(0,0,0,0);
+                    const day = d.getDay();
+                    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+                    setCurrentTeamWeekStart(new Date(d.setDate(diff)));
+                  } else {
+                    const dayOffset = getDayOffset(timelineStart, today, hideWeekends);
+                    if (scrollContainerRef.current) {
+                      scrollContainerRef.current.scrollLeft = (dayOffset * zoomLevel) - 200;
+                    }
+                  }
                 }}
                 className="text-[10px] md:text-xs text-slate-300 hover:text-white border border-slate-600 hover:border-slate-400 rounded px-2 py-1 transition-colors font-medium"
               >
@@ -1121,6 +1158,15 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                   type="range" min="5" max="100" value={zoomLevel} onChange={(e) => setZoomLevel(Number(e.target.value))}
                   className="w-16 md:w-20 accent-blue-500"
                 />
+              </div>
+              <div className="flex items-center gap-2 border-l border-slate-700 pl-2 ml-1">
+                <label className="flex items-center gap-1.5 cursor-pointer group">
+                  <span className="text-[9px] md:text-[10px] text-slate-400 uppercase font-bold tracking-wider group-hover:text-slate-300 transition-colors">Business days</span>
+                  <div className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" checked={hideWeekends} onChange={() => setHideWeekends(!hideWeekends)} className="sr-only peer" />
+                    <div className="w-7 h-4 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-600"></div>
+                  </div>
+                </label>
               </div>
               {!isReadOnly && viewMode === 'projects' && (
                 <button onClick={addProject} className="flex items-center gap-1 bg-blue-600 hover:bg-blue-500 px-2 md:px-3 py-1 rounded text-[10px] md:text-xs font-medium transition-colors">
@@ -1170,7 +1216,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         <ProjectView
           visibleProjects={projects.filter(p => showHiddenProjects || !p.isHidden)}
           currentLeftWidth={currentLeftWidth} gridWidth={gridWidth} weeks={weeks} zoomLevel={zoomLevel}
-          timelineStart={timelineStart} today={today} totalDays={totalDays}
+          timelineStart={timelineStart} today={today} totalDays={totalDays} hideWeekends={hideWeekends}
           isLeftPanelCollapsed={isLeftPanelCollapsed} setIsLeftPanelCollapsed={setIsLeftPanelCollapsed}
           setIsResizingCol={setIsResizingCol} scrollContainerRef={scrollContainerRef} isReadOnly={isReadOnly}
           draggedProjectId={draggedProjectId} onDragStartRow={onDragStartRow} onDragOverRow={onDragOverRow} onDragEndRow={onDragEndRow}
@@ -1246,6 +1292,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         <OverviewView
           overviewData={overviewData} currentLeftWidth={currentLeftWidth} gridWidth={gridWidth} weeks={weeks}
           zoomLevel={zoomLevel} timelineStart={timelineStart} today={today} totalDays={totalDays}
+          hideWeekends={hideWeekends}
           isLeftPanelCollapsed={isLeftPanelCollapsed} setIsLeftPanelCollapsed={setIsLeftPanelCollapsed}
           setIsResizingCol={() => {}} scrollContainerRef={scrollContainerRef}
           phaseColors={phaseColors}
