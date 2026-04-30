@@ -1,7 +1,7 @@
 import React from 'react';
 import { Project, Phase } from '../types';
 import { Icons } from '../icons';
-import { diffExactDays, diffDays, abbreviatePhase } from '../utils';
+import { diffDays, abbreviatePhase } from '../utils';
 import { getIndicatorColor, getPhaseColor, THEME_COLORS, COLOR_PALETTES } from '../constants';
 
 interface ProjectViewProps {
@@ -73,10 +73,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
         {/* Grid Background */}
         <div className="absolute top-[60px] bottom-0 flex pointer-events-none z-0" style={{ left: currentLeftWidth, width: gridWidth }}>
           {weeks.map((w, i) => (
-            <div key={i} className="h-full border-r border-slate-300 relative" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
+            <div key={i} className="h-full border-r border-slate-300 relative shrink-0" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
               <div className="absolute inset-0 flex">
                 {[...Array(7)].map((_, dayIdx) => (
-                  <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>
+                  <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed shrink-0" style={{ width: zoomLevel, minWidth: zoomLevel }}></div>
                 ))}
               </div>
             </div>
@@ -107,24 +107,27 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             <div className="flex border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold h-[32px]">
               {(() => {
                 const months: any[] = [];
-                let currentMonth = -1;
-                let weeksInMonth = 0;
-                for (let i = 0; i < totalDays; i += 7) {
-                  const weekStart = new Date(timelineStart.getTime() + i * 24 * 60 * 60 * 1000);
-                  const month = weekStart.getMonth();
-                  if (month !== currentMonth) {
-                    if (currentMonth !== -1) months[months.length - 1].colSpan = weeksInMonth * 7;
-                    months.push({ name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), colSpan: 7 });
-                    currentMonth = month;
-                    weeksInMonth = 1;
-                  } else {
-                    weeksInMonth++;
-                    months[months.length - 1].colSpan = weeksInMonth * 7;
-                  }
+                let currDate = new Date(timelineStart);
+                const endLimit = new Date(timelineStart.getTime() + totalDays * 24 * 60 * 60 * 1000);
+                
+                while (currDate < endLimit) {
+                  const m = currDate.getMonth();
+                  const y = currDate.getFullYear();
+                  const lastDayOfMonth = new Date(y, m + 1, 0); // Last day of current month
+                  const endOfSegment = lastDayOfMonth >= endLimit ? new Date(endLimit.getTime() - 1) : lastDayOfMonth;
+                  
+                  const segmentDays = diffDays(currDate, endOfSegment) + 1;
+                  
+                  months.push({ 
+                    name: currDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), 
+                    width: segmentDays * zoomLevel 
+                  });
+                  
+                  currDate = new Date(y, m + 1, 1);
                 }
-                if (months.length > 0) months[months.length - 1].colSpan = weeksInMonth * 7;
+
                 return months.map((m, i) => (
-                  <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>
+                  <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate shrink-0" style={{ width: m.width }}>
                     {m.name}
                   </div>
                 ));
@@ -132,7 +135,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             </div>
             <div className="flex h-[28px] bg-white text-[10px] text-slate-500 font-medium">
               {weeks.map((w, i) => (
-                <div key={i} className="flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel }}>
+                <div key={i} className="shrink-0 flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
                   <span className="truncate leading-none">{w.label}</span>
                   <span className="truncate text-[8.5px] leading-none text-slate-400 mt-[3px]">Week {w.weekOfMonth}</span>
                 </div>
@@ -242,8 +245,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                     const isSelected = selectedPhaseIds.has(phase.id);
                     let left = 0, width = 0, isVisible = false, durationWeeks = "";
                     if (hasTimeline) {
-                      left = diffExactDays(timelineStart, phase.start!) * zoomLevel;
-                      const durationDays = diffExactDays(phase.start!, phase.end!) + 1;
+                      left = diffDays(timelineStart, phase.start!) * zoomLevel;
+                      const durationDays = diffDays(phase.start!, phase.end!) + 1;
                       width = durationDays * zoomLevel;
                       isVisible = left + width >= 0 && left <= gridWidth;
                       durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
@@ -286,8 +289,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                               {(phase.tasks || []).flatMap((task, tIdx) => {
                                 return (task.allocations || []).map((alloc, aIdx) => {
                                   if (!alloc.start || !alloc.end) return null;
-                                  const allocLeft = diffExactDays(phase.start!, alloc.start) * zoomLevel;
-                                  const allocWidth = ((alloc.end.getTime() - alloc.start.getTime()) / (1000 * 60 * 60 * 24)) * zoomLevel;
+                                  const allocLeft = diffDays(phase.start!, alloc.start) * zoomLevel;
+                                  const allocWidth = diffDays(alloc.start, alloc.end) * zoomLevel;
                                   return <div key={`${task.id}_${alloc.id}`} className="absolute h-[1.5px] bg-white/70 shadow-sm rounded-full" style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} />
                                 });
                               })}
@@ -313,8 +316,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                 let left = 0, width = 0, durationWeeks = "";
                 if (hasTimeline) {
-                  left = diffExactDays(timelineStart, phase.start!) * zoomLevel;
-                  const durationDays = diffExactDays(phase.start!, phase.end!) + 1;
+                  left = diffDays(timelineStart, phase.start!) * zoomLevel;
+                  const durationDays = diffDays(phase.start!, phase.end!) + 1;
                   width = durationDays * zoomLevel;
                   durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
                 }
@@ -393,8 +396,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             {(phase.tasks || []).flatMap((task, tIdx) => {
                               return (task.allocations || []).map((alloc, aIdx) => {
                                 if (!alloc.start || !alloc.end) return null;
-                                const allocLeft = diffExactDays(phase.start!, alloc.start) * zoomLevel;
-                                const allocWidth = ((alloc.end.getTime() - alloc.start.getTime()) / (1000 * 60 * 60 * 24)) * zoomLevel;
+                                const allocLeft = diffDays(phase.start!, alloc.start) * zoomLevel;
+                                const allocWidth = diffDays(alloc.start, alloc.end) * zoomLevel;
                                 return <div key={`${task.id}_${alloc.id}`} className="absolute h-[1.5px] bg-white/70 shadow-sm rounded-full" style={{ left: `${allocLeft}px`, width: `${Math.max(allocWidth, 4)}px`, bottom: `${1 + (tIdx % 3)*2}px` }} />
                               });
                             })}

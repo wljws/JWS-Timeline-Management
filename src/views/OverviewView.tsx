@@ -1,6 +1,6 @@
 import React from 'react';
 import { Collection, Project } from '../types';
-import { diffExactDays, formatDate } from '../utils';
+import { diffDays, formatDate } from '../utils';
 import { getIndicatorColor, getPhaseColor } from '../constants';
 
 interface OverviewViewProps {
@@ -36,10 +36,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
         {/* Grid Background */}
         <div className="absolute top-[60px] bottom-0 flex pointer-events-none z-0" style={{ left: currentLeftWidth, width: gridWidth }}>
           {weeks.map((w, i) => (
-            <div key={i} className="h-full border-r border-slate-300 relative" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
+            <div key={i} className="h-full border-r border-slate-300 relative shrink-0" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
               <div className="absolute inset-0 flex">
                 {[...Array(7)].map((_, dayIdx) => (
-                  <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed" style={{ width: zoomLevel }}></div>
+                  <div key={dayIdx} className="h-full border-r border-slate-100 border-dashed shrink-0" style={{ width: zoomLevel, minWidth: zoomLevel }}></div>
                 ))}
               </div>
             </div>
@@ -70,24 +70,28 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             <div className="flex border-b border-slate-200 bg-slate-50 text-slate-600 text-xs font-semibold h-[32px]">
               {(() => {
                 const months: any[] = [];
-                let currentMonth = -1;
-                let weeksInMonth = 0;
-                for (let i = 0; i < totalDays; i += 7) {
-                  const weekStart = new Date(timelineStart.getTime() + i * 24 * 60 * 60 * 1000);
-                  const month = weekStart.getMonth();
-                  if (month !== currentMonth) {
-                    if (currentMonth !== -1) months[months.length - 1].colSpan = weeksInMonth * 7;
-                    months.push({ name: weekStart.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), colSpan: 7 });
-                    currentMonth = month;
-                    weeksInMonth = 1;
-                  } else {
-                    weeksInMonth++;
-                    months[months.length - 1].colSpan = weeksInMonth * 7;
-                  }
+                let currDate = new Date(timelineStart);
+                const endLimit = new Date(timelineStart.getTime() + totalDays * 24 * 60 * 60 * 1000);
+                
+                while (currDate < endLimit) {
+                  const m = currDate.getMonth();
+                  const y = currDate.getFullYear();
+                  const lastDayOfMonth = new Date(y, m + 1, 0); // Last day of current month
+                  const endOfSegment = lastDayOfMonth >= endLimit ? new Date(endLimit.getTime() - 1) : lastDayOfMonth;
+                  
+                  // Ensure we calculate full days accurately
+                  const segmentDays = diffDays(currDate, endOfSegment) + 1;
+                  
+                  months.push({ 
+                    name: currDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }), 
+                    width: segmentDays * zoomLevel 
+                  });
+                  
+                  currDate = new Date(y, m + 1, 1); // Move to 1st of next month
                 }
-                if (months.length > 0) months[months.length - 1].colSpan = weeksInMonth * 7;
+
                 return months.map((m, i) => (
-                  <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate" style={{ width: m.colSpan * zoomLevel }}>
+                  <div key={i} className="flex items-center pl-2 border-r border-slate-300 truncate shrink-0" style={{ width: m.width }}>
                     {m.name}
                   </div>
                 ));
@@ -95,7 +99,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
             </div>
             <div className="flex h-[28px] bg-white text-[10px] text-slate-500 font-medium">
               {weeks.map((w, i) => (
-                <div key={i} className="flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel }}>
+                <div key={i} className="shrink-0 flex flex-col justify-center items-center border-r border-slate-300 bg-slate-50 overflow-hidden px-1 py-[2px]" style={{ width: 7 * zoomLevel, minWidth: 7 * zoomLevel }}>
                   <span className="truncate leading-none">{w.label}</span>
                   <span className="truncate text-[8.5px] leading-none text-slate-400 mt-[3px]">Week {w.weekOfMonth}</span>
                 </div>
@@ -129,8 +133,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     <div className="flex-shrink-0 relative h-[48px]" style={{ width: gridWidth }}>
                         {project.phases.map((phase, pIdx) => {
                           if (!phase.start || !phase.end) return null;
-                          const left = diffExactDays(timelineStart, phase.start) * zoomLevel;
-                          const durationDays = diffExactDays(phase.start, phase.end) + 1;
+                          const left = diffDays(timelineStart, phase.start) * zoomLevel;
+                          const durationDays = diffDays(phase.start, phase.end) + 1;
                           const width = durationDays * zoomLevel;
                           const isVisible = left + width >= 0 && left <= gridWidth;
                           const durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
