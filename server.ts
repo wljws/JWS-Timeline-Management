@@ -76,6 +76,41 @@ async function startServer() {
     }
   });
 
+  // n8n Integration Webhook (Option 1)
+  // This endpoint allows n8n to push updates to the timeline.
+  app.post("/api/webhook/n8n", async (req, res) => {
+    try {
+      const { data, source } = req.body;
+      
+      if (!data) {
+        return res.status(400).json({ error: "Missing data in request body" });
+      }
+
+      console.log(`Received n8n update from source: ${source || 'unknown'}`);
+      
+      const timestamp = Date.now();
+      const stateToSave = { 
+        collections: typeof data === 'string' ? data : JSON.stringify(data), 
+        timestamp,
+        updatedBy: "n8n"
+      };
+
+      await kv.set("timeline-app-data", stateToSave);
+      
+      // Also log it in version history
+      const snapshotId = `n8n_sync_${timestamp}`;
+      await kv.set(snapshotId, stateToSave.collections);
+      const snapshots = (await kv.get("all_snapshots") as string[]) || [];
+      snapshots.push(snapshotId);
+      await kv.set("all_snapshots", snapshots.slice(-50)); // Keep last 50
+
+      res.json({ success: true, message: "Timeline updated via n8n", timestamp });
+    } catch (error: any) {
+      console.error("n8n Webhook Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

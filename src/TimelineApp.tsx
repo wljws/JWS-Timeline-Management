@@ -351,12 +351,18 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         // Try Server API first
         let data;
         const res = await fetch('/api/history');
-        if (res.ok) {
+        const contentType = res.headers.get("content-type");
+        
+        if (res.ok && contentType && contentType.includes("application/json")) {
           const json = await res.json();
           data = json.result;
         } else {
-          // Fallback: Direct Vercel KV fetch if server fails or is missing
-          console.log("Server API unavailable, falling back to direct KV fetch...");
+          // Fallback: Direct Vercel KV fetch if server fails or returns HTML (likely index.html on 404)
+          if (!res.ok) console.warn(`Server API returned status ${res.status}, falling back...`);
+          else if (contentType && !contentType.includes("application/json")) {
+            console.warn("Server API returned non-JSON response (likely HTML index), falling back to direct KV...");
+          }
+          
           const kvRes = await fetch(VERCEL_KV_URL, {
             method: 'POST',
             headers: { 
