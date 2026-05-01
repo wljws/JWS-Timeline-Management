@@ -16,9 +16,12 @@ interface ProjectViewProps {
   hideWeekends?: boolean;
   isLeftPanelCollapsed: boolean;
   setIsLeftPanelCollapsed: (collapsed: boolean) => void;
+  isResizingCol: boolean;
   setIsResizingCol: (resizing: boolean) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   isReadOnly: boolean;
+  isAdmin: boolean;
+  globalLocked: boolean;
   draggedProjectId: string | null;
   onDragStartRow: (e: any, id: string) => void;
   onDragOverRow: (e: any, id: string) => void;
@@ -58,7 +61,8 @@ interface ProjectViewProps {
 
 export const ProjectView: React.FC<ProjectViewProps> = ({
   visibleProjects, currentLeftWidth, gridWidth, weeks, zoomLevel, timelineStart, today, totalDays,
-  hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, isReadOnly,
+  hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, isResizingCol, setIsResizingCol, scrollContainerRef, 
+  isReadOnly, isAdmin, globalLocked,
   draggedProjectId, onDragStartRow, onDragOverRow, onDragEndRow, toggleProjectExpand, updateProjectColor,
   updateProjectTitle, addPhase, copyProjectMenuId, setCopyProjectMenuId, copyAsSynced, setCopyAsSynced,
   handleCopyProject, collections, activeCollectionId, deleteProject, toggleProjectVisibility,
@@ -68,7 +72,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 }) => {
   const dragStartPos = React.useRef({ x: 0, y: 0 });
   return (
-    <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
+    <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative touch-pan-x touch-pan-y" ref={scrollContainerRef}>
       <div className="relative min-w-full w-max min-h-full">
         
         {/* Grid Background */}
@@ -159,9 +163,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             return (
             <div 
               key={project.id}
-              draggable={!isReadOnly}
-              onDragStart={(e) => !isReadOnly && onDragStartRow(e, project.id)}
-              onDragOver={(e) => !isReadOnly && onDragOverRow(e, project.id)}
+              draggable={!isReadOnly && isAdmin && !isResizingCol}
+              onDragStart={(e) => !isReadOnly && isAdmin && !isResizingCol && onDragStartRow(e, project.id)}
+              onDragOver={(e) => !isReadOnly && isAdmin && onDragOverRow(e, project.id)}
               onDragEnd={onDragEndRow}
               className={`flex flex-col relative border-b border-slate-200 bg-transparent hover:z-40 ${draggedProjectId === project.id ? 'opacity-50 bg-slate-100 z-50' : 'z-10'}`}
             >
@@ -173,7 +177,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                     </div>
                   ) : (
                     <div className="flex w-full items-center pr-1 min-w-0">
-                      {!isReadOnly && (
+                      {!isReadOnly && isAdmin && (
                         <div className="w-6 md:w-8 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover:opacity-100 cursor-grab shrink-0">
                           <Icons.Grip />
                         </div>
@@ -184,7 +188,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
                       <div className="relative group/color mr-2 flex items-center h-full shrink-0">
                         <div className="w-4 h-4 md:w-3 md:h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
-                        {!isReadOnly && (
+                        {!isReadOnly && isAdmin && (
                           <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
                             <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
                               {THEME_COLORS.map(c => (
@@ -202,10 +206,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
                       {project.syncId && <Icons.Link className="text-blue-500 w-3.5 h-3.5 mr-1.5 shrink-0" title="Linked Project (Synced)" />}
 
-                      <input type="checkbox" disabled={isReadOnly} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Select All Phases to shift timeline" />
-                      <input value={project.title} readOnly={isReadOnly} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 min-w-0 ${isReadOnly ? 'cursor-default' : ''}`} />
+                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Select All Phases to shift timeline" />
+                      <input value={project.title} readOnly={isReadOnly || !isAdmin} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 min-w-0 ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} />
                       
-                      {!isReadOnly && (
+                      {!isReadOnly && isAdmin && (
                         <div className="flex items-center shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 md:absolute md:right-0 md:top-0 md:bottom-0 md:pl-10 md:pr-1 md:bg-gradient-to-r from-white/0 via-white to-white group-hover:from-slate-50/0 group-hover:via-slate-50 group-hover:to-slate-50 pointer-events-none *:pointer-events-auto transition-opacity">
                           <button onClick={() => addPhase(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase"><Icons.Plus /></button>
                           
@@ -233,6 +237,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                           </div>
 
                           <button onClick={() => deleteProject(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2 shrink-0" title="Delete Project"><Icons.Trash /></button>
+                          
+                          <button onClick={() => toggleLock(project.id)} className={`p-2 md:p-1 transition-colors mr-2 shrink-0 ${ (globalLocked || project.isLocked) ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-100 md:opacity-0 md:group-hover:opacity-100'}`} title={ (globalLocked || project.isLocked) ? "Unlock Project Dates" : "Lock Project Dates"}>{ (globalLocked || project.isLocked) ? <Icons.Lock /> : <Icons.Unlock />}</button>
+
                           <button onClick={() => toggleProjectVisibility(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-slate-600 shrink-0" title={project.isHidden ? "Unhide Project" : "Hide Project"}>
                             {project.isHidden ? <Icons.Eye /> : <Icons.EyeOff />}
                           </button>
@@ -272,7 +279,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                               handleBlockClick(e, project.id, phase, colorIndex);
                             }}
                             className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block touch-none 
-                              ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                              ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${(globalLocked || project.isLocked || phase.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
                             `}
                             style={{ 
                               left: `${left}px`, 
@@ -281,9 +288,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             }}
                           >
                             <div className="truncate drop-shadow-md flex items-center gap-1">
-                              {phase.isLocked && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)
+                              {(globalLocked || project.isLocked || phase.isLocked) && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)
                             </div>
-                            {!isReadOnly && (
+                            {!isReadOnly && isAdmin && (
                               <>
                                 <div className="resize-handle resize-handle-left touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)} onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
                                 <div className="resize-handle resize-handle-right touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)} onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
@@ -335,9 +342,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 return (
                   <div 
                     key={phase.id} 
-                    draggable={!isReadOnly}
-                    onDragStart={(e) => !isReadOnly && onDragStartPhase(e, project.id, phaseIndex)}
-                    onDragOver={(e) => !isReadOnly && onDragOverPhase(e, project.id, phaseIndex)}
+                    draggable={!isReadOnly && isAdmin && !isResizingCol}
+                    onDragStart={(e) => !isReadOnly && isAdmin && !isResizingCol && onDragStartPhase(e, project.id, phaseIndex)}
+                    onDragOver={(e) => !isReadOnly && isAdmin && onDragOverPhase(e, project.id, phaseIndex)}
                     onDragEnd={onDragEndPhase}
                     className="flex w-full group/phase border-t border-slate-200/50 relative z-10"
                   >
@@ -352,13 +359,12 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         </div>
                       ) : (
                         <div className="flex w-full items-center pl-6 md:pl-8 pr-2 md:pr-3 overflow-hidden">
-                          {!isReadOnly && <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
+                          {!isReadOnly && isAdmin && <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
                           <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
-                          <input type="checkbox" disabled={isReadOnly} checked={selectedPhaseIds.has(phase.id)} onChange={() => togglePhaseSelection(phase.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" />
-                          <input list="standard-phases-list" readOnly={isReadOnly} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${isReadOnly ? 'cursor-default' : ''}`} placeholder="Phase Title" />
-                          {!isReadOnly && (
+                          <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={selectedPhaseIds.has(phase.id)} onChange={() => togglePhaseSelection(phase.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" />
+                          <input list="standard-phases-list" readOnly={isReadOnly || !isAdmin} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} placeholder="Phase Title" />
+                          {!isReadOnly && isAdmin && (
                             <>
-                              <button onClick={() => toggleLock(project.id, phase.id)} className={`p-2 md:p-1 transition-colors ml-1 shrink-0 ${phase.isLocked ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-100 md:opacity-0 md:group-hover/phase:opacity-100'}`} title={phase.isLocked ? "Unlock Dates" : "Lock Dates"}>{phase.isLocked ? <Icons.Lock /> : <Icons.Unlock />}</button>
                               <button onClick={() => removePhase(project.id, phase.id)} className="opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1 shrink-0" title="Delete Phase"><Icons.Trash /></button>
                             </>
                           )}
@@ -380,7 +386,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             handleBlockClick(e, project.id, phase, colorIndex);
                           }}
                           className={`absolute top-[8px] md:top-[6px] h-[32px] md:h-[28px] rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block touch-none 
-                            ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${phase.isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                            ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${(globalLocked || project.isLocked || phase.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
                           `}
                           style={{ 
                             left: `${left}px`, 
@@ -388,15 +394,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, colorIndex) 
                           }}
                         >
-                          <span className="truncate drop-shadow-md flex items-center gap-1">{phase.isLocked && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
-                          {taskCount > 0 && width > 100 && <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>}
+                        <span className="truncate drop-shadow-md flex items-center gap-1">{(globalLocked || project.isLocked || phase.isLocked) && <Icons.Lock className="w-3 h-3" />} {abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                        {taskCount > 0 && width > 100 && <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>}
 
-                          {!isReadOnly && (
-                            <>
-                              <div className="resize-handle resize-handle-left touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)} onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
-                              <div className="resize-handle resize-handle-right touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)} onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
-                            </>
-                          )}
+                        {!isReadOnly && isAdmin && (
+                          <>
+                            <div className="resize-handle resize-handle-left touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)} onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}></div>
+                            <div className="resize-handle resize-handle-right touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)} onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}></div>
+                          </>
+                        )}
                           <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none opacity-80" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
                           <div className="absolute bottom-[2px] left-0 right-0 h-2 pointer-events-none">
                             {(phase.tasks || []).flatMap((task, tIdx) => {
@@ -429,7 +435,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
           <div className="flex w-full mt-2 mb-6">
             <div className="flex-shrink-0 sticky left-0 z-30 px-3 py-2 transition-[width] duration-300 ease-in-out overflow-hidden flex items-center gap-2" style={{ width: currentLeftWidth }}>
-              {!isLeftPanelCollapsed && !isReadOnly && (
+              {!isLeftPanelCollapsed && !isReadOnly && isAdmin && (
                 <>
                   <button onClick={addProject} className="flex items-center justify-center gap-2 w-full border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg p-2 text-sm font-medium transition-colors whitespace-nowrap">
                     <Icons.Plus /> New Project

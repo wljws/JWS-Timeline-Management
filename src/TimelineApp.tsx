@@ -24,11 +24,13 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const [stashedLiveData, setStashedLiveData] = useState<any>(null);
   
   const isReadOnly = actualIsReadOnly || !!viewingSnapshot;
+  const isAdmin = userRole === 'admin';
   const [viewMode, setViewMode] = useState<ViewMode>('projects'); 
   const [zoomLevel, setZoomLevel] = useState(5); 
-  const [hideWeekends, setHideWeekends] = useState(false);
-  const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 240 : 380); 
+  const [hideWeekends, setHideWeekends] = useState(true);
+  const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 160 : 380); 
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
+  const [globalLocked, setGlobalLocked] = useState(false);
   
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
   const [draggedPhase, setDraggedPhase] = useState<{ projectId: string; phaseIndex: number } | null>(null);
@@ -510,8 +512,10 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const handleBlockMouseDown = (e: any, projectId: string, phaseId: string, type: string, origStart: Date | null, origEnd: Date | null, taskId: string | null = null, allocationId: string | null = null, isAdHoc = false, assigneeName: string | null = null) => {
     if(!e.touches) e.preventDefault(); 
     e.stopPropagation();
-    const phase = projects.find(p => p.id === projectId)?.phases.find(ph => ph.id === phaseId);
-    if (phase?.isLocked && !allocationId) return;
+    if (!isAdmin) return; // Only admin can drag/resize
+    const project = projects.find(p => p.id === projectId);
+    const phase = project?.phases.find(ph => ph.id === phaseId);
+    if ((globalLocked || project?.isLocked || phase?.isLocked) && !allocationId) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const gridEl = e.currentTarget.closest('.team-row-container');
     const ppday = (viewMode === 'team' && gridEl) ? (gridEl.getBoundingClientRect().width / 5) : zoomLevel;
@@ -530,118 +534,124 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
 
   const [isResizingCol, setIsResizingCol] = useState(false);
   const [isPoolCollapsed, setIsPoolCollapsed] = useState(false);
+  const resizeRaf = useRef<number | null>(null);
 
   useEffect(() => {
     const handleMove = (e: any) => {
       if (isResizingCol) {
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        setLeftColWidth(Math.round(Math.max(120, Math.min(800, clientX))));
+        if (resizeRaf.current) cancelAnimationFrame(resizeRaf.current);
+        resizeRaf.current = requestAnimationFrame(() => {
+          setLeftColWidth(Math.round(Math.max(120, Math.min(800, clientX))));
+        });
         return;
       }
       if (!draggingBlock) return;
       const clientX = e.touches ? e.touches[0].clientX : e.clientX;
       const deltaX = clientX - draggingBlock.startX;
       const deltaDays = deltaX / draggingBlock.pixelsPerDay;
-      console.log("handleMove", draggingBlock.type, deltaX, deltaDays, draggingBlock.pixelsPerDay);
       if (deltaDays !== 0) {
-        // Collision detection helper
-        const isOverlap = (start: Date, end: Date, currentAssignee: string, ignoreAllocId: string) => {
-          if (!currentAssignee || currentAssignee === 'PROJECT_POOL') return false;
-          
-          // Check other project allocations for this user
-          for (const p of projects) {
-            for (const ph of p.phases) {
-              for (const a of (ph.teamAllocations || [])) {
-                if (a.id === ignoreAllocId) continue;
-                if (a.assignee === currentAssignee) {
-                   if (start < a.end && end > a.start) return true;
+        if (resizeRaf.current) cancelAnimationFrame(resizeRaf.current);
+        resizeRaf.current = requestAnimationFrame(() => {
+          // Collision detection helper
+          const isOverlap = (start: Date, end: Date, currentAssignee: string, ignoreAllocId: string) => {
+            if (!currentAssignee || currentAssignee === 'PROJECT_POOL') return false;
+            
+            // Check other project allocations for this user
+            for (const p of projects) {
+              for (const ph of p.phases) {
+                for (const a of (ph.teamAllocations || [])) {
+                  if (a.id === ignoreAllocId) continue;
+                  if (a.assignee === currentAssignee) {
+                    if (start < a.end && end > a.start) return true;
+                  }
                 }
               }
             }
-          }
-          // Check adhoc tasks for this user
-          for (const t of adHocTasks) {
-            if (t.id === ignoreAllocId) continue;
-            if (t.assignee === currentAssignee && t.start && t.end) {
-              if (start < t.end && end > t.start) return true;
+            // Check adhoc tasks for this user
+            for (const t of adHocTasks) {
+              if (t.id === ignoreAllocId) continue;
+              if (t.assignee === currentAssignee && t.start && t.end) {
+                if (start < t.end && end > t.start) return true;
+              }
             }
-          }
-          return false;
-        };
+            return false;
+          };
 
-        setProjects(prev => prev.map(p => ({
-          ...p, phases: p.phases.map(ph => {
-            const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && (b.projectId ? b.projectId === p.id : true));
-            if (!block) return ph;
-            
-            if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
-              const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-              const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
-              const newStart = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
-              const newEnd = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
-              return { ...ph, start: newStart, end: newEnd };
+          setProjects(prev => prev.map(p => ({
+            ...p, phases: p.phases.map(ph => {
+              const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && (b.projectId ? b.projectId === p.id : true));
+              if (!block) return ph;
+              
+              if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
+                const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+                const newStart = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+                const newEnd = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
+                return { ...ph, start: newStart, end: newEnd };
+              }
+              if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
+                const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                return { ...ph, start: getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends) };
+              }
+              if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
+                const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+                return { ...ph, end: getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends) };
+              }
+              
+              if (block.taskId && block.allocationId) {
+                return {
+                  ...ph,
+                  teamAllocations: (ph.teamAllocations || []).map(a => {
+                    if (a.id !== block.allocationId) return a;
+                    let ns = a.start, ne = a.end;
+                    const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                    const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+
+                    if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                      ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+                      ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
+                    } else if (draggingBlock.type === 'resize-alloc-right') {
+                      ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
+                    } else if (draggingBlock.type === 'resize-alloc-left') {
+                      ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+                    }
+                    if (ne && ns && ne < ns) ne = ns;
+                    
+                    // Apply collision constraint
+                    if (isOverlap(ns, ne, block.assigneeName, block.allocationId)) return a;
+
+                    return { ...a, start: ns, end: ne };
+                  })
+                };
+              }
+              return ph;
+            })
+          })));
+          
+          setAdHocTasks(prev => prev.map(t => {
+            const block = draggingBlock.blocksToMove.find((b: any) => b.isAdHoc && b.taskId === t.id);
+            if (!block) return t;
+            let ns = t.start || new Date(), ne = t.end || new Date();
+            const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+            const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+
+            if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+              ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
+              ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
+            } else if (draggingBlock.type === 'resize-alloc-right') {
+              ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
+            } else if (draggingBlock.type === 'resize-alloc-left') {
+              ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
             }
-            if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
-              const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-              return { ...ph, start: getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends) };
-            }
-            if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
-              const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
-              return { ...ph, end: getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends) };
-            }
-            
-            if (block.taskId && block.allocationId) {
-               return {
-                 ...ph,
-                 teamAllocations: (ph.teamAllocations || []).map(a => {
-                   if (a.id !== block.allocationId) return a;
-                   let ns = a.start, ne = a.end;
-                   const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-                   const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+            if (ne < ns) ne = ns;
 
-                   if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-                     ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
-                     ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
-                   } else if (draggingBlock.type === 'resize-alloc-right') {
-                     ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
-                   } else if (draggingBlock.type === 'resize-alloc-left') {
-                     ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
-                   }
-                   if (ne && ns && ne < ns) ne = ns;
-                   
-                   // Apply collision constraint
-                   if (isOverlap(ns, ne, block.assigneeName, block.allocationId)) return a;
+            // Apply collision constraint
+            if (isOverlap(ns, ne, block.assigneeName, t.id)) return t;
 
-                   return { ...a, start: ns, end: ne };
-                 })
-               };
-            }
-            return ph;
-          })
-        })));
-        
-        setAdHocTasks(prev => prev.map(t => {
-          const block = draggingBlock.blocksToMove.find((b: any) => b.isAdHoc && b.taskId === t.id);
-          if (!block) return t;
-          let ns = t.start || new Date(), ne = t.end || new Date();
-          const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-          const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
-
-          if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-            ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
-            ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
-          } else if (draggingBlock.type === 'resize-alloc-right') {
-            ne = getDateFromOffset(timelineStart, endOffset + Math.round(deltaDays), hideWeekends);
-          } else if (draggingBlock.type === 'resize-alloc-left') {
-            ns = getDateFromOffset(timelineStart, startOffset + Math.round(deltaDays), hideWeekends);
-          }
-          if (ne < ns) ne = ns;
-
-          // Apply collision constraint
-          if (isOverlap(ns, ne, block.assigneeName, t.id)) return t;
-
-          return { ...t, start: ns, end: ne };
-        }));
+            return { ...t, start: ns, end: ne };
+          }));
+        });
       }
     };
     const handleUp = () => { setIsResizingCol(false); setDraggingBlock(null); };
@@ -746,12 +756,20 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     setDraggedProjectId(projectId);
     e.dataTransfer.effectAllowed = "move";
   };
+  const lastDragUpdate = useRef(0);
   const onDragOverRow = (e: any, targetProjectId: string) => {
     e.preventDefault();
     if (!draggedProjectId || draggedProjectId === targetProjectId) return;
+    
+    // Throttle updates to 16ms (approx 60fps) to prevent lag
+    const now = Date.now();
+    if (now - lastDragUpdate.current < 16) return;
+    lastDragUpdate.current = now;
+
     const draggedIdx = projects.findIndex(p => p.id === draggedProjectId);
     const targetIdx = projects.findIndex(p => p.id === targetProjectId);
-    if (draggedIdx === -1 || targetIdx === -1) return;
+    if (draggedIdx === -1 || targetIdx === -1 || draggedIdx === targetIdx) return;
+    
     const newProjects = [...projects];
     const [draggedItem] = newProjects.splice(draggedIdx, 1);
     newProjects.splice(targetIdx, 0, draggedItem);
@@ -833,6 +851,12 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     e.preventDefault();
     e.stopPropagation();
     if (!draggedPhase || draggedPhase.projectId !== projectId || draggedPhase.phaseIndex === targetIndex) return;
+
+    // Throttle updates
+    const now = Date.now();
+    if (now - lastDragUpdate.current < 16) return;
+    lastDragUpdate.current = now;
+
     setProjects(prev => prev.map(p => {
       if (p.id === projectId) {
         const newPhases = [...p.phases];
@@ -912,11 +936,28 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     setDraggedTeamItem(null);
   };
   const toggleProjectVisibility = (id: string) => { recordHistory(); setProjects(prev => prev.map(p => p.id === id ? { ...p, isHidden: !p.isHidden } : p)); };
-  const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, isLocked: false, start: null, end: null, milestones: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
+  const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, isLocked: false, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, isLocked: false, start: null, end: null, milestones: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
   const deleteProject = (id: string) => { recordHistory(); setProjects(projects.filter(p => p.id !== id)); };
   const addPhase = (pId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', isLocked: false, assignees: [], start: null, end: null, tasks: [], milestones: [] }] } : p)); };
   const removePhase = (pId: string, phId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.filter(ph => ph.id !== phId) } : p)); if (modalData?.phase.id === phId) setModalData(null); };
-  const toggleLock = (pId: string, phId: string) => { setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, isLocked: !ph.isLocked } : ph) } : p)); };
+  const toggleLock = (pId: string, phId?: string) => { 
+    if (!isAdmin) return;
+    setProjects(projects.map(p => {
+      if (p.id === pId) {
+        if (phId) {
+          return { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, isLocked: !ph.isLocked } : ph) };
+        } else {
+          return { ...p, isLocked: !p.isLocked };
+        }
+      }
+      return p;
+    }));
+  };
+  
+  const toggleGlobalLock = () => {
+    if (!isAdmin) return;
+    setGlobalLocked(!globalLocked);
+  };
   
   const editPhaseTitle = (pId: string, phId: string, title: string) => { setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, title } : ph) } : p)); if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, title } }); };
   const updatePhaseAssignees = (pId: string, phId: string, assignees: string[]) => {
@@ -1103,6 +1144,16 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             </button>
           </div>
 
+          {isAdmin && (
+            <button 
+              onClick={toggleGlobalLock}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] md:text-xs font-bold transition-all border ${globalLocked ? 'bg-amber-500/20 border-amber-500/50 text-amber-500' : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white hover:border-slate-500'}`}
+              title={globalLocked ? "Unlock All Projects" : "Lock All Projects"}
+            >
+              {globalLocked ? <><Icons.Lock className="w-3.5 h-3.5" /> MASTER LOCKED</> : <><Icons.Unlock className="w-3.5 h-3.5" /> MASTER UNLOCKED</>}
+            </button>
+          )}
+
           <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
             <div className={`px-2 py-1 flex items-center gap-1 text-[10px] md:text-xs font-medium ${syncStatus === 'Synced' ? 'text-green-400' : 'text-slate-400'}`}>
               {syncStatus === 'Saving...' ? <Icons.Spinner /> : <Icons.CloudCheck />} 
@@ -1221,10 +1272,11 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       {viewMode === 'projects' && (
         <ProjectView
           visibleProjects={projects.filter(p => showHiddenProjects || !p.isHidden)}
+          isAdmin={isAdmin} globalLocked={globalLocked}
           currentLeftWidth={currentLeftWidth} gridWidth={gridWidth} weeks={weeks} zoomLevel={zoomLevel}
           timelineStart={timelineStart} today={today} totalDays={totalDays} hideWeekends={hideWeekends}
           isLeftPanelCollapsed={isLeftPanelCollapsed} setIsLeftPanelCollapsed={setIsLeftPanelCollapsed}
-          setIsResizingCol={setIsResizingCol} scrollContainerRef={scrollContainerRef} isReadOnly={isReadOnly}
+          isResizingCol={isResizingCol} setIsResizingCol={setIsResizingCol} scrollContainerRef={scrollContainerRef} isReadOnly={isReadOnly}
           draggedProjectId={draggedProjectId} onDragStartRow={onDragStartRow} onDragOverRow={onDragOverRow} onDragEndRow={onDragEndRow}
           toggleProjectExpand={toggleProjectExpand} updateProjectColor={updateProjectColor} updateProjectTitle={updateProjectTitle}
           addPhase={addPhase} copyProjectMenuId={copyProjectMenuId} setCopyProjectMenuId={setCopyProjectMenuId}
@@ -1240,7 +1292,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       )}
       {viewMode === 'team' && (
         <TeamView
-          teamViewData={teamViewData} currentLeftWidth={currentLeftWidth} isLeftPanelCollapsed={isLeftPanelCollapsed}
+          teamViewData={teamViewData} isAdmin={isAdmin} globalLocked={globalLocked} 
+          currentLeftWidth={currentLeftWidth} isLeftPanelCollapsed={isLeftPanelCollapsed}
           setIsLeftPanelCollapsed={setIsLeftPanelCollapsed} isReadOnly={isReadOnly} currentTeamWeekStart={currentTeamWeekStart}
           jumpToEarliestTask={() => {}} prevWeek={() => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, -7))}
           nextWeek={() => setCurrentTeamWeekStart(addDays(currentTeamWeekStart, 7))} today={today}

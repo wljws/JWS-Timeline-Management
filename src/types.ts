@@ -48,6 +48,7 @@ export interface Project {
   color: string;
   isExpanded: boolean;
   isHidden?: boolean;
+  isLocked?: boolean;
   syncId?: string | null;
   phases: Phase[];
 }

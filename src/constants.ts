@@ -32,6 +32,7 @@ export const generateDefaultProjects = (): Project[] => ([
     title: 'Project Template',
     color: 'blue',
     isExpanded: true,
+    isLocked: false,
     phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
       id: `ph_${i}`,
       title: t.title,

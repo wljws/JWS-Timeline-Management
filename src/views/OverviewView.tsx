@@ -1,5 +1,6 @@
 import React from 'react';
 import { Collection, Project } from '../types';
+import { Icons } from '../icons';
 import { diffDays, formatDate, addDays, getDayOffset, countVisibleDays } from '../utils';
 import { getIndicatorColor, getPhaseColor } from '../constants';
 
@@ -25,7 +26,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, phaseColors
 }) => {
   return (
-    <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative" ref={scrollContainerRef}>
+    <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative touch-pan-x touch-pan-y" ref={scrollContainerRef}>
       <div className="relative min-w-full w-max min-h-full">
         
         {/* Grid Background */}
@@ -150,7 +151,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                                   }}
                                   title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
                                 >
-                                  <div className="truncate drop-shadow-md">
+                                  <div className="truncate drop-shadow-md flex items-center gap-1">
+                                    {project.isLocked && <Icons.Lock className="w-2.5 h-2.5 shrink-0 text-amber-300" />}
                                     {phase.title} ({durationWeeks}w)
                                   </div>
                                   <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none opacity-80" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>

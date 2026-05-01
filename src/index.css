@@ -17,8 +17,13 @@ html, body {
 }
 
 /* Mobile DnD & Touch Action */
-[draggable="true"] { touch-action: pan-y; } 
+[draggable="true"] { touch-action: pan-x pan-y; } 
 .drag-handle { touch-action: none; } 
+
+#timeline-scroll-container {
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+}
 
 /* Custom Scrollbar */
 @media (min-width: 768px) {
@@ -97,10 +102,10 @@ html, body {
 
 .col-resizer {
     position: absolute;
-    right: -3px;
+    right: -10px;
     top: 0;
     bottom: 0;
-    width: 12px; 
+    width: 20px; 
     cursor: col-resize;
     background-color: transparent;
     z-index: 50;
@@ -111,7 +116,7 @@ html, body {
 .col-resizer::after {
     content: '';
     position: absolute;
-    left: 5px;
+    left: 9px;
     top: 0;
     bottom: 0;
     width: 2px;

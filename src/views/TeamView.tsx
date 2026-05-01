@@ -9,6 +9,8 @@ interface TeamViewProps {
   isLeftPanelCollapsed: boolean;
   setIsLeftPanelCollapsed: (collapsed: boolean) => void;
   isReadOnly: boolean;
+  isAdmin: boolean;
+  globalLocked: boolean;
   currentTeamWeekStart: Date;
   jumpToEarliestTask: () => void;
   prevWeek: () => void;
@@ -44,7 +46,8 @@ interface TeamViewProps {
 }
 
 export const TeamView: React.FC<TeamViewProps> = ({
-  teamViewData, currentLeftWidth, isLeftPanelCollapsed, setIsLeftPanelCollapsed, isReadOnly,
+  teamViewData, currentLeftWidth, isLeftPanelCollapsed, setIsLeftPanelCollapsed, 
+  isReadOnly, isAdmin, globalLocked,
   currentTeamWeekStart, jumpToEarliestTask, prevWeek, nextWeek, today,
   draggedTeamMemberName, onDragStartTeamMember, onDragOverTeamMember, onDragEndTeamMember,
   teamMembers, editingMember, setEditingMember, updateTeamMemberName, toggleTeamMemberLock,
@@ -90,7 +93,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
         </div>
       </div>
 
-      <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative">
+      <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative touch-pan-x touch-pan-y">
         <div className="relative min-w-full w-max min-h-full flex flex-col">
           <div className="flex sticky top-0 z-40 h-[60px] w-full min-w-full bg-white border-b border-slate-300 shadow-sm">
             <div className="flex-shrink-0 sticky left-0 z-50 bg-slate-50 border-r border-slate-300 flex flex-row shadow-[2px_0_5px_rgba(0,0,0,0.05)] transition-[width] duration-300 ease-in-out" style={{ width: currentLeftWidth }}>
@@ -139,9 +142,9 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 style={{ 
                   minHeight: assignee.name === 'PROJECT_POOL' ? (isPoolCollapsed ? '32px' : `${Math.max(40, 80 * rowScale)}px`) : `${baseRowHeight}px` 
                 }}
-                draggable={!isReadOnly && assignee.name !== 'Unassigned' && !isLocked}
-                onDragStart={(e) => !isReadOnly && onDragStartTeamMember(e, assignee.name)}
-                onDragOver={(e) => !isReadOnly && onDragOverTeamMember(e, assignee.name)}
+                draggable={!isReadOnly && isAdmin && assignee.name !== 'Unassigned' && !isLocked}
+                onDragStart={(e) => !isReadOnly && isAdmin && onDragStartTeamMember(e, assignee.name)}
+                onDragOver={(e) => !isReadOnly && isAdmin && onDragOverTeamMember(e, assignee.name)}
                 onDragEnd={onDragEndTeamMember}
               >
                 <div 
@@ -221,7 +224,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                               <Icons.Target className={`${isPoolCollapsed ? 'w-3 h-3' : 'w-[18px] h-[18px]'}`} />
                             </div>
                             <h3 className={`font-bold text-center leading-tight truncate text-slate-600 ${isPoolCollapsed ? 'text-[10px]' : 'text-[10px] md:text-sm w-full'}`}>All Projects</h3>
-                            {!isReadOnly && !isPoolCollapsed && <button onClick={() => addAdHocTask('PROJECT_POOL')} className="mt-0.5 p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Add Unassigned Task"><Icons.Plus className="w-3 h-3 md:w-4 h-4" /></button>}
+                            {!isReadOnly && isAdmin && !isPoolCollapsed && <button onClick={() => addAdHocTask('PROJECT_POOL')} className="mt-0.5 p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Add Unassigned Task"><Icons.Plus className="w-3 h-3 md:w-4 h-4" /></button>}
                             <button 
                               onClick={() => setIsPoolCollapsed(!isPoolCollapsed)}
                               className={`absolute right-1 top-1 p-1 text-slate-400 hover:text-slate-600 transition-transform ${isPoolCollapsed ? 'rotate-180' : ''}`}
@@ -233,12 +236,12 @@ export const TeamView: React.FC<TeamViewProps> = ({
                         </>
                       ) : (
                         <div className="flex flex-col items-center justify-center w-full h-full relative group/personnel-cell">
-                          {!isReadOnly && <div className={`absolute top-0 left-0 w-4 h-4 flex justify-center items-center opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 z-50 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}><Icons.Grip className="w-2.5 h-2.5" /></div>}
-                          {!isReadOnly && assignee.name !== 'Unassigned' && (
+                          {!isReadOnly && isAdmin && <div className={`absolute top-0 left-0 w-4 h-4 flex justify-center items-center opacity-0 group-hover/teamrow:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 z-50 ${assignee.name === 'Unassigned' || isLocked ? 'hidden' : ''}`}><Icons.Grip className="w-2.5 h-2.5" /></div>}
+                          {!isReadOnly && isAdmin && assignee.name !== 'Unassigned' && (
                             <div className="absolute top-0 right-0 opacity-0 group-hover/personnel-cell:opacity-100 transition-opacity z-50 flex flex-col gap-0.5">
                               <button onClick={(e) => { e.stopPropagation(); addAdHocTask(assignee.name); }} className="p-0.5 text-blue-500 hover:bg-blue-50 rounded" title="Add Manual Task"><Icons.Plus className="w-3 h-3" /></button>
                               <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamMember(assignee.name); }} className="p-0.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="Remove Member"><Icons.Trash className="w-3 h-3" /></button>
-                              <button onClick={(e) => { e.stopPropagation(); toggleTeamMemberLock(assignee.name); }} className={`p-0.5 rounded ${isLocked ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`} title={isLocked ? "Unlock" : "Lock"}>{isLocked ? <Icons.Lock className="w-3 h-3" /> : <Icons.Unlock className="w-3 h-3" />}</button>
+                              <button onClick={(e) => { e.stopPropagation(); toggleTeamMemberLock(assignee.name); }} className={`p-0.5 rounded ${ (globalLocked || isLocked) ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`} title={ (globalLocked || isLocked) ? "Unlock" : "Lock"}>{ (globalLocked || isLocked) ? <Icons.Lock className="w-3 h-3" /> : <Icons.Unlock className="w-3 h-3" />}</button>
                             </div>
                           )}
                           
@@ -274,10 +277,10 @@ export const TeamView: React.FC<TeamViewProps> = ({
                               />
                             ) : (
                               <h3 
-                                className={`font-bold text-center leading-tight w-full truncate ${fontSizeClass} ${assignee.name === 'Unassigned' || isLocked ? 'text-slate-500 italic' : (isReadOnly ? 'text-slate-800' : 'text-slate-800 cursor-text hover:text-blue-600 hover:underline decoration-dotted underline-offset-2')}`} 
-                                title={assignee.name === 'Unassigned' || isLocked || isReadOnly ? assignee.name : "Click to edit name"}
+                                className={`font-bold text-center leading-tight w-full truncate ${fontSizeClass} ${assignee.name === 'Unassigned' || isLocked || globalLocked ? 'text-slate-500 italic' : (isReadOnly || !isAdmin ? 'text-slate-800' : 'text-slate-800 cursor-text hover:text-blue-600 hover:underline decoration-dotted underline-offset-2')}`} 
+                                title={assignee.name === 'Unassigned' || isLocked || globalLocked || isReadOnly || !isAdmin ? assignee.name : "Click to edit name"}
                                 onClick={(e) => {
-                                  if (!isReadOnly && assignee.name !== 'Unassigned' && !isLocked) {
+                                  if (!isReadOnly && isAdmin && assignee.name !== 'Unassigned' && !isLocked && !globalLocked) {
                                     e.stopPropagation();
                                     setEditingMember({ oldName: assignee.name, newName: assignee.name });
                                   }
@@ -415,13 +418,14 @@ export const TeamView: React.FC<TeamViewProps> = ({
                             <div className="flex justify-between items-center gap-1 h-full pr-4">
                               <div className={`truncate drop-shadow-md font-bold flex items-center gap-1 w-full ${zoomLevel < 30 ? 'text-[10px]' : fontSizeClass}`}>
                                 {!item.isAdHoc && item.project.syncId && <Icons.Link className="w-3 h-3 shrink-0" />}
+                                {(globalLocked || item.project.isLocked) && <Icons.Lock className="w-3 h-3 shrink-0 text-amber-300" />}
                                 <span className="truncate">{item.project.title}</span>
                               </div>
                               {totalSub > 0 && <div className={`${zoomLevel < 30 ? 'text-[8px] px-1' : 'text-[10px] px-1.5'} bg-black/30 py-0.5 rounded-sm font-semibold shrink-0`}>{doneSub}/{totalSub}</div>}
                             </div>
                             {item.isAdHoc && <div className={`truncate drop-shadow-md font-medium opacity-95 ${smallFontSizeClass}`}>{item.task.text}</div>}
                             
-                            {!isReadOnly && (
+                            {!isReadOnly && isAdmin && (
                                 <button 
                                   onClick={(e) => { e.stopPropagation(); handleDeleteFromPool(item); }} 
                                   className="absolute right-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/scheduledblock:opacity-100 text-white hover:text-red-300 z-50 bg-black/20 rounded p-0.5 transition-opacity pointer-events-auto"
@@ -432,7 +436,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                             )}
                           </div>
                           
-                          {!isReadOnly && (
+                          {!isReadOnly && isAdmin && (
                             <>
                               <div className="resize-handle resize-handle-left touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, item.project.id, item.phase.id, 'resize-alloc-left', item.allocation.start, item.allocation.end, item.task.id, item.allocation.id, item.isAdHoc, assignee.name)} onTouchStart={(e) => handleBlockMouseDown(e, item.project.id, item.phase.id, 'resize-alloc-left', item.allocation.start, item.allocation.end, item.task.id, item.allocation.id, item.isAdHoc, assignee.name)}></div>
                               <div className="resize-handle resize-handle-right touch-none drag-handle" onMouseDown={(e) => handleBlockMouseDown(e, item.project.id, item.phase.id, 'resize-alloc-right', item.allocation.start, item.allocation.end, item.task.id, item.allocation.id, item.isAdHoc, assignee.name)} onTouchStart={(e) => handleBlockMouseDown(e, item.project.id, item.phase.id, 'resize-alloc-right', item.allocation.start, item.allocation.end, item.task.id, item.allocation.id, item.isAdHoc, assignee.name)}></div>
@@ -454,7 +458,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
               <div className="flex-shrink-0 sticky left-0 z-30 flex transition-[width] duration-300 ease-in-out overflow-hidden" style={{ width: currentLeftWidth }}>
                 {!isLeftPanelCollapsed && <div className="flex-1 border-r border-slate-200/50"></div>}
                 <div className={`${isLeftPanelCollapsed ? 'w-full' : 'w-[35%] min-w-[90px]'} p-2 transition-all duration-300 ease-in-out`}>
-                  {!isReadOnly && (
+                  {!isReadOnly && isAdmin && (
                     isLeftPanelCollapsed ? (
                       <button onClick={() => setIsLeftPanelCollapsed(false)} className="flex items-center justify-center w-full h-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-500 rounded transition-colors text-xs" title="Expand to add team members"><Icons.Plus /></button>
                     ) : isAddingTeamMember ? (

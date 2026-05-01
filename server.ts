@@ -76,35 +76,68 @@ async function startServer() {
     }
   });
 
-  // n8n Integration Webhook (Option 1)
-  // This endpoint allows n8n to push updates to the timeline.
-  app.post("/api/webhook/n8n", async (req, res) => {
+  // n8n Integration Webhook
+  // Authentication: Headers['x-api-key'] must match N8N_API_KEY env var
+  const checkAuth = (req: any, res: any, next: any) => {
+    const apiKey = req.headers['x-api-key'];
+    const expectedKey = process.env.N8N_API_KEY || "temp-n8n-key-123"; // Fallback for dev
+    if (!apiKey || apiKey !== expectedKey) {
+      return res.status(401).json({ error: "Unauthorized: Invalid or missing x-api-key" });
+    }
+    next();
+  };
+
+  // GET current timeline data for n8n
+  app.get("/api/webhook/n8n", checkAuth, async (req, res) => {
     try {
-      const { data, source } = req.body;
+      const data = await kv.get("timeline-app-data");
+      res.json({ success: true, data });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST/EDIT timeline data from n8n
+  app.post("/api/webhook/n8n", checkAuth, async (req, res) => {
+    try {
+      const { data, source, action } = req.body;
       
-      if (!data) {
+      if (!data && action !== 'clear') {
         return res.status(400).json({ error: "Missing data in request body" });
       }
 
-      console.log(`Received n8n update from source: ${source || 'unknown'}`);
+      console.log(`Received n8n ${action || 'update'} from source: ${source || 'unknown'}`);
       
       const timestamp = Date.now();
-      const stateToSave = { 
-        collections: typeof data === 'string' ? data : JSON.stringify(data), 
-        timestamp,
-        updatedBy: "n8n"
-      };
+      let stateToSave: any;
+
+      if (action === 'patch') {
+        // Partial update logic could go here if we had a more granular structure
+        // For now, we still save the whole chunk but mark it as a patch
+        const current: any = await kv.get("timeline-app-data") || { collections: "[]" };
+        stateToSave = {
+          ...current,
+          collections: typeof data === 'string' ? data : JSON.stringify(data),
+          timestamp,
+          updatedBy: `n8n-patch-${source || 'unknown'}`
+        };
+      } else {
+        stateToSave = { 
+          collections: typeof data === 'string' ? data : JSON.stringify(data), 
+          timestamp,
+          updatedBy: `n8n-${source || 'unknown'}`
+        };
+      }
 
       await kv.set("timeline-app-data", stateToSave);
       
-      // Also log it in version history
       const snapshotId = `n8n_sync_${timestamp}`;
       await kv.set(snapshotId, stateToSave.collections);
       const snapshots = (await kv.get("all_snapshots") as string[]) || [];
       snapshots.push(snapshotId);
-      await kv.set("all_snapshots", snapshots.slice(-50)); // Keep last 50
+      await kv.set("all_snapshots", snapshots.slice(-50));
 
-      res.json({ success: true, message: "Timeline updated via n8n", timestamp });
+      res.json({ success: true, message: `Timeline ${action || 'updated'} via n8n`, timestamp });
     } catch (error: any) {
       console.error("n8n Webhook Error:", error);
       res.status(500).json({ error: error.message });
