@@ -372,7 +372,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                       )}
                     </div>
 
-                    <div className={`flex-shrink-0 relative h-[48px] md:h-[40px] cursor-crosshair transition-colors ${isSelected ? 'bg-blue-50/20' : 'bg-transparent group-hover/phase:bg-slate-50/40'}`} style={{ width: gridWidth }} onClick={(e) => handleGridClick(e, project.id, phase.id)}>
+                    <div className={`flex-shrink-0 relative h-[48px] md:h-[40px] transition-colors ${isSelected ? 'bg-blue-50/20' : 'bg-transparent group-hover/phase:bg-slate-50/40'} ${isAdmin ? 'cursor-crosshair' : 'cursor-default'}`} style={{ width: gridWidth }} onClick={(e) => isAdmin && handleGridClick(e, project.id, phase.id)}>
                       {hasTimeline && (
                         <div 
                           onMouseDown={(e) => {

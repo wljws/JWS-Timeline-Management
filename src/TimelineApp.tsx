@@ -516,6 +516,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     const project = projects.find(p => p.id === projectId);
     const phase = project?.phases.find(ph => ph.id === phaseId);
     if ((globalLocked || project?.isLocked || phase?.isLocked) && !allocationId) return;
+    if (globalLocked && allocationId) return; // Add this line to lock team blocks too
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const gridEl = e.currentTarget.closest('.team-row-container');
     const ppday = (viewMode === 'team' && gridEl) ? (gridEl.getBoundingClientRect().width / 5) : zoomLevel;

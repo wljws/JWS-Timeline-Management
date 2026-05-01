@@ -80,7 +80,11 @@ async function startServer() {
   // Authentication: Headers['x-api-key'] must match N8N_API_KEY env var
   const checkAuth = (req: any, res: any, next: any) => {
     const apiKey = req.headers['x-api-key'];
-    const expectedKey = process.env.N8N_API_KEY || "temp-n8n-key-123"; // Fallback for dev
+    const expectedKey = process.env.N8N_API_KEY;
+    if (!expectedKey) {
+      console.error("CRITICAL: N8N_API_KEY environment variable is not set.");
+      return res.status(500).json({ error: "Server configuration error: N8N_API_KEY missing" });
+    }
     if (!apiKey || apiKey !== expectedKey) {
       return res.status(401).json({ error: "Unauthorized: Invalid or missing x-api-key" });
     }
