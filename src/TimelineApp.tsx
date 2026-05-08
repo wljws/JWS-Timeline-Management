@@ -499,6 +499,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
 
   const handleGridClick = (e: any, projectId: string, phaseId: string) => {
     if (isReadOnly || e.target !== e.currentTarget || viewMode !== 'projects') return;
+    const project = projects.find(p => p.id === projectId);
+    if (globalLocked || project?.isLocked) return;
+    
     const rect = e.currentTarget.getBoundingClientRect();
     const clickX = e.clientX - rect.left;
     const daysOffset = Math.floor(clickX / zoomLevel);
@@ -540,7 +543,32 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     } else if (isAdHoc) {
       blocksToMove = [{ taskId, origStart, origEnd, isAdHoc, assigneeName }];
     } else {
-      blocksToMove = [{ projectId, phaseId, origStart: origStart!, origEnd: origEnd!, origTasks: phase?.tasks }];
+      // Check if the current phase being dragged is part of a selection
+      if (selectedPhaseIds.has(phaseId)) {
+        // If it is, move all selected phases together (only if they have dates)
+        blocksToMove = projects.flatMap(p => 
+          p.phases.filter(ph => selectedPhaseIds.has(ph.id) && ph.start && ph.end).map(ph => ({
+            projectId: p.id,
+            phaseId: ph.id,
+            origStart: ph.start!,
+            origEnd: ph.end!,
+            origMilestones: ph.milestones || [],
+            origTasks: ph.tasks || [],
+            origAllocations: ph.teamAllocations || []
+          }))
+        );
+      } else {
+        // Otherwise just move the single phase
+        blocksToMove = [{ 
+          projectId, 
+          phaseId, 
+          origStart: origStart!, 
+          origEnd: origEnd!, 
+          origMilestones: phase?.milestones || [],
+          origTasks: phase?.tasks || [],
+          origAllocations: phase?.teamAllocations || []
+        }];
+      }
     }
     setDraggingBlock({ blocksToMove, type, startX: clientX, pixelsPerDay: ppday });
   };
@@ -602,7 +630,30 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                 const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
                 const newStart = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
                 const newEnd = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-                return { ...ph, start: newStart, end: newEnd };
+                
+                const shiftedMilestones = (block.origMilestones || []).map((m: any) => ({
+                  ...m,
+                  date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
+                }));
+                
+                const shiftedTasks = (block.origTasks || []).map((t: any) => ({
+                  ...t,
+                  start: t.start ? getDateFromOffset(timelineStart, getDayOffset(timelineStart, t.start, hideWeekends) + snappedDelta, hideWeekends) : null,
+                  end: t.end ? getDateFromOffset(timelineStart, getDayOffset(timelineStart, t.end, hideWeekends) + snappedDelta, hideWeekends) : null,
+                  allocations: (t.allocations || []).map((a: any) => ({
+                    ...a,
+                    start: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.start, hideWeekends) + snappedDelta, hideWeekends),
+                    end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
+                  }))
+                }));
+                
+                const shiftedAllocations = (block.origAllocations || []).map((a: any) => ({
+                  ...a,
+                  start: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.start, hideWeekends) + snappedDelta, hideWeekends),
+                  end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
+                }));
+                
+                return { ...ph, start: newStart, end: newEnd, milestones: shiftedMilestones, tasks: shiftedTasks, teamAllocations: shiftedAllocations };
               }
               if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
                 const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
@@ -974,17 +1025,57 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, assignees } });
   };
   const updatePhaseDates = (pId: string, phId: string, start: string, end: string) => {
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+    
     const s = fromYMD(start); const e = fromYMD(end);
     setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, start: s, end: e } : ph) } : p));
     if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, start: s, end: e } });
   };
 
-  const addPhaseMilestone = (pId: string, phId: string) => { recordHistory(); const m = { id: generateId(), date: new Date(), label: 'New Milestone' }; setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: [...(ph.milestones || []), m] } : ph) } : p)); if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: [...(modalData.phase.milestones || []), m] } }); };
-  const updatePhaseMilestoneLabel = (pId: string, phId: string, mId: string, label: string) => { setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.map(ms => ms.id === mId ? { ...ms, label } : ms) } : ph) } : p)); if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.map((ms: any) => ms.id === mId ? { ...ms, label } : ms) } }); };
-  const updatePhaseMilestoneDate = (pId: string, phId: string, mId: string, date: string) => { const d = fromYMD(date); setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.map(ms => ms.id === mId ? { ...ms, date: d! } : ms) } : ph) } : p)); if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.map((ms: any) => ms.id === mId ? { ...ms, date: d! } : ms) } }); };
-  const removePhaseMilestone = (pId: string, phId: string, mId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.filter(ms => ms.id !== mId) } : ph) } : p)); if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.filter((ms: any) => ms.id !== mId) } }); };
+  const addPhaseMilestone = (pId: string, phId: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+    
+    recordHistory(); 
+    const m = { id: generateId(), date: new Date(), label: 'New Milestone' }; 
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: [...(ph.milestones || []), m] } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: [...(modalData.phase.milestones || []), m] } }); 
+  };
+  const updatePhaseMilestoneLabel = (pId: string, phId: string, mId: string, label: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.map(ms => ms.id === mId ? { ...ms, label } : ms) } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.map((ms: any) => ms.id === mId ? { ...ms, label } : ms) } }); 
+  };
+  const updatePhaseMilestoneDate = (pId: string, phId: string, mId: string, date: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    const d = fromYMD(date); 
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.map(ms => ms.id === mId ? { ...ms, date: d! } : ms) } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.map((ms: any) => ms.id === mId ? { ...ms, date: d! } : ms) } }); 
+  };
+  const removePhaseMilestone = (pId: string, phId: string, mId: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    recordHistory(); 
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.filter(ms => ms.id !== mId) } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.filter((ms: any) => ms.id !== mId) } }); 
+  };
 
   const updateTasksInState = (tasks: Task[]) => {
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === modalData.projectId);
+    if (globalLocked || project?.isLocked) return;
+    
     setProjects(projects.map(p => p.id === modalData.projectId ? { ...p, phases: p.phases.map(ph => ph.id === modalData.phase.id ? { ...ph, tasks } : ph) } : p));
     setModalData({ ...modalData, phase: { ...modalData.phase, tasks } });
   };
@@ -1370,6 +1461,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       {modalData && (
         <PhaseModal
           modalData={modalData} activeProject={projects.find(p => p.id === modalData.projectId)!} isReadOnly={isReadOnly}
+          isAdmin={isAdmin} globalLocked={globalLocked}
           selectedTaskIdsToCopy={selectedTaskIdsToCopy} setSelectedTaskIdsToCopy={setSelectedTaskIdsToCopy}
           copiedScope={copiedScope} setCopiedScope={setCopiedScope} setModalData={setModalData}
           editPhaseTitle={editPhaseTitle} updatePhaseAssignees={updatePhaseAssignees} updatePhaseDates={updatePhaseDates} addPhaseMilestone={addPhaseMilestone}

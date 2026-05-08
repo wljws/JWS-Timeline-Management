@@ -163,9 +163,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
             return (
             <div 
               key={project.id}
-              draggable={!isReadOnly && isAdmin && !isResizingCol}
-              onDragStart={(e) => !isReadOnly && isAdmin && !isResizingCol && onDragStartRow(e, project.id)}
-              onDragOver={(e) => !isReadOnly && isAdmin && onDragOverRow(e, project.id)}
+              draggable={!isReadOnly && isAdmin && !isResizingCol && !globalLocked}
+              onDragStart={(e) => !isReadOnly && isAdmin && !isResizingCol && !globalLocked && onDragStartRow(e, project.id)}
+              onDragOver={(e) => !isReadOnly && isAdmin && !globalLocked && onDragOverRow(e, project.id)}
               onDragEnd={onDragEndRow}
               className={`flex flex-col relative border-b border-slate-200 bg-transparent hover:z-40 ${draggedProjectId === project.id ? 'opacity-50 bg-slate-100 z-50' : 'z-10'}`}
             >
@@ -342,9 +342,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 return (
                   <div 
                     key={phase.id} 
-                    draggable={!isReadOnly && isAdmin && !isResizingCol}
-                    onDragStart={(e) => !isReadOnly && isAdmin && !isResizingCol && onDragStartPhase(e, project.id, phaseIndex)}
-                    onDragOver={(e) => !isReadOnly && isAdmin && onDragOverPhase(e, project.id, phaseIndex)}
+                    draggable={!isReadOnly && isAdmin && !isResizingCol && !project.isLocked && !globalLocked}
+                    onDragStart={(e) => !isReadOnly && isAdmin && !isResizingCol && !project.isLocked && !globalLocked && onDragStartPhase(e, project.id, phaseIndex)}
+                    onDragOver={(e) => !isReadOnly && isAdmin && !project.isLocked && !globalLocked && onDragOverPhase(e, project.id, phaseIndex)}
                     onDragEnd={onDragEndPhase}
                     className="flex w-full group/phase border-t border-slate-200/50 relative z-10"
                   >
@@ -359,11 +359,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         </div>
                       ) : (
                         <div className="flex w-full items-center pl-6 md:pl-8 pr-2 md:pr-3 overflow-hidden">
-                          {!isReadOnly && isAdmin && <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
+                          {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
                           <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
                           <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={selectedPhaseIds.has(phase.id)} onChange={() => togglePhaseSelection(phase.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" />
-                          <input list="standard-phases-list" readOnly={isReadOnly || !isAdmin} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} placeholder="Phase Title" />
-                          {!isReadOnly && isAdmin && (
+                          <input list="standard-phases-list" readOnly={isReadOnly || !isAdmin || project.isLocked || globalLocked} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${(isReadOnly || !isAdmin || project.isLocked || globalLocked) ? 'cursor-default' : ''}`} placeholder="Phase Title" />
+                          {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && (
                             <>
                               <button onClick={() => removePhase(project.id, phase.id)} className="opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1 shrink-0" title="Delete Phase"><Icons.Trash /></button>
                             </>
@@ -372,7 +372,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                       )}
                     </div>
 
-                    <div className={`flex-shrink-0 relative h-[48px] md:h-[40px] transition-colors ${isSelected ? 'bg-blue-50/20' : 'bg-transparent group-hover/phase:bg-slate-50/40'} ${isAdmin ? 'cursor-crosshair' : 'cursor-default'}`} style={{ width: gridWidth }} onClick={(e) => isAdmin && handleGridClick(e, project.id, phase.id)}>
+                    <div className={`flex-shrink-0 relative h-[48px] md:h-[40px] transition-colors ${isSelected ? 'bg-blue-50/20' : 'bg-transparent group-hover/phase:bg-slate-50/40'} ${isAdmin && !project.isLocked && !globalLocked ? 'cursor-crosshair' : 'cursor-default'}`} style={{ width: gridWidth }} onClick={(e) => isAdmin && handleGridClick(e, project.id, phase.id)}>
                       {hasTimeline && (
                         <div 
                           onMouseDown={(e) => {

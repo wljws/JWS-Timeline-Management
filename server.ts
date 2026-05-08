@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { createClient } from "@vercel/kv";
@@ -18,22 +19,11 @@ const kv = createClient({
 const app = express();
 const PORT = 3000;
 
+app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 // n8n Integration Webhook
-// Authentication: Headers['x-api-key'] or query param 'key' must match N8N_API_KEY env var
-const checkAuth = (req: any, res: any, next: any) => {
-  const apiKey = req.headers['x-api-key'] || req.query.key;
-  const expectedKey = process.env.N8N_API_KEY || "n8n_jws_wangcommon_123";
-  if (!expectedKey) {
-    console.error("CRITICAL: N8N_API_KEY environment variable is not set.");
-    return res.status(500).json({ error: "Server configuration error: N8N_API_KEY missing" });
-  }
-  if (!apiKey || apiKey !== expectedKey) {
-    return res.status(401).json({ error: "Unauthorized: Invalid or missing authentication key" });
-  }
-  next();
-};
+// Authentication removed for simplification as requested.
 
 // API to save snapshot
 app.post("/api/save-snapshot", async (req, res) => {
@@ -91,7 +81,7 @@ app.get("/api/history", async (req, res) => {
 });
 
 // GET current timeline data for n8n
-app.get("/api/webhook/n8n", checkAuth, async (req, res) => {
+app.get(["/api/webhook/n8n", "/api/n8n-sync"], async (req, res) => {
   try {
     const data = await kv.get("timeline-app-data");
     res.json({ success: true, data });
@@ -101,7 +91,7 @@ app.get("/api/webhook/n8n", checkAuth, async (req, res) => {
 });
 
 // POST/EDIT timeline data from n8n
-app.post("/api/webhook/n8n", checkAuth, async (req, res) => {
+app.post(["/api/webhook/n8n", "/api/n8n-sync"], async (req, res) => {
   try {
     const { data, source, action } = req.body;
     
