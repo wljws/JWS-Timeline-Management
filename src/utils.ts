@@ -36,51 +36,64 @@ export const countVisibleDays = (start: Date | string | number, end: Date | stri
 };
 
 export const getDayOffset = (timelineStart: Date, targetDate: Date, hideWeekends: boolean): number => {
-  if (!hideWeekends) return diffDays(timelineStart, targetDate);
+  const tStart = new Date(timelineStart);
+  tStart.setHours(0, 0, 0, 0);
+  const tTarget = new Date(targetDate);
+  const hours = tTarget.getHours();
+  const minutes = tTarget.getMinutes();
+  const fraction = (hours + minutes / 60) / 24;
+  tTarget.setHours(0, 0, 0, 0);
+
+  if (!hideWeekends) return diffDays(tStart, tTarget) + fraction;
   
   let count = 0;
-  const curr = new Date(timelineStart);
-  curr.setHours(0,0,0,0);
-  const target = new Date(targetDate);
-  target.setHours(0,0,0,0);
+  const curr = new Date(tStart);
   
-  if (target < curr) {
-    // Basic reverse handle if needed, though usually timeline only goes forward
-    while (curr > target) {
+  if (tTarget < curr) {
+    while (curr > tTarget) {
+      curr.setDate(curr.getDate() - 1);
       const day = curr.getDay();
       if (day !== 0 && day !== 6) count--;
-      curr.setDate(curr.getDate() - 1);
     }
-    return count;
+  } else {
+    while (curr < tTarget) {
+      const day = curr.getDay();
+      if (day !== 0 && day !== 6) count++;
+      curr.setDate(curr.getDate() + 1);
+    }
   }
-
-  while (curr < target) {
-    const day = curr.getDay();
-    if (day !== 0 && day !== 6) count++;
-    curr.setDate(curr.getDate() + 1);
-  }
-  return count;
+  return count + fraction;
 };
 
 export const getDateFromOffset = (timelineStart: Date, offset: number, hideWeekends: boolean): Date => {
-  if (!hideWeekends) return addDays(timelineStart, offset);
+  const integerPart = Math.floor(offset);
+  const fraction = offset - integerPart;
   
-  const curr = new Date(timelineStart);
-  curr.setHours(0,0,0,0);
-  let count = 0;
-  
-  if (offset >= 0) {
-    while (count < offset) {
-      curr.setDate(curr.getDate() + 1);
-      const day = curr.getDay();
-      if (day !== 0 && day !== 6) count++;
-    }
+  let curr: Date;
+  if (!hideWeekends) {
+    curr = addDays(timelineStart, integerPart);
   } else {
-    while (count > offset) {
-      curr.setDate(curr.getDate() - 1);
-      const day = curr.getDay();
-      if (day !== 0 && day !== 6) count--;
+    curr = new Date(timelineStart);
+    curr.setHours(0,0,0,0);
+    let count = 0;
+    
+    if (integerPart >= 0) {
+      while (count < integerPart) {
+        curr.setDate(curr.getDate() + 1);
+        const day = curr.getDay();
+        if (day !== 0 && day !== 6) count++;
+      }
+    } else {
+      while (count > integerPart) {
+        curr.setDate(curr.getDate() - 1);
+        const day = curr.getDay();
+        if (day !== 0 && day !== 6) count--;
+      }
     }
+  }
+  
+  if (fraction > 0) {
+    return new Date(curr.getTime() + Math.round(fraction * 24 * 60 * 60 * 1000));
   }
   return curr;
 };
