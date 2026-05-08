@@ -33,7 +33,6 @@ export interface Task {
 export interface Phase {
   id: string;
   title: string;
-  isLocked: boolean;
   start: Date | null;
   end: Date | null;
   assignees: string[];

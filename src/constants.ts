@@ -36,7 +36,6 @@ export const generateDefaultProjects = (): Project[] => ([
     phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
       id: `ph_${i}`,
       title: t.title,
-      isLocked: false,
       assignees: [],
       start: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 5) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth(), 25) : null),
       end: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 20) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth() + 1, 20) : null),

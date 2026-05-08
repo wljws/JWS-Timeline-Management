@@ -60,7 +60,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
           <div className="flex-1 mr-4 flex items-center">
             <div className="flex-1">
               <p className="text-xs opacity-80 font-medium tracking-wide uppercase mb-1 flex items-center gap-1">
-                {activeProject.title} {(activeProject.isLocked || modalData.phase.isLocked) && <span className="bg-black/20 px-1.5 rounded-sm flex items-center gap-1 text-[9px]"><Icons.Lock className="w-2.5 h-2.5" /> Locked</span>}
+                {activeProject.title} {activeProject.isLocked && <span className="bg-black/20 px-1.5 rounded-sm flex items-center gap-1 text-[9px]"><Icons.Lock className="w-2.5 h-2.5" /> Locked</span>}
                 {isReadOnly && <span className="bg-black/20 px-1.5 rounded-sm flex items-center gap-1 ml-1 text-[9px]"><Icons.Lock className="w-2.5 h-2.5" /> View Only</span>}
               </p>
               <input value={modalData.phase.title} readOnly={isReadOnly} onChange={e => editPhaseTitle(activeProject.id, modalData.phase.id, e.target.value)} className="bg-transparent text-xl font-bold w-full focus:outline-none border-b border-transparent focus:border-white/50" />
@@ -78,8 +78,8 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                 </div>
                 <div className="relative group" onMouseLeave={() => setOpenDropdownId(null)}>
                   <div 
-                    onClick={() => { if (!activeProject.isLocked && !modalData.phase.isLocked && !isReadOnly) setOpenDropdownId(openDropdownId === 'phase-assignees' ? null : 'phase-assignees') }}
-                    className={`min-h-[42px] p-2 border border-slate-200 rounded-lg bg-slate-50 flex flex-wrap gap-1.5 cursor-pointer hover:border-blue-300 transition-colors ${(activeProject.isLocked || modalData.phase.isLocked || isReadOnly) ? 'opacity-70 cursor-not-allowed' : ''}`}
+                    onClick={() => { if (!activeProject.isLocked && !isReadOnly) setOpenDropdownId(openDropdownId === 'phase-assignees' ? null : 'phase-assignees') }}
+                    className={`min-h-[42px] p-2 border border-slate-200 rounded-lg bg-slate-50 flex flex-wrap gap-1.5 cursor-pointer hover:border-blue-300 transition-colors ${(activeProject.isLocked || isReadOnly) ? 'opacity-70 cursor-not-allowed' : ''}`}
                   >
                     {phaseAssignees.length === 0 ? (
                       <span className="text-xs text-slate-400 italic py-1">No personnel assigned to this phase</span>
@@ -87,7 +87,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                       phaseAssignees.map(name => (
                         <span key={name} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-[10px] font-bold">
                           {name}
-                          {!activeProject.isLocked && !modalData.phase.isLocked && !isReadOnly && (
+                          {!activeProject.isLocked && !isReadOnly && (
                             <button 
                               onClick={(e) => { e.stopPropagation(); updatePhaseAssignees(modalData.projectId, modalData.phase.id, phaseAssignees.filter(n => n !== name)); }}
                               className="hover:text-blue-900"
@@ -134,16 +134,16 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                   <h3 className="text-sm font-semibold text-slate-800 flex items-center gap-1"><Icons.Calendar className="w-4 h-4 text-slate-500" /> Phase Timeline</h3>
                 </div>
                 <div className="flex items-center gap-2">
-                  <input type="date" value={toYMD(modalData.phase.start)} disabled={activeProject.isLocked || modalData.phase.isLocked || isReadOnly} onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))} className={`text-xs border border-slate-200 rounded p-1.5 text-slate-700 outline-none focus:border-blue-400 flex-1 ${(activeProject.isLocked || modalData.phase.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
+                  <input type="date" value={toYMD(modalData.phase.start)} disabled={activeProject.isLocked || isReadOnly} onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, e.target.value, toYMD(modalData.phase.end))} className={`text-xs border border-slate-200 rounded p-1.5 text-slate-700 outline-none focus:border-blue-400 flex-1 ${(activeProject.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
                   <span className="text-slate-400">-</span>
-                  <input type="date" value={toYMD(modalData.phase.end)} disabled={activeProject.isLocked || modalData.phase.isLocked || isReadOnly} onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)} className={`text-xs border border-slate-200 rounded p-1.5 text-slate-700 outline-none focus:border-blue-400 flex-1 ${(activeProject.isLocked || modalData.phase.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
+                  <input type="date" value={toYMD(modalData.phase.end)} disabled={activeProject.isLocked || isReadOnly} onChange={(e) => updatePhaseDates(modalData.projectId, modalData.phase.id, toYMD(modalData.phase.start), e.target.value)} className={`text-xs border border-slate-200 rounded p-1.5 text-slate-700 outline-none focus:border-blue-400 flex-1 ${(activeProject.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
                 </div>
               </div>
 
               <div className="flex-1">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs font-semibold text-slate-600 flex items-center gap-1"><Icons.Flag className="text-amber-400 w-3 h-3" /> Milestones</span>
-                  {!isReadOnly && <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} disabled={activeProject.isLocked || modalData.phase.isLocked} className={`text-[10px] font-bold flex items-center gap-1 ${(activeProject.isLocked || modalData.phase.isLocked) ? 'text-slate-400 cursor-not-allowed' : 'text-amber-600 hover:text-amber-800'}`}><Icons.Plus className="w-3 h-3" /> Add Milestone</button>}
+                  {!isReadOnly && <button onClick={() => addPhaseMilestone(modalData.projectId, modalData.phase.id)} disabled={activeProject.isLocked} className={`text-[10px] font-bold flex items-center gap-1 ${activeProject.isLocked ? 'text-slate-400 cursor-not-allowed' : 'text-amber-600 hover:text-amber-800'}`}><Icons.Plus className="w-3 h-3" /> Add Milestone</button>}
                 </div>
                 
                 <div className="space-y-2 max-h-[150px] overflow-y-auto pr-1 custom-scrollbar">
@@ -151,10 +151,10 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                     <p className="text-[10px] text-slate-400 italic mt-2">No milestones added.</p>
                   ) : (
                     modalData.phase.milestones.map((m, mIdx) => (
-                      <div key={m.id} draggable={!activeProject.isLocked && !modalData.phase.isLocked && !isReadOnly} onDragStart={(e) => onDragStartMilestone(e, mIdx)} onDragOver={(e) => onDragOverMilestone(e, mIdx)} onDragEnd={onDragEndMilestone} className={`flex items-center gap-2 group py-1 ${draggedMilestoneIndex === mIdx ? 'opacity-50' : ''}`}>
-                        <input type="text" value={m.label || ''} readOnly={activeProject.isLocked || modalData.phase.isLocked || isReadOnly} onChange={(e) => updatePhaseMilestoneLabel(modalData.projectId, modalData.phase.id, m.id, e.target.value)} placeholder="Label" className={`flex-1 text-[11px] border border-slate-200 rounded p-1.5 text-slate-700 outline-none focus:border-amber-400 ${(activeProject.isLocked || modalData.phase.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
-                        <input type="date" value={toYMD(m.date)} disabled={activeProject.isLocked || modalData.phase.isLocked || isReadOnly} onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)} className={`w-32 text-[10px] border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${(activeProject.isLocked || modalData.phase.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
-                        {!isReadOnly && <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={activeProject.isLocked || modalData.phase.isLocked} className={`p-1 ${(activeProject.isLocked || modalData.phase.isLocked) ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500 transition-colors'}`}><Icons.Trash className="w-3.5 h-3.5" /></button>}
+                      <div key={m.id} draggable={!activeProject.isLocked && !isReadOnly} onDragStart={(e) => onDragStartMilestone(e, mIdx)} onDragOver={(e) => onDragOverMilestone(e, mIdx)} onDragEnd={onDragEndMilestone} className={`flex items-center gap-2 group py-1 ${draggedMilestoneIndex === mIdx ? 'opacity-50' : ''}`}>
+                        <input type="text" value={m.label || ''} readOnly={activeProject.isLocked || isReadOnly} onChange={(e) => updatePhaseMilestoneLabel(modalData.projectId, modalData.phase.id, m.id, e.target.value)} placeholder="Label" className={`flex-1 text-[11px] border border-slate-200 rounded p-1.5 text-slate-700 outline-none focus:border-amber-400 ${(activeProject.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
+                        <input type="date" value={toYMD(m.date)} disabled={activeProject.isLocked || isReadOnly} onChange={(e) => updatePhaseMilestoneDate(modalData.projectId, modalData.phase.id, m.id, e.target.value)} className={`w-32 text-[10px] border border-slate-200 rounded p-1 text-slate-700 outline-none focus:border-amber-400 ${(activeProject.isLocked || isReadOnly) ? 'bg-slate-100 opacity-70 cursor-not-allowed' : ''}`} />
+                        {!isReadOnly && <button onClick={() => removePhaseMilestone(modalData.projectId, modalData.phase.id, m.id)} disabled={activeProject.isLocked} className={`p-1 ${activeProject.isLocked ? 'text-slate-300 cursor-not-allowed' : 'text-slate-400 hover:text-red-500 transition-colors'}`}><Icons.Trash className="w-3.5 h-3.5" /></button>}
                       </div>
                     ))
                   )}
@@ -194,7 +194,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
               modalData.phase.tasks.map((task, tIdx) => {
                 const taskAssignees = task.assignees || (task.assignee ? [task.assignee] : []);
                 return (
-                <div key={task.id} draggable={!modalData.phase.isLocked && !isReadOnly} onDragStart={(e) => onDragStartTask(e, tIdx)} onDragOver={(e) => onDragOverTask(e, tIdx)} onDragEnd={onDragEndTask} className={`flex flex-col md:flex-row md:items-center gap-2 group py-2 md:py-1 hover:bg-slate-50 border border-slate-100 md:border-transparent rounded md:rounded-none p-2 md:p-0 ${draggedTaskIndex === tIdx ? 'opacity-50' : ''}`}>
+                <div key={task.id} draggable={!isReadOnly} onDragStart={(e) => onDragStartTask(e, tIdx)} onDragOver={(e) => onDragOverTask(e, tIdx)} onDragEnd={onDragEndTask} className={`flex flex-col md:flex-row md:items-center gap-2 group py-2 md:py-1 hover:bg-slate-50 border border-slate-100 md:border-transparent rounded md:rounded-none p-2 md:p-0 ${draggedTaskIndex === tIdx ? 'opacity-50' : ''}`}>
                   <div className="flex items-center gap-2 w-full md:w-auto flex-1">
                     {!isReadOnly && (
                       <input 
@@ -212,9 +212,9 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                         title="Select task for copy"
                       />
                     )}
-                    {!isReadOnly && <div className={`w-6 flex justify-center text-slate-400 ${modalData.phase.isLocked ? 'opacity-0' : 'cursor-grab opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-slate-600'}`}><Icons.Grip /></div>}
-                    <input type="checkbox" checked={task.done} disabled={modalData.phase.isLocked || isReadOnly} onChange={() => toggleTask(task.id)} className="w-5 h-5 md:w-4 md:h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-50 cursor-pointer accent-blue-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed" />
-                    <input value={task.text} readOnly={modalData.phase.isLocked || isReadOnly} onChange={(e) => updateTaskText(task.id, e.target.value)} placeholder="Task Description" className={`flex-1 text-base md:text-sm bg-transparent border-b border-slate-200 md:border-transparent focus:border-slate-300 focus:outline-none py-1.5 md:py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'} ${(modalData.phase.isLocked || isReadOnly) ? 'opacity-70 cursor-not-allowed' : ''}`} />
+                    {!isReadOnly && <div className={`w-6 flex justify-center text-slate-400 cursor-grab opacity-100 md:opacity-0 md:group-hover:opacity-100 hover:text-slate-600`}><Icons.Grip /></div>}
+                    <input type="checkbox" checked={task.done} disabled={isReadOnly} onChange={() => toggleTask(task.id)} className="w-5 h-5 md:w-4 md:h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-50 cursor-pointer accent-blue-500 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed" />
+                    <input value={task.text} readOnly={isReadOnly} onChange={(e) => updateTaskText(task.id, e.target.value)} placeholder="Task Description" className={`flex-1 text-base md:text-sm bg-transparent border-b border-slate-200 md:border-transparent focus:border-slate-300 focus:outline-none py-1.5 md:py-1 ${task.done ? 'text-slate-400 line-through' : 'text-slate-700'} ${isReadOnly ? 'opacity-70 cursor-not-allowed' : ''}`} />
                   </div>
                   
                   <div className="flex items-center justify-between w-full md:w-auto pl-12 md:pl-0 mt-2 md:mt-0 gap-2">
@@ -223,7 +223,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                         <input 
                           type="date" 
                           value={toYMD(task.start)} 
-                          disabled={modalData.phase.isLocked || isReadOnly} 
+                          disabled={isReadOnly} 
                           onKeyDown={() => { interactionTimeRef.current = Date.now(); }}
                           onMouseDown={() => { interactionTimeRef.current = Date.now(); }}
                           onChange={(e) => { 
@@ -233,13 +233,13 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                               if (endInput) { endInput.focus(); try { endInput.showPicker(); } catch(err) {} } 
                             }
                           }} 
-                          className={`w-[110px] md:w-[80px] text-xs md:text-[10px] bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-1 py-1 focus:border-slate-300 focus:outline-none text-slate-500 ${(modalData.phase.isLocked || isReadOnly) ? 'opacity-70 cursor-not-allowed' : ''}`} 
+                          className={`w-[110px] md:w-[80px] text-xs md:text-[10px] bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-1 py-1 focus:border-slate-300 focus:outline-none text-slate-500 ${isReadOnly ? 'opacity-70 cursor-not-allowed' : ''}`} 
                         />
                         <span className="text-[10px] text-slate-300 mx-1 md:mx-0.5">-</span>
-                        <input id={`task-end-${task.id}`} type="date" value={toYMD(task.end)} disabled={modalData.phase.isLocked || isReadOnly} onChange={(e) => updateTaskDates(task.id, toYMD(task.start), e.target.value)} className={`w-[110px] md:w-[80px] text-xs md:text-[10px] bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-1 py-1 focus:border-slate-300 focus:outline-none text-slate-500 ${(modalData.phase.isLocked || isReadOnly) ? 'opacity-70 cursor-not-allowed' : ''}`} />
+                        <input id={`task-end-${task.id}`} type="date" value={toYMD(task.end)} disabled={isReadOnly} onChange={(e) => updateTaskDates(task.id, toYMD(task.start), e.target.value)} className={`w-[110px] md:w-[80px] text-xs md:text-[10px] bg-slate-50 md:bg-transparent border border-slate-200 md:border-b md:border-t-0 md:border-x-0 md:border-transparent rounded md:rounded-none px-1 py-1 focus:border-slate-300 focus:outline-none text-slate-500 ${isReadOnly ? 'opacity-70 cursor-not-allowed' : ''}`} />
                       </div>
                     </div>
-                    {!isReadOnly && <button onClick={() => deleteTask(task.id)} disabled={modalData.phase.isLocked} className={`p-2 md:p-0 w-8 md:w-5 ${modalData.phase.isLocked ? 'text-slate-300 cursor-not-allowed' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity'}`}><Icons.Trash /></button>}
+                    {!isReadOnly && <button onClick={() => deleteTask(task.id)} className={`p-2 md:p-0 w-8 md:w-5 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity`}><Icons.Trash /></button>}
                   </div>
                 </div>
                 )
@@ -248,7 +248,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
           </div>
           {!isReadOnly && (
             <div className="flex flex-wrap gap-2 mt-2">
-              <button onClick={addTask} disabled={modalData.phase.isLocked} className={`flex-1 text-sm md:text-xs font-medium flex items-center justify-center border border-dashed border-blue-200 p-3 rounded gap-2 ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed border-slate-200' : 'text-blue-600 hover:bg-blue-50'}`}>
+              <button onClick={addTask} className={`flex-1 text-sm md:text-xs font-medium flex items-center justify-center border border-dashed border-blue-200 p-3 rounded gap-2 text-blue-600 hover:bg-blue-50`}>
                 <Icons.Plus /> Add New Task
               </button>
               <button onClick={() => {
@@ -276,7 +276,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
                     allocations: []
                   }));
                   updateTasksInState([...modalData.phase.tasks, ...newTasks]);
-                }} disabled={modalData.phase.isLocked} className={`px-4 text-sm md:text-xs font-medium flex items-center justify-center border border-blue-200 rounded gap-1.5 whitespace-nowrap ${modalData.phase.isLocked ? 'text-slate-400 cursor-not-allowed border-slate-200' : 'text-blue-600 hover:bg-blue-50'} transition-colors`} title="Paste copied tasks">
+                }} className={`px-4 text-sm md:text-xs font-medium flex items-center justify-center border border-blue-200 rounded gap-1.5 whitespace-nowrap text-blue-600 hover:bg-blue-50 transition-colors`} title="Paste copied tasks">
                   <Icons.Clipboard /> Paste Scope ({copiedScope.length})
                 </button>
               )}

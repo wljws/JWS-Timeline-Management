@@ -45,7 +45,7 @@ interface ProjectViewProps {
   toggleProjectSelection: (id: string) => void;
   togglePhaseSelection: (id: string) => void;
   editPhaseTitle: (pId: string, phId: string, title: string) => void;
-  toggleLock: (pId: string, phId: string) => void;
+  toggleLock: (pId: string) => void;
   removePhase: (pId: string, phId: string) => void;
   draggedPhase: { projectId: string; phaseIndex: number } | null;
   onDragStartPhase: (e: any, pId: string, idx: number) => void;
@@ -279,7 +279,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                               handleBlockClick(e, project.id, phase, colorIndex);
                             }}
                             className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block touch-none 
-                              ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${(globalLocked || project.isLocked || phase.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                              ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${(globalLocked || project.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
                             `}
                             style={{ 
                               left: `${left}px`, 
@@ -288,7 +288,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             }}
                           >
                             <div className="truncate drop-shadow-md flex items-center gap-1">
-                              {(globalLocked || project.isLocked || phase.isLocked) && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)
+                              {(globalLocked || project.isLocked) && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)
                             </div>
                             {!isReadOnly && isAdmin && (
                               <>
@@ -386,7 +386,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             handleBlockClick(e, project.id, phase, colorIndex);
                           }}
                           className={`absolute top-[8px] md:top-[6px] h-[32px] md:h-[28px] rounded shadow text-xs font-semibold text-white px-2 flex items-center justify-between overflow-hidden z-10 timeline-block touch-none 
-                            ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${(globalLocked || project.isLocked || phase.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
+                            ${isCompleted ? 'completed-block' : ''} ${isSelected ? 'ring-2 ring-offset-1 ring-blue-500 scale-[1.02]' : ''} ${(globalLocked || project.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}
                           `}
                           style={{ 
                             left: `${left}px`, 
@@ -394,7 +394,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, colorIndex) 
                           }}
                         >
-                        <span className="truncate drop-shadow-md flex items-center gap-1">{(globalLocked || project.isLocked || phase.isLocked) && <Icons.Lock className="w-3 h-3" />} {abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                        <span className="truncate drop-shadow-md flex items-center gap-1">{(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3" />} {abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
                         {taskCount > 0 && width > 100 && <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>}
 
                         {!isReadOnly && isAdmin && (

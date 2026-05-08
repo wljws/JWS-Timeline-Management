@@ -512,7 +512,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       if (p.id === projectId) {
         return {
           ...p, phases: p.phases.map(ph => {
-            if (ph.id === phaseId && !ph.isLocked) return { ...ph, start: newStart, end: newEnd };
+            if (ph.id === phaseId) return { ...ph, start: newStart, end: newEnd };
             return ph;
           })
         }
@@ -527,7 +527,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (!isAdmin) return; // Only admin can drag/resize
     const project = projects.find(p => p.id === projectId);
     const phase = project?.phases.find(ph => ph.id === phaseId);
-    if ((globalLocked || project?.isLocked || phase?.isLocked) && !allocationId) return;
+    if ((globalLocked || project?.isLocked) && !allocationId) return;
     if (globalLocked && allocationId) return; // Add this line to lock team blocks too
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const gridEl = e.currentTarget.closest('.team-row-container');
@@ -949,19 +949,15 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     setDraggedTeamItem(null);
   };
   const toggleProjectVisibility = (id: string) => { recordHistory(); setProjects(prev => prev.map(p => p.id === id ? { ...p, isHidden: !p.isHidden } : p)); };
-  const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, isLocked: false, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, isLocked: false, start: null, end: null, milestones: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
+  const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, isLocked: false, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, start: null, end: null, milestones: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
   const deleteProject = (id: string) => { recordHistory(); setProjects(projects.filter(p => p.id !== id)); };
-  const addPhase = (pId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', isLocked: false, assignees: [], start: null, end: null, tasks: [], milestones: [] }] } : p)); };
+  const addPhase = (pId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', assignees: [], start: null, end: null, tasks: [], milestones: [] }] } : p)); };
   const removePhase = (pId: string, phId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.filter(ph => ph.id !== phId) } : p)); if (modalData?.phase.id === phId) setModalData(null); };
-  const toggleLock = (pId: string, phId?: string) => { 
+  const toggleLock = (pId: string) => { 
     if (!isAdmin) return;
     setProjects(projects.map(p => {
       if (p.id === pId) {
-        if (phId) {
-          return { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, isLocked: !ph.isLocked } : ph) };
-        } else {
-          return { ...p, isLocked: !p.isLocked };
-        }
+        return { ...p, isLocked: !p.isLocked };
       }
       return p;
     }));
