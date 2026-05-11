@@ -17,16 +17,12 @@ export default function App() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     const userLower = username.toLowerCase();
-    if ((userLower === 'admin' && password === 'password') || (userLower === 'jwsadmin' && password === 'wangadmin')) {
+    if (userLower === 'jwsadmin' && password === 'wangadmin') {
       setUserRole('admin');
       localStorage.setItem('timeline_role', 'admin');
       setError('');
-    } else if (userLower === 'viewer' && password === 'viewer') {
-      setUserRole('viewer');
-      localStorage.setItem('timeline_role', 'viewer');
-      setError('');
     } else {
-      setError('Invalid credentials. Try admin/password or viewer/viewer');
+      setError('Invalid credentials. Please try again.');
     }
   };
 
@@ -59,7 +55,7 @@ export default function App() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
-              placeholder="'admin' or 'viewer'"
+              placeholder="Enter username"
             />
           </div>
           <div>
@@ -87,11 +83,6 @@ export default function App() {
             >
               Enter as Guest (View Only)
             </button>
-          </div>
-          
-          <div className="mt-4 pt-4 border-t border-slate-100 text-center space-y-1">
-            <p className="text-xs text-slate-500"><strong>Admin Access:</strong> <code className="bg-slate-100 px-1 py-0.5 rounded">admin</code> / <code className="bg-slate-100 px-1 py-0.5 rounded">password</code></p>
-            <p className="text-xs text-slate-500"><strong>View Only:</strong> <code className="bg-slate-100 px-1 py-0.5 rounded">viewer</code> / <code className="bg-slate-100 px-1 py-0.5 rounded">viewer</code></p>
           </div>
         </form>
       </div>
