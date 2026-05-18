@@ -752,7 +752,23 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     }
   }, [viewMode, isDataLoaded]);
 
-  const toggleProjectExpand = (id: string) => setProjects(prev => prev.map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p));
+  const toggleProjectExpand = (id: string) => {
+    setCollections(prevCols => prevCols.map(c => {
+      if (c.id === activeCollectionIdRef.current) {
+        return { ...c, projects: (c.projects || []).map(p => p.id === id ? { ...p, isExpanded: !p.isExpanded } : p) };
+      }
+      return c;
+    }));
+  };
+
+  const toggleAllProjects = (expanded: boolean) => {
+    setCollections(prevCols => prevCols.map(c => {
+      if (c.id === activeCollectionIdRef.current) {
+        return { ...c, projects: (c.projects || []).map(p => ({ ...p, isExpanded: expanded })) };
+      }
+      return c;
+    }));
+  };
   const updateProjectTitle = (id: string, title: string) => setProjects(prev => prev.map(p => p.id === id ? { ...p, title } : p));
   const updateProjectColor = (id: string, color: string) => setProjects(prev => prev.map(p => p.id === id ? { ...p, color } : p));
 
@@ -1189,7 +1205,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       <div className="flex-shrink-0 bg-slate-900 text-white px-2 py-1.5 md:px-4 md:py-2 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-1.5 md:gap-2">
         <div className="relative group/collection z-50 flex items-center">
           <div className="flex flex-col text-center lg:text-left justify-center">
-            <div className="flex items-center justify-center lg:justify-start gap-1 cursor-pointer" onClick={() => !isReadOnly && setShowCollectionDropdown(!showCollectionDropdown)}>
+            <div className="flex items-center justify-center lg:justify-start gap-1 cursor-pointer" onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}>
               <input 
                 type="text" 
                 value={activeCollection?.title || ''} 
@@ -1198,11 +1214,11 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                 className="bg-transparent text-base md:text-lg font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-64 leading-tight"
                 placeholder="Collection Name"
               />
-              {!isReadOnly && <Icons.ChevronDown />}
+              <Icons.ChevronDown />
             </div>
           </div>
           
-          {showCollectionDropdown && !isReadOnly && (
+          {showCollectionDropdown && (
             <div className="absolute top-full left-0 pt-1.5 w-64 z-50 text-left">
               <div className="bg-slate-800 border border-slate-700 shadow-xl rounded-md py-1">
                 <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-700 mb-1">Navigation</div>
@@ -1290,9 +1306,23 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           )}
 
           {(viewMode === 'projects' || viewMode === 'overview' || viewMode === 'team') && (
-            <div className="flex items-center gap-1.5 md:gap-2">
-              <button 
-                onClick={() => {
+              <div className="flex items-center gap-1.5 md:gap-2">
+                <button 
+                  onClick={() => toggleAllProjects(false)}
+                  className="text-[10px] md:text-xs text-white bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded px-2 py-1 transition-colors font-bold flex items-center gap-1.5"
+                  title="Collapse All Projects"
+                >
+                  <Icons.ChevronUp className="w-3 h-3" /> COLLAPSE ALL
+                </button>
+                <button 
+                  onClick={() => toggleAllProjects(true)}
+                  className="text-[10px] md:text-xs text-white bg-slate-700 hover:bg-slate-600 border border-slate-600 rounded px-2 py-1 transition-colors font-bold flex items-center gap-1.5 mr-1"
+                  title="Expand All Projects"
+                >
+                  <Icons.ChevronDown className="w-3 h-3" /> EXPAND ALL
+                </button>
+                <button 
+                  onClick={() => {
                   if (viewMode === 'team') {
                     const d = new Date(); d.setHours(0,0,0,0);
                     const day = d.getDay();
