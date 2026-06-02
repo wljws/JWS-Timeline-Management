@@ -772,6 +772,55 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const updateProjectTitle = (id: string, title: string) => setProjects(prev => prev.map(p => p.id === id ? { ...p, title } : p));
   const updateProjectColor = (id: string, color: string) => setProjects(prev => prev.map(p => p.id === id ? { ...p, color } : p));
 
+  const cloneAndRegenerateProjectIds = (p: any) => {
+    return {
+      ...p,
+      id: generateId(),
+      syncId: null,
+      title: p.title.endsWith('(Copy)') ? p.title : `${p.title} (Copy)`,
+      phases: (p.phases || []).map((ph: any) => {
+        const newPhaseId = generateId();
+        return {
+          ...ph,
+          id: newPhaseId,
+          start: ph.start ? new Date(ph.start) : null,
+          end: ph.end ? new Date(ph.end) : null,
+          milestones: (ph.milestones || []).map((m: any) => ({
+            ...m,
+            id: generateId(),
+            date: m.date ? new Date(m.date) : null
+          })),
+          tasks: (ph.tasks || []).map((t: any) => ({
+            ...t,
+            id: generateId(),
+            start: t.start ? new Date(t.start) : null,
+            end: t.end ? new Date(t.end) : null,
+            allocations: (t.allocations || []).map((a: any) => ({
+              ...a,
+              id: generateId(),
+              start: a.start ? new Date(a.start) : null,
+              end: a.end ? new Date(a.end) : null,
+              subTasks: (a.subTasks || []).map((s: any) => ({
+                ...s,
+                id: generateId()
+              }))
+            }))
+          })),
+          teamAllocations: (ph.teamAllocations || []).map((a: any) => ({
+            ...a,
+            id: generateId(),
+            start: a.start ? new Date(a.start) : null,
+            end: a.end ? new Date(a.end) : null,
+            subTasks: (a.subTasks || []).map((s: any) => ({
+              ...s,
+              id: generateId()
+            }))
+          }))
+        };
+      })
+    };
+  };
+
   const handleCopyProject = (projectId: string, targetCollectionId: string, isSynced = false) => {
     if (isReadOnly) return;
     recordHistory();
@@ -783,7 +832,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       clonedProject = { ...projectToCopy, id: generateId(), syncId: syncId };
       setProjects(prev => prev.map(p => p.id === projectId ? { ...p, syncId } : p));
     } else {
-      clonedProject = { ...rehydrateProject(JSON.parse(JSON.stringify(projectToCopy))), id: generateId(), syncId: null, title: `${projectToCopy.title} (Copy)` };
+      clonedProject = cloneAndRegenerateProjectIds(projectToCopy);
     }
     setCollections(prev => prev.map(c => c.id === targetCollectionId ? { ...c, projects: [...(c.projects || []), clonedProject] } : c));
     setCopyProjectMenuId(null);
