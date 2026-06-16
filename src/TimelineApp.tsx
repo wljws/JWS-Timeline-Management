@@ -51,6 +51,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const [teamModalData, setTeamModalData] = useState<any>(null); 
   const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [reviewsReminderExpanded, setReviewsReminderExpanded] = useState(true);
   
   const [isExporting, setIsExporting] = useState(false);
   const [syncStatus, setSyncStatus] = useState('Connecting...'); 
@@ -309,6 +310,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       start: ph.start ? new Date(ph.start) : null,
       end: ph.end ? new Date(ph.end) : null,
       milestones: (ph.milestones || []).map((m: Milestone) => ({ ...m, date: m.date ? new Date(m.date) : null })),
+      internalReviews: (ph.internalReviews || []).map((m: Milestone) => ({ ...m, date: m.date ? new Date(m.date) : null })),
       tasks: (ph.tasks || []).map((t: any) => {
         const safeAllocs = (t.allocations || []).length > 0 
           ? t.allocations.map((a: any) => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
@@ -553,6 +555,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             origStart: ph.start!,
             origEnd: ph.end!,
             origMilestones: ph.milestones || [],
+            origInternalReviews: ph.internalReviews || [],
             origTasks: ph.tasks || [],
             origAllocations: ph.teamAllocations || []
           }))
@@ -565,6 +568,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           origStart: origStart!, 
           origEnd: origEnd!, 
           origMilestones: phase?.milestones || [],
+          origInternalReviews: phase?.internalReviews || [],
           origTasks: phase?.tasks || [],
           origAllocations: phase?.teamAllocations || []
         }];
@@ -631,7 +635,12 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                 const newStart = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
                 const newEnd = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
                 
-                const shiftedMilestones = (block.origMilestones || []).map((m: any) => ({
+                 const shiftedMilestones = (block.origMilestones || []).map((m: any) => ({
+                  ...m,
+                  date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
+                }));
+                
+                const shiftedInternalReviews = (block.origInternalReviews || []).map((m: any) => ({
                   ...m,
                   date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
                 }));
@@ -653,7 +662,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                   end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
                 }));
                 
-                return { ...ph, start: newStart, end: newEnd, milestones: shiftedMilestones, tasks: shiftedTasks, teamAllocations: shiftedAllocations };
+                return { ...ph, start: newStart, end: newEnd, milestones: shiftedMilestones, internalReviews: shiftedInternalReviews, tasks: shiftedTasks, teamAllocations: shiftedAllocations };
               }
               if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
                 const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
@@ -786,6 +795,11 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           start: ph.start ? new Date(ph.start) : null,
           end: ph.end ? new Date(ph.end) : null,
           milestones: (ph.milestones || []).map((m: any) => ({
+            ...m,
+            id: generateId(),
+            date: m.date ? new Date(m.date) : null
+          })),
+          internalReviews: (ph.internalReviews || []).map((m: any) => ({
             ...m,
             id: generateId(),
             date: m.date ? new Date(m.date) : null
@@ -1065,9 +1079,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     setDraggedTeamItem(null);
   };
   const toggleProjectVisibility = (id: string) => { recordHistory(); setProjects(prev => prev.map(p => p.id === id ? { ...p, isHidden: !p.isHidden } : p)); };
-  const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, isLocked: false, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, start: null, end: null, milestones: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
+  const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, isLocked: false, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, start: null, end: null, milestones: [], internalReviews: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
   const deleteProject = (id: string) => { recordHistory(); setProjects(projects.filter(p => p.id !== id)); };
-  const addPhase = (pId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', assignees: [], start: null, end: null, tasks: [], milestones: [] }] } : p)); };
+  const addPhase = (pId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', assignees: [], start: null, end: null, tasks: [], milestones: [], internalReviews: [] }] } : p)); };
   const removePhase = (pId: string, phId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.filter(ph => ph.id !== phId) } : p)); if (modalData?.phase.id === phId) setModalData(null); };
   const toggleLock = (pId: string) => { 
     if (!isAdmin) return;
@@ -1134,6 +1148,43 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     recordHistory(); 
     setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, milestones: ph.milestones.filter(ms => ms.id !== mId) } : ph) } : p)); 
     if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, milestones: modalData.phase.milestones.filter((ms: any) => ms.id !== mId) } }); 
+  };
+
+  const addPhaseInternalReview = (pId: string, phId: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    recordHistory(); 
+    const ir = { id: generateId(), date: new Date(), label: 'New Internal Review' }; 
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, internalReviews: [...(ph.internalReviews || []), ir] } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, internalReviews: [...(modalData.phase.internalReviews || []), ir] } }); 
+  };
+  const updatePhaseInternalReviewLabel = (pId: string, phId: string, irId: string, label: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, internalReviews: (ph.internalReviews || []).map(ir => ir.id === irId ? { ...ir, label } : ir) } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, internalReviews: (modalData.phase.internalReviews || []).map((ir: any) => ir.id === irId ? { ...ir, label } : ir) } }); 
+  };
+  const updatePhaseInternalReviewDate = (pId: string, phId: string, irId: string, date: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    const d = fromYMD(date); 
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, internalReviews: (ph.internalReviews || []).map(ir => ir.id === irId ? { ...ir, date: d! } : ir) } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, internalReviews: (modalData.phase.internalReviews || []).map((ir: any) => ir.id === irId ? { ...ir, date: d! } : ir) } }); 
+  };
+  const removePhaseInternalReview = (pId: string, phId: string, irId: string) => { 
+    if (isReadOnly) return;
+    const project = projects.find(p => p.id === pId);
+    if (globalLocked || project?.isLocked) return;
+
+    recordHistory(); 
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.map(ph => ph.id === phId ? { ...ph, internalReviews: (ph.internalReviews || []).filter(ir => ir.id !== irId) } : ph) } : p)); 
+    if (modalData?.phase.id === phId) setModalData({ ...modalData, phase: { ...modalData.phase, internalReviews: (modalData.phase.internalReviews || []).filter((ir: any) => ir.id !== irId) } }); 
   };
 
   const updateTasksInState = (tasks: Task[]) => {
@@ -1237,6 +1288,59 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       }).filter(p => !!p.calculatedStart)
     })).filter(c => c.projects.length > 0);
   }, [collections, viewMode, showHiddenProjects]);
+
+  const internalReviewsList = useMemo(() => {
+    const list: Array<{
+      projectId: string;
+      projectTitle: string;
+      projectColor: string;
+      phaseId: string;
+      phaseTitle: string;
+      id: string;
+      label: string;
+      date: Date | null;
+      isOverdue: boolean;
+      daysRemaining: number;
+    }> = [];
+
+    projects.forEach((p) => {
+      p.phases.forEach((ph) => {
+        if (ph.internalReviews) {
+          ph.internalReviews.forEach((ir) => {
+            if (ir.date) {
+              const d = new Date(ir.date);
+              d.setHours(0,0,0,0);
+              const t = new Date(today);
+              t.setHours(0,0,0,0);
+              const timeDiff = d.getTime() - t.getTime();
+              const daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+              const isOverdue = daysRemaining < 0;
+              
+              list.push({
+                projectId: p.id,
+                projectTitle: p.title || 'Untitled Project',
+                projectColor: p.color || 'blue',
+                phaseId: ph.id,
+                phaseTitle: ph.title || 'Untitled Phase',
+                id: ir.id,
+                label: ir.label || 'Unnamed Review',
+                date: ir.date,
+                isOverdue,
+                daysRemaining,
+              });
+            }
+          });
+        }
+      });
+    });
+
+    return list.sort((a, b) => {
+      if (a.isOverdue && !b.isOverdue) return -1;
+      if (!a.isOverdue && b.isOverdue) return 1;
+      if (!a.date || !b.date) return 0;
+      return a.date.getTime() - b.date.getTime();
+    });
+  }, [projects, today]);
 
   return (
     <div id="main-app-container" className="flex flex-col h-[100dvh] w-full absolute inset-0 overflow-hidden bg-slate-50">
@@ -1414,6 +1518,128 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         </div>
       </div>
 
+      {/* Internal Review Notification / Reminder Bar */}
+      {internalReviewsList.length > 0 && (
+        <div 
+          id="internal-review-reminder-banner" 
+          className={`flex-shrink-0 bg-slate-800 border-b border-teal-500/30 text-white shadow-sm z-40 relative transition-all duration-300 ease-in-out ${
+            reviewsReminderExpanded ? 'py-1.5' : 'py-1 hover:bg-slate-750 cursor-pointer'
+          }`}
+          onClick={() => {
+            if (!reviewsReminderExpanded) {
+              setReviewsReminderExpanded(true);
+            }
+          }}
+        >
+          <div className="max-w-7xl mx-auto px-4 flex items-center justify-between gap-4">
+            {reviewsReminderExpanded ? (
+              <div className="flex flex-col md:flex-row items-center justify-between w-full gap-4">
+                <div className="flex items-center justify-between w-full md:w-auto gap-4 shrink-0">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-teal-400"></span>
+                    </span>
+                    <span className="text-teal-400 bg-teal-500/10 p-[4px] rounded-full flex items-center justify-center border border-teal-500/20"><Icons.Search className="w-3.5 h-3.5 font-bold" /></span>
+                    <span className="text-xs font-black uppercase tracking-wider text-teal-300">Internal Reviews Reminder</span>
+                    <span className="bg-teal-500 text-slate-900 text-[10px] font-extrabold px-2 py-0.5 rounded-full leading-tight">
+                      {internalReviewsList.filter(ir => ir.isOverdue).length > 0 ? `${internalReviewsList.filter(ir => ir.isOverdue).length} Overdue` : `${internalReviewsList.length} Active`}
+                    </span>
+                  </div>
+                  
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReviewsReminderExpanded(false);
+                    }}
+                    className="text-xs text-slate-300 hover:text-white flex items-center gap-2 bg-slate-700/50 hover:bg-slate-700 px-2.5 py-1 rounded transition-all font-bold border border-slate-600/50"
+                  >
+                    Hide <Icons.ChevronUp className="w-3 h-3 inline" />
+                  </button>
+                </div>
+
+                <div className="w-full md:flex-1 md:max-w-5xl flex items-center gap-2.5 overflow-x-auto py-1 pr-2 no-scrollbar scroll-smooth">
+                  {internalReviewsList.map(ir => {
+                    const isOverdue = ir.isOverdue;
+                    const days = ir.daysRemaining;
+                    let statusText = "";
+                    let badgeStyles = "";
+
+                    if (isOverdue) {
+                      statusText = `${Math.abs(days)}d Overdue`;
+                      badgeStyles = "bg-rose-500/20 text-rose-300 border-rose-500/30";
+                    } else if (days === 0) {
+                      statusText = "Today";
+                      badgeStyles = "bg-amber-500/20 text-amber-300 border-amber-500/40 animate-pulse";
+                    } else {
+                      statusText = `In ${days}d`;
+                      badgeStyles = "bg-teal-500/20 text-teal-300 border-teal-500/20";
+                    }
+
+                    return (
+                      <div 
+                        key={ir.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (ir.date) {
+                            const dayOffset = getDayOffset(timelineStart, ir.date, hideWeekends);
+                            if (scrollContainerRef.current) {
+                              scrollContainerRef.current.scrollLeft = (dayOffset * zoomLevel) - 300;
+                            }
+                          }
+                        }}
+                        className="bg-slate-900/50 hover:bg-slate-900 border border-slate-700/50 hover:border-teal-500/50 rounded-md px-3 py-1 text-left cursor-pointer transition-all flex items-center gap-3 shrink-0 group select-none min-w-[190px]"
+                        title="Click to locate on timeline"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] font-bold text-slate-100 group-hover:text-teal-300 transition-colors truncate max-w-[140px]" title={ir.label}>{ir.label}</p>
+                          <p className="text-[9.5px] text-slate-400 truncate max-w-[140px]">{ir.phaseTitle} • <span className="text-slate-500 italic">{ir.projectTitle}</span></p>
+                        </div>
+                        <div className="flex flex-col items-end shrink-0 gap-0.5">
+                          <span className={`text-[8px] font-mono tracking-wide uppercase px-1.5 py-0.5 rounded border font-semibold ${badgeStyles}`}>
+                            {statusText}
+                          </span>
+                          <span className="text-[8px] font-mono text-slate-400 font-semibold">{formatDate(ir.date)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between w-full h-7">
+                <div className="flex items-center gap-3">
+                  <span className="relative flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-400"></span>
+                  </span>
+                  <span className="text-teal-400 bg-teal-500/10 p-[2px] rounded-full flex items-center justify-center border border-teal-500/20"><Icons.Search className="w-2.5 h-2.5 font-bold" /></span>
+                  <span className="text-[11px] font-bold text-slate-300">Internal Reviews</span>
+                  <span className="bg-teal-500 text-slate-900 text-[10px] font-black px-1.5 py-0.2 rounded-full leading-tight">
+                    {internalReviewsList.length} Active
+                  </span>
+                  {internalReviewsList.filter(ir => ir.isOverdue).length > 0 && (
+                    <span className="bg-rose-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full leading-tight animate-pulse">
+                      {internalReviewsList.filter(ir => ir.isOverdue).length} Overdue!
+                    </span>
+                  )}
+                  <span className="text-[10px] text-slate-400 italic font-medium hidden sm:inline ml-2">Click anywhere on this bar to display upcoming review milestones</span>
+                </div>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setReviewsReminderExpanded(true);
+                  }}
+                  className="text-[11px] text-slate-300 hover:text-teal-300 flex items-center gap-1 bg-slate-700/30 hover:bg-slate-700/70 p-1 px-2.5 rounded transition-all font-bold border border-slate-600/30 font-semibold"
+                >
+                  Expand <Icons.ChevronDown className="w-3 h-3 inline animate-bounce" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showSettings && (
         <div className="flex-shrink-0 bg-white border-b border-slate-200 p-4 shadow-sm z-40 overflow-x-auto">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1545,7 +1771,12 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           copiedScope={copiedScope} setCopiedScope={setCopiedScope} setModalData={setModalData}
           editPhaseTitle={editPhaseTitle} updatePhaseAssignees={updatePhaseAssignees} updatePhaseDates={updatePhaseDates} addPhaseMilestone={addPhaseMilestone}
           updatePhaseMilestoneLabel={updatePhaseMilestoneLabel} updatePhaseMilestoneDate={updatePhaseMilestoneDate}
-          removePhaseMilestone={removePhaseMilestone} toggleTask={toggleTask} addTask={addTask}
+          removePhaseMilestone={removePhaseMilestone}
+          addPhaseInternalReview={addPhaseInternalReview}
+          updatePhaseInternalReviewLabel={updatePhaseInternalReviewLabel}
+          updatePhaseInternalReviewDate={updatePhaseInternalReviewDate}
+          removePhaseInternalReview={removePhaseInternalReview}
+          toggleTask={toggleTask} addTask={addTask}
           updateTaskText={updateTaskText} updateTaskAssignees={updateTaskAssignees} updateTaskDates={updateTaskDates}
           deleteTask={deleteTask} removePhase={removePhase} recordHistory={recordHistory} updateTasksInState={updateTasksInState}
           teamMembers={teamMembers} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId}

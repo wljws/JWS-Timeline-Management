@@ -196,4 +196,10 @@ export const Icons = {
       <line x1="3" y1="10" x2="21" y2="10"></line>
     </svg>
   ),
+  Search: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+  ),
 };

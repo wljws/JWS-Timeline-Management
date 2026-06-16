@@ -39,6 +39,7 @@ export interface Phase {
   tasks: Task[];
   teamAllocations?: Allocation[];
   milestones: Milestone[];
+  internalReviews?: Milestone[];
 }
 
 export interface Project {

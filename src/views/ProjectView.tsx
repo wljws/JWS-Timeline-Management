@@ -1,7 +1,7 @@
 import React from 'react';
 import { Project, Phase } from '../types';
 import { Icons } from '../icons';
-import { diffDays, abbreviatePhase, addDays, getDayOffset, countVisibleDays } from '../utils';
+import { diffDays, abbreviatePhase, addDays, getDayOffset, countVisibleDays, formatDate } from '../utils';
 import { getIndicatorColor, getPhaseColor, THEME_COLORS, COLOR_PALETTES } from '../constants';
 
 interface ProjectViewProps {
@@ -318,6 +318,27 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             </div>
                           )
                         })}
+                        {(phase.internalReviews || []).map(ir => {
+                          if (!ir.date) return null;
+                          return (
+                            <div key={ir.id} className="absolute top-[8px] z-30 flex flex-col items-center group/ir cursor-pointer drop-shadow-md animate-fade-in" style={{ left: `${getDayOffset(timelineStart, ir.date, !!hideWeekends) * zoomLevel}px`, transform: 'translateX(-50%)' }}>
+                              <span className="text-teal-400 bg-slate-900 px-1 py-1 rounded-full flex items-center justify-center border border-teal-400/40 shadow-sm hover:bg-slate-800 hover:text-teal-300 transition-all duration-150"><Icons.Search className="w-3 h-3 font-semibold" /></span>
+                              
+                              {/* Pop up bubble tooltip */}
+                              <div className="absolute bottom-full mb-2 hidden group-hover/ir:flex flex-col items-center z-50 pointer-events-none">
+                                <div className="bg-slate-900 border border-teal-500/50 text-white rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap text-left min-w-[120px]">
+                                  <div className="text-[11px] font-bold text-teal-300 flex items-center gap-1">
+                                    <Icons.Search className="w-2.5 h-2.5 shrink-0" />
+                                    <span>INTERNAL REVIEW</span>
+                                  </div>
+                                  <p className="text-[10px] font-medium text-slate-100 max-w-[180px] break-words mt-0.5 whitespace-normal leading-tight">{ir.label || 'No label'}</p>
+                                  <span className="block text-[8px] text-slate-400 font-mono mt-1">{formatDate(ir.date)}</span>
+                                </div>
+                                <div className="w-1.5 h-1.5 bg-slate-900 border-r border-b border-teal-500/50 rotate-45 -mt-[4px]" />
+                              </div>
+                            </div>
+                          )
+                        })}
                       </React.Fragment>
                     )
                   })}
@@ -420,8 +441,29 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         {(phase.milestones || []).map(milestone => {
                           if (!milestone.date) return null;
                           return (
-                            <div key={milestone.id} className="absolute top-[8px] md:top-[6px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${getDayOffset(timelineStart, milestone.date, !!hideWeekends) * zoomLevel}px`, transform: 'translateX(-50%)' }}>
+                            <div key={milestone.id} className="absolute top-[8px] md:top-[6px] z-20 flex flex-col items-center pointer-events-none drop-shadow-md" style={{ left: `${getDayOffset(timelineStart, milestone.date, !!hideWeekends) * zoomLevel}px`, transform: 'translateX(-50%)' }} title={milestone.label}>
                               <Icons.Flag className="text-amber-400" />
+                            </div>
+                          )
+                        })}
+                        {(phase.internalReviews || []).map(ir => {
+                          if (!ir.date) return null;
+                          return (
+                            <div key={ir.id} className="absolute top-[8px] md:top-[6px] z-30 flex flex-col items-center group/ir cursor-pointer drop-shadow-md animate-fade-in" style={{ left: `${getDayOffset(timelineStart, ir.date, !!hideWeekends) * zoomLevel}px`, transform: 'translateX(-50%)' }}>
+                              <span className="text-teal-400 bg-slate-900 px-1 py-1 rounded-full flex items-center justify-center border border-teal-400/40 shadow-sm hover:bg-slate-800 hover:text-teal-300 transition-all duration-150"><Icons.Search className="w-3 h-3 font-semibold" /></span>
+                              
+                              {/* Pop up bubble tooltip */}
+                              <div className="absolute bottom-full mb-2 hidden group-hover/ir:flex flex-col items-center z-50 pointer-events-none">
+                                <div className="bg-slate-900 border border-teal-500/50 text-white rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap text-left min-w-[120px]">
+                                  <div className="text-[11px] font-bold text-teal-300 flex items-center gap-1">
+                                    <Icons.Search className="w-2.5 h-2.5 shrink-0" />
+                                    <span>INTERNAL REVIEW</span>
+                                  </div>
+                                  <p className="text-[10px] font-medium text-slate-100 max-w-[180px] break-words mt-0.5 whitespace-normal leading-tight">{ir.label || 'No label'}</p>
+                                  <span className="block text-[8px] text-slate-400 font-mono mt-1">{formatDate(ir.date)}</span>
+                                </div>
+                                <div className="w-1.5 h-1.5 bg-slate-900 border-r border-b border-teal-500/50 rotate-45 -mt-[4px]" />
+                              </div>
                             </div>
                           )
                         })}

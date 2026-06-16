@@ -54,7 +54,8 @@ export const generateDefaultProjects = (): Project[] => ([
           allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
         }
       }),
-      milestones: []
+      milestones: [],
+      internalReviews: []
     }))
   }
 ]);
