@@ -25,6 +25,9 @@ interface TeamViewProps {
   setEditingMember: (data: any) => void;
   updateTeamMemberName: (old: string, next: string) => void;
   toggleTeamMemberLock: (name: string) => void;
+  toggleTeamMemberVisibility: (name: string) => void;
+  showHiddenTeamMembers: boolean;
+  setShowHiddenTeamMembers: (show: boolean) => void;
   handleRemoveTeamMember: (name: string) => void;
   isAddingTeamMember: boolean;
   setIsAddingTeamMember: (adding: boolean) => void;
@@ -51,6 +54,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
   currentTeamWeekStart, jumpToEarliestTask, prevWeek, nextWeek, today,
   draggedTeamMemberName, onDragStartTeamMember, onDragOverTeamMember, onDragEndTeamMember,
   teamMembers, editingMember, setEditingMember, updateTeamMemberName, toggleTeamMemberLock,
+  toggleTeamMemberVisibility, showHiddenTeamMembers, setShowHiddenTeamMembers,
   handleRemoveTeamMember, isAddingTeamMember, setIsAddingTeamMember, newTeamMemberName,
   setNewTeamMemberName, handleAddTeamMember, addAdHocTask, onDragStartTeamItem,
   setDraggedTeamItem, onDropTeamGrid, onDropTeamPool, handleTeamBlockClick, handleBlockMouseDown,
@@ -134,11 +138,12 @@ export const TeamView: React.FC<TeamViewProps> = ({
             {teamViewData.map((assignee) => {
               const memberObj = teamMembers.find(m => (m.name || m) === assignee.name);
               const isLocked = memberObj ? memberObj.isLocked : false;
+              const isHidden = memberObj ? memberObj.isHidden : false;
 
               return (
               <div 
                 key={assignee.name} 
-                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch h-auto ${assignee.name === 'PROJECT_POOL' ? 'sticky top-[60px] z-30 bg-white shadow-sm' : ''} ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''}`}
+                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch h-auto ${assignee.name === 'PROJECT_POOL' ? 'sticky top-[60px] z-30 bg-white shadow-sm' : ''} ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''} ${isHidden ? 'opacity-65 bg-slate-100/40' : ''}`}
                 style={{ 
                   minHeight: assignee.name === 'PROJECT_POOL' ? (isPoolCollapsed ? '32px' : `${Math.max(40, 80 * rowScale)}px`) : `${baseRowHeight}px` 
                 }}
@@ -242,6 +247,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                               <button onClick={(e) => { e.stopPropagation(); addAdHocTask(assignee.name); }} className="p-0.5 text-blue-500 hover:bg-blue-50 rounded" title="Add Manual Task"><Icons.Plus className="w-3 h-3" /></button>
                               <button onClick={(e) => { e.stopPropagation(); handleRemoveTeamMember(assignee.name); }} className="p-0.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded" title="Remove Member"><Icons.Trash className="w-3 h-3" /></button>
                               <button onClick={(e) => { e.stopPropagation(); toggleTeamMemberLock(assignee.name); }} className={`p-0.5 rounded ${ (globalLocked || isLocked) ? 'text-amber-500 bg-amber-50' : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'}`} title={ (globalLocked || isLocked) ? "Unlock" : "Lock"}>{ (globalLocked || isLocked) ? <Icons.Lock className="w-3 h-3" /> : <Icons.Unlock className="w-3 h-3" />}</button>
+                              <button onClick={(e) => { e.stopPropagation(); toggleTeamMemberVisibility(assignee.name); }} className={`p-0.5 rounded ${ isHidden ? 'text-rose-500 bg-rose-50' : 'text-slate-400 hover:text-rose-500 hover:bg-rose-50'}`} title={ isHidden ? "Show Member" : "Hide Member"}>{ isHidden ? <Icons.EyeOff className="w-3 h-3" /> : <Icons.Eye className="w-3 h-3" />}</button>
                             </div>
                           )}
                           
@@ -478,9 +484,21 @@ export const TeamView: React.FC<TeamViewProps> = ({
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setIsAddingTeamMember(true)} className="flex items-center justify-center gap-1 w-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded p-2 text-xs font-medium transition-colors">
-                        <Icons.Plus /> <span className="hidden md:inline">Add</span> Member
-                      </button>
+                      <div className="flex flex-col gap-2">
+                        <button onClick={() => setIsAddingTeamMember(true)} className="flex items-center justify-center gap-1 w-full border border-dashed border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-slate-500 hover:text-blue-600 rounded p-2 text-xs font-medium transition-colors">
+                          <Icons.Plus /> <span className="hidden md:inline">Add</span> Member
+                        </button>
+                        {teamMembers.some(m => m.isHidden) && (
+                          <button 
+                            onClick={() => setShowHiddenTeamMembers(!showHiddenTeamMembers)} 
+                            className="flex items-center justify-center gap-1 w-full border border-dashed border-slate-300 hover:border-teal-400 hover:bg-teal-50 text-slate-500 hover:text-teal-600 rounded p-1.5 md:p-2 text-[10px] md:text-xs font-medium transition-colors cursor-pointer select-none"
+                            title="Toggle Hidden Team Members"
+                          >
+                            {showHiddenTeamMembers ? <Icons.EyeOff className="w-3 h-3 inline" /> : <Icons.Eye className="w-3 h-3 inline" />}
+                            <span className="ml-1">{showHiddenTeamMembers ? 'Hide Hidden' : `Show Hidden (${teamMembers.filter(m => m.isHidden).length})`}</span>
+                          </button>
+                        )}
+                      </div>
                     )
                   )}
                 </div>

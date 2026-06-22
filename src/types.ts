@@ -56,6 +56,7 @@ export interface Project {
 export interface TeamMember {
   name: string;
   isLocked: boolean;
+  isHidden?: boolean;
 }
 
 export interface AdHocTask {

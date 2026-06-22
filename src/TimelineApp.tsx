@@ -44,6 +44,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const [copyProjectMenuId, setCopyProjectMenuId] = useState<string | null>(null);
   const [copyAsSynced, setCopyAsSynced] = useState(false);
   const [showHiddenProjects, setShowHiddenProjects] = useState(false);
+  const [showHiddenTeamMembers, setShowHiddenTeamMembers] = useState(false);
   const [copiedScope, setCopiedScope] = useState<Task[] | null>(null);
   const [selectedTaskIdsToCopy, setSelectedTaskIdsToCopy] = useState<Set<string>>(new Set());
 
@@ -982,6 +983,12 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     setTeamMembers(teamMembers.map(m => m.name === name ? { ...m, isLocked: !m.isLocked } : m));
   };
 
+  const toggleTeamMemberVisibility = (name: string) => {
+    if (isReadOnly) return;
+    recordHistory();
+    setTeamMembers(teamMembers.map(m => m.name === name ? { ...m, isHidden: !m.isHidden } : m));
+  };
+
   const onDragEndRow = () => { setDraggedProjectId(null); };
 
   const onDragStartPhase = (e: any, projectId: string, phaseIndex: number) => {
@@ -1210,11 +1217,13 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     const map = new Map<string, any>();
     const weekEnd = addDays(currentTeamWeekStart, 5);
     map.set('PROJECT_POOL', { name: 'PROJECT_POOL', scheduled: [], pool: [] });
-    teamMembers.forEach(m => map.set(m.name, { name: m.name, scheduled: [], pool: [] }));
     
-    projects.filter(p => !p.isHidden).forEach(p => {
-      // Add project to the central top pool
-      if (p.phases.length > 0) {
+    const visibleMembers = teamMembers.filter(m => showHiddenTeamMembers || !m.isHidden);
+    visibleMembers.forEach(m => map.set(m.name, { name: m.name, scheduled: [], pool: [] }));
+    
+    projects.forEach(p => {
+      // Add project to the central top pool only if NOT hidden
+      if (!p.isHidden && p.phases.length > 0) {
         map.get('PROJECT_POOL').pool.push({
           name: 'PROJECT_POOL',
           isAdHoc: false,
@@ -1228,19 +1237,27 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       const userAddedToProject = new Set<string>();
       
       p.phases.forEach(ph => {
-        const names = (ph.assignees && ph.assignees.length > 0) ? ph.assignees : [];
-        names.forEach(n => {
-          if (!map.has(n)) map.set(n, { name: n, scheduled: [], pool: [] });
-          const a = map.get(n);
-          // Pool shows the project once per person
-          if (!userAddedToProject.has(n)) {
-            a.pool.push({ name: n, isAdHoc: false, project: p, phase: ph, task: { id: `phase-task-${ph.id}`, text: 'Project' }, hasAllocation: (ph.teamAllocations || []).length > 0 });
-            userAddedToProject.add(n);
-          }
-          
-          // Schedule shows the phase allocations
-          (ph.teamAllocations || []).forEach(alloc => {
-            if ((!alloc.assignee || alloc.assignee === n) && alloc.start < weekEnd && alloc.end > currentTeamWeekStart) {
+        // Pool shows the project once per person if project NOT hidden
+        if (!p.isHidden) {
+          const names = (ph.assignees && ph.assignees.length > 0) ? ph.assignees : [];
+          names.forEach(n => {
+            if (map.has(n)) {
+              const a = map.get(n);
+              if (!userAddedToProject.has(n)) {
+                a.pool.push({ name: n, isAdHoc: false, project: p, phase: ph, task: { id: `phase-task-${ph.id}`, text: 'Project' }, hasAllocation: (ph.teamAllocations || []).length > 0 });
+                userAddedToProject.add(n);
+              }
+            }
+          });
+        }
+        
+        // Schedule shows the phase allocations for ALL personnel (even if project is hidden or assignee is removed from the pool)
+        const allocations = ph.teamAllocations || [];
+        allocations.forEach(alloc => {
+          if (alloc.assignee && map.has(alloc.assignee)) {
+            const assigneeName = alloc.assignee;
+            const a = map.get(assigneeName);
+            if (alloc.start < weekEnd && alloc.end > currentTeamWeekStart) {
               const startD = new Date(alloc.start < currentTeamWeekStart ? currentTeamWeekStart : alloc.start);
               const endD = new Date(alloc.end > weekEnd ? weekEnd : alloc.end);
               
@@ -1249,33 +1266,46 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
               
               const startCol = Math.max(0, Math.min(9, Math.floor(hrS / 24) * 2 + (startD.getHours() >= 12 ? 1 : 0)));
               const endCol = Math.max(1, Math.min(10, Math.ceil(hrE / 12)));
-              a.scheduled.push({ isAdHoc: false, project: p, phase: ph, task: { id: `phase-task-${ph.id}`, text: ph.title }, allocation: alloc, startCol, span: Math.max(1, endCol - startCol) });
+              
+              const isAlreadyAdded = a.scheduled.some((item: any) => !item.isAdHoc && item.allocation.id === alloc.id);
+              if (!isAlreadyAdded) {
+                a.scheduled.push({ isAdHoc: false, project: p, phase: ph, task: { id: `phase-task-${ph.id}`, text: ph.title }, allocation: alloc, startCol, span: Math.max(1, endCol - startCol) });
+              }
             }
-          });
+          }
         });
       });
     });
+    
     adHocTasks.forEach(t => {
-      const n = t.assignee || 'PROJECT_POOL'; if (!map.has(n)) map.set(n, { name: n, scheduled: [], pool: [] });
-      const a = map.get(n); if (!t.done) a.pool.push({ isAdHoc: true, task: t, project: { title: t.projectTitle, color: t.color, id: 'adhoc' }, phase: { id: 'adhoc' }, hasAllocation: !!t.start });
-      if (t.start && t.end && t.end > currentTeamWeekStart && t.start < weekEnd) {
-        const startD = new Date(t.start < currentTeamWeekStart ? currentTeamWeekStart : t.start);
-        const endD = new Date(t.end > weekEnd ? weekEnd : t.end);
-        
-        const hrS = diffDays(currentTeamWeekStart, startD) * 24 + startD.getHours() + startD.getMinutes() / 60;
-        const hrE = diffDays(currentTeamWeekStart, endD) * 24 + endD.getHours() + endD.getMinutes() / 60;
-        
-        const sc = Math.max(0, Math.min(9, Math.floor(hrS / 24) * 2 + (startD.getHours() >= 12 ? 1 : 0)));
-        const ec = Math.max(1, Math.min(10, Math.ceil(hrE / 12)));
-        a.scheduled.push({ isAdHoc: true, task: t, allocation: { id: t.id, start: t.start, end: t.end, subTasks: t.subTasks }, project: { color: t.color, title: t.projectTitle, id: 'adhoc' }, phase: { id: 'adhoc' }, startCol: sc, span: Math.max(1, ec - sc) });
+      const n = t.assignee || 'PROJECT_POOL';
+      if (map.has(n)) {
+        const a = map.get(n);
+        if (!t.done) {
+          a.pool.push({ isAdHoc: true, task: t, project: { title: t.projectTitle, color: t.color, id: 'adhoc' }, phase: { id: 'adhoc' }, hasAllocation: !!t.start });
+        }
+        if (t.start && t.end && t.end > currentTeamWeekStart && t.start < weekEnd) {
+          const startD = new Date(t.start < currentTeamWeekStart ? currentTeamWeekStart : t.start);
+          const endD = new Date(t.end > weekEnd ? weekEnd : t.end);
+          
+          const hrS = diffDays(currentTeamWeekStart, startD) * 24 + startD.getHours() + startD.getMinutes() / 60;
+          const hrE = diffDays(currentTeamWeekStart, endD) * 24 + endD.getHours() + endD.getMinutes() / 60;
+          
+          const sc = Math.max(0, Math.min(9, Math.floor(hrS / 24) * 2 + (startD.getHours() >= 12 ? 1 : 0)));
+          const ec = Math.max(1, Math.min(10, Math.ceil(hrE / 12)));
+          
+          const isAlreadyAdded = a.scheduled.some((item: any) => item.isAdHoc && item.task.id === t.id);
+          if (!isAlreadyAdded) {
+            a.scheduled.push({ isAdHoc: true, task: t, allocation: { id: t.id, start: t.start, end: t.end, subTasks: t.subTasks }, project: { color: t.color, title: t.projectTitle, id: 'adhoc' }, phase: { id: 'adhoc' }, startCol: sc, span: Math.max(1, ec - sc) });
+          }
+        }
       }
     });
 
-    // Ensure we return PROJECT_POOL first
     const poolData = map.get('PROJECT_POOL');
     map.delete('PROJECT_POOL');
     return [poolData, ...Array.from(map.values())].filter(Boolean);
-  }, [projects, adHocTasks, currentTeamWeekStart, teamMembers, viewMode]);
+  }, [projects, adHocTasks, currentTeamWeekStart, teamMembers, viewMode, showHiddenTeamMembers]);
 
   const overviewData = useMemo(() => {
     if (viewMode !== 'overview') return [];
@@ -1711,6 +1741,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           setEditingMember={setEditingMember}
           updateTeamMemberName={updateTeamMemberName} 
           toggleTeamMemberLock={toggleTeamMemberLock} 
+          toggleTeamMemberVisibility={toggleTeamMemberVisibility}
+          showHiddenTeamMembers={showHiddenTeamMembers}
+          setShowHiddenTeamMembers={setShowHiddenTeamMembers}
           handleRemoveTeamMember={handleRemoveTeamMember}
           isAddingTeamMember={isAddingTeamMember} 
           setIsAddingTeamMember={setIsAddingTeamMember} 
