@@ -143,9 +143,11 @@ export const TeamView: React.FC<TeamViewProps> = ({
               return (
               <div 
                 key={assignee.name} 
-                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch h-auto ${assignee.name === 'PROJECT_POOL' ? 'sticky top-[60px] z-30 bg-white shadow-sm' : ''} ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''} ${isHidden ? 'opacity-65 bg-slate-100/40' : ''}`}
+                className={`flex w-full border-b border-slate-200 group/teamrow items-stretch ${assignee.name === 'PROJECT_POOL' ? 'sticky top-[60px] z-30 bg-white shadow-sm' : 'h-auto'} ${draggedTeamMemberName === assignee.name ? 'opacity-50 bg-slate-100' : ''} ${isHidden ? 'opacity-65 bg-slate-100/40' : ''}`}
                 style={{ 
-                  minHeight: assignee.name === 'PROJECT_POOL' ? (isPoolCollapsed ? '32px' : `${Math.max(40, 80 * rowScale)}px`) : `${baseRowHeight}px` 
+                  height: assignee.name === 'PROJECT_POOL' ? (isPoolCollapsed ? '32px' : `${Math.max(68, 86 * rowScale)}px`) : undefined,
+                  minHeight: assignee.name === 'PROJECT_POOL' ? (isPoolCollapsed ? '32px' : `${Math.max(68, 86 * rowScale)}px`) : `${baseRowHeight}px`,
+                  maxHeight: assignee.name === 'PROJECT_POOL' ? (isPoolCollapsed ? '32px' : `${Math.max(68, 86 * rowScale)}px`) : undefined
                 }}
                 draggable={!isReadOnly && isAdmin && assignee.name !== 'Unassigned' && !isLocked}
                 onDragStart={(e) => !isReadOnly && isAdmin && onDragStartTeamMember(e, assignee.name)}
@@ -225,11 +227,16 @@ export const TeamView: React.FC<TeamViewProps> = ({
                       {assignee.name === 'PROJECT_POOL' ? (
                         <>
                           <div className={`flex flex-col items-center justify-center ${isPoolCollapsed ? 'flex-row gap-2' : ''}`}>
-                            <div className={`${isPoolCollapsed ? 'w-5 h-5' : 'w-8 h-8'} rounded border border-slate-300 bg-slate-100 text-slate-500 flex items-center justify-center font-bold shadow-inner shrink-0 ${isPoolCollapsed ? '' : 'mb-0.5'}`} title="Project Pool">
-                              <Icons.Target className={`${isPoolCollapsed ? 'w-3 h-3' : 'w-[18px] h-[18px]'}`} />
+                            <div className={`${isPoolCollapsed ? 'w-5 h-5' : 'w-7 h-7'} rounded border border-slate-300 bg-slate-100 text-slate-500 flex items-center justify-center font-bold shadow-inner shrink-0 ${isPoolCollapsed ? '' : 'mb-0.5'}`} title="Project Pool">
+                              <Icons.Target className={`${isPoolCollapsed ? 'w-3 h-3' : 'w-4 h-4'}`} />
                             </div>
-                            <h3 className={`font-bold text-center leading-tight truncate text-slate-600 ${isPoolCollapsed ? 'text-[10px]' : 'text-[10px] md:text-sm w-full'}`}>All Projects</h3>
-                            {!isReadOnly && isAdmin && !isPoolCollapsed && <button onClick={() => addAdHocTask('PROJECT_POOL')} className="mt-0.5 p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Add Unassigned Task"><Icons.Plus className="w-3 h-3 md:w-4 h-4" /></button>}
+                            <h3 className={`font-bold text-center leading-tight truncate text-slate-600 ${isPoolCollapsed ? 'text-[10px]' : 'text-[10px] md:text-xs w-full'}`}>All Projects</h3>
+                            {!isPoolCollapsed && (
+                              <div className="flex items-center gap-1 mt-0.5">
+                                <span className="text-[9px] text-slate-400 font-semibold bg-slate-100 px-1.5 py-0.2 rounded-full border border-slate-200" title={`${assignee.pool.length} projects`}>{assignee.pool.length}</span>
+                                {!isReadOnly && isAdmin && <button onClick={() => addAdHocTask('PROJECT_POOL')} className="p-0.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded" title="Add Unassigned Task"><Icons.Plus className="w-3 h-3" /></button>}
+                              </div>
+                            )}
                             <button 
                               onClick={() => setIsPoolCollapsed(!isPoolCollapsed)}
                               className={`absolute right-1 top-1 p-1 text-slate-400 hover:text-slate-600 transition-transform ${isPoolCollapsed ? 'rotate-180' : ''}`}
@@ -304,8 +311,8 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 </div>
 
                 <div 
-                  className={`flex-shrink-0 relative team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors sm:min-w-0 ${assignee.name === 'PROJECT_POOL' ? 'flex items-center p-2' : ''}`}
-                  style={{ width: zoomLevel * 25 }}
+                  className={`flex-shrink-0 relative team-row-container group-hover/teamrow:bg-slate-50/30 transition-colors sm:min-w-0 ${assignee.name === 'PROJECT_POOL' ? 'flex items-stretch p-1' : ''}`}
+                  style={{ width: zoomLevel * 25, height: assignee.name === 'PROJECT_POOL' ? '100%' : undefined }}
                   onDragOver={(e) => { 
                     if(isReadOnly) return;
                     e.preventDefault(); 
@@ -326,17 +333,17 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 >
                   {assignee.name === 'PROJECT_POOL' ? (
                     !isPoolCollapsed ? (
-                      <div className="flex flex-row flex-wrap gap-y-2 gap-x-0 w-full h-full overflow-y-auto custom-scrollbar content-start p-1.5">
+                      <div className="flex flex-row flex-wrap gap-y-1 gap-x-0 w-full h-full max-h-full overflow-y-auto custom-scrollbar content-start p-1">
                         {assignee.pool.length === 0 ? (
-                          <div className="text-sm text-slate-400 italic py-4 text-center w-full mt-2">No projects available</div>
+                          <div className="text-xs text-slate-400 italic py-2 text-center w-full">No projects available</div>
                         ) : (
                           assignee.pool.map((item: any, idx: number) => {
                             const poolBgColor = getPhaseColor(item.project.color, 0); 
                             return (
                               <div key={`poolcol_${idx}`} className="w-[20%] p-0.5">
                                 <div 
-                                  className={`text-white rounded px-2 py-1 w-full h-full shrink-0 ${isReadOnly ? 'cursor-default' : 'cursor-grab'} hover:shadow-md transition-all shadow-sm flex flex-col justify-center border border-transparent group/poolitem relative ${item.hasAllocation ? 'opacity-40 hover:opacity-100 border-white/40' : ''}`}
-                                  style={{ backgroundColor: poolBgColor, minHeight: `${Math.max(20, 32 * rowScale)}px` }}
+                                  className={`text-white rounded px-2 py-1 w-full shrink-0 ${isReadOnly ? 'cursor-default' : 'cursor-grab'} hover:shadow-md transition-all shadow-sm flex flex-col justify-center border border-transparent group/poolitem relative ${item.hasAllocation ? 'opacity-40 hover:opacity-100 border-white/40' : ''}`}
+                                  style={{ backgroundColor: poolBgColor, height: `${Math.max(22, 30 * rowScale)}px` }}
                                   draggable={!isReadOnly}
                                   onDragStart={(e) => !isReadOnly && onDragStartTeamItem(e, item.project.id, item.phase.id, item.task, null, null, null, item.isAdHoc)}
                                   onDragEnd={() => setDraggedTeamItem(null)}
