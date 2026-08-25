@@ -1,6 +1,8 @@
 {
   "name": "Interior Design Timeline Manager",
-  "description": "A collaborative project timeline and resource management tool for interior design teams, featuring multi-collection support and Vercel KV live synchronization.",
+  "description": "A collaborative project timeline and resource management tool for interior design teams, featuring multi-collection support, version history snapshots, and live synchronization.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

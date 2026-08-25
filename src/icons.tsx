@@ -104,6 +104,12 @@ export const Icons = {
       <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"></path>
     </svg>
   ),
+  Clock: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </svg>
+  ),
   History: () => (
     <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24">
       <path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -200,6 +206,78 @@ export const Icons = {
     <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
       <circle cx="11" cy="11" r="8"></circle>
       <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </svg>
+  ),
+  Sparkles: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <path d="M12 3l1.912 4.673a2 2 0 001.077 1.077L19.662 10.662a.5.5 0 010 .676l-4.673 1.912a2 2 0 00-1.077 1.077L12 19l-1.912-4.673a2 2 0 00-1.077-1.077L4.338 11.338a.5.5 0 010-.676l4.673-1.912a2 2 0 001.077-1.077L12 3z"></path>
+      <path d="M19 16l.9 1.8a1 1 0 00.5.5L22 19l-1.6.7a1 1 0 00-.5.5L19 22l-.7-1.6a1 1 0 00-.5-.5L16 19l1.8-.9a1 1 0 00.5-.5L19 16z"></path>
+    </svg>
+  ),
+  Snowflake: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <line x1="2" y1="12" x2="22" y2="12"></line>
+      <line x1="12" y1="2" x2="12" y2="22"></line>
+      <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+      <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+      <polyline points="9 3 12 6 15 3"></polyline>
+      <polyline points="9 21 12 18 15 21"></polyline>
+      <polyline points="3 9 6 12 3 15"></polyline>
+      <polyline points="21 9 18 12 21 15"></polyline>
+    </svg>
+  ),
+  Flame: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <path d="M8.5 14.5A2.5 2.5 0 0011 17c1.38 0 2.5-1.12 2.5-2.5 0-1.63-1.04-2.83-2.07-4.04C10.56 9.4 9.77 8.35 9.5 7 8 9 7 11.5 7 13.5c0 2.21 1.79 4 4 4 2.21 0 4-1.79 4-4 0-2.8-1.7-5.5-3.5-7.5C10 7.5 8.5 11 8.5 14.5z"></path>
+    </svg>
+  ),
+  Crown: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7z"></path>
+      <path d="M4 20h16"></path>
+    </svg>
+  ),
+  Ghost: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <path d="M9 10h.01M15 10h.01M12 2a8 8 0 00-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 00-8-8z"></path>
+    </svg>
+  ),
+  Flower: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <circle cx="12" cy="12" r="3"></circle>
+      <path d="M12 16.5A4.5 4.5 0 117.5 12 4.5 4.5 0 1112 7.5 4.5 4.5 0 1116.5 12 4.5 4.5 0 1112 16.5"></path>
+      <path d="M12 7.5V3M12 21v-4.5M7.5 12H3M21 12h-4.5"></path>
+    </svg>
+  ),
+  Sun: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  ),
+  Clover: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <circle cx="9" cy="9" r="3.5"></circle>
+      <circle cx="15" cy="9" r="3.5"></circle>
+      <circle cx="9" cy="15" r="3.5"></circle>
+      <circle cx="15" cy="15" r="3.5"></circle>
+      <path d="M12 12v7a2 2 0 002 2"></path>
+    </svg>
+  ),
+  Palette: ({ className }: { className?: string }) => (
+    <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className={className}>
+      <path d="M12 2C6.48 2 2 6.48 2 12c0 4.41 3.59 8 8 8 1.1 0 2-.9 2-2 0-.55-.22-1.05-.59-1.41-.36-.36-.59-.86-.59-1.41 0-1.1.9-2 2-2h2.18C18.67 13.18 22 9.85 22 6c0-2.21-1.79-4-4-4h-6z"></path>
+      <circle cx="6.5" cy="11.5" r="1.5" fill="currentColor"></circle>
+      <circle cx="9.5" cy="7.5" r="1.5" fill="currentColor"></circle>
+      <circle cx="14.5" cy="7.5" r="1.5" fill="currentColor"></circle>
+      <circle cx="17.5" cy="11.5" r="1.5" fill="currentColor"></circle>
     </svg>
   ),
 };

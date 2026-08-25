@@ -5,11 +5,16 @@ import { addDays, diffDays, diffExactDays, formatDate, generateId, toYMD, fromYM
 import { THEME_COLORS, COLOR_PALETTES, STANDARD_TEMPLATE_PHASES, generateDefaultProjects, getPhaseColor, getIndicatorColor, DEFAULT_PHASE_COLORS } from './constants';
 import { PhaseModal } from './components/PhaseModal';
 import { TeamModal } from './components/TeamModal';
-import { HistoryModal } from './components/HistoryModal';
+import { HistoryModal, formatSnapshotDateTime } from './components/HistoryModal';
 import { PDFExportModal } from './components/PDFExportModal';
 import { ProjectView } from './views/ProjectView';
 import { TeamView } from './views/TeamView';
 import { OverviewView } from './views/OverviewView';
+import { OccasionThemeId, getThemeById, OCCASION_THEMES } from './themes';
+import { SeasonalThemeOverlay } from './components/SeasonalThemeOverlay';
+import { ThemeSelectorModal } from './components/ThemeSelectorModal';
+import { ThemeHeaderGraphic, ThemeHeaderGarland } from './components/ThemeDecorations';
+import { TimelineAnimatedCharacters } from './components/TimelineAnimatedCharacters';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 
@@ -64,6 +69,71 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   });
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [showPDFModal, setShowPDFModal] = useState(false);
+  
+  // Seasonal & Holiday Theme Mode State
+  const [themeId, setThemeId] = useState<OccasionThemeId>(() => {
+    try {
+      const saved = localStorage.getItem('timeline_theme_occasion');
+      return (saved as OccasionThemeId) || 'default';
+    } catch(e) { return 'default'; }
+  });
+  const [animationEnabled, setAnimationEnabled] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('timeline_theme_animation_enabled');
+      return saved !== 'false';
+    } catch(e) { return true; }
+  });
+  const [animationIntensity, setAnimationIntensity] = useState<'low' | 'medium' | 'high'>(() => {
+    try {
+      const saved = localStorage.getItem('timeline_theme_animation_intensity');
+      return (saved as 'low' | 'medium' | 'high') || 'medium';
+    } catch(e) { return 'medium'; }
+  });
+  const [showThemeModal, setShowThemeModal] = useState(false);
+
+  const currentTheme = useMemo(() => getThemeById(themeId), [themeId]);
+
+  const handleSelectTheme = (newThemeId: OccasionThemeId) => {
+    setThemeId(newThemeId);
+    try {
+      localStorage.setItem('timeline_theme_occasion', newThemeId);
+    } catch(e) {}
+  };
+
+  const handleToggleAnimation = (enabled: boolean) => {
+    setAnimationEnabled(enabled);
+    try {
+      localStorage.setItem('timeline_theme_animation_enabled', enabled ? 'true' : 'false');
+    } catch(e) {}
+  };
+
+  const handleChangeIntensity = (intensity: 'low' | 'medium' | 'high') => {
+    setAnimationIntensity(intensity);
+    try {
+      localStorage.setItem('timeline_theme_animation_intensity', intensity);
+    } catch(e) {}
+  };
+
+  const renderThemeIcon = (iconName: string, className: string = "w-3.5 h-3.5") => {
+    switch (iconName) {
+      case 'Snowflake':
+        return <Icons.Snowflake className={className} />;
+      case 'Flame':
+        return <Icons.Flame className={className} />;
+      case 'Crown':
+        return <Icons.Crown className={className} />;
+      case 'Ghost':
+        return <Icons.Ghost className={className} />;
+      case 'Flower':
+        return <Icons.Flower className={className} />;
+      case 'Sun':
+        return <Icons.Sun className={className} />;
+      case 'Clover':
+        return <Icons.Clover className={className} />;
+      default:
+        return <Icons.Sparkles className={className} />;
+    }
+  };
   const [autoSnapshotSettings, setAutoSnapshotSettings] = useState<'off' | 'daily' | 'weekly'>(() => {
     try {
       const saved = localStorage.getItem('timeline_auto_snapshot_settings');
@@ -172,17 +242,40 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     setTeamMembers(next.teamMembers || []);
   };
 
-  const createManualSnapshot = () => {
-    const c = collectionsRef.current.find(col => col.id === activeCollectionIdRef.current);
-    if (!c) return;
+  const createManualSnapshot = (customName?: string) => {
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+    const formattedTime = now.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const defaultName = `Snapshot (${formattedDate}, ${formattedTime})`;
+    const snapshotName = customName && customName.trim() ? customName.trim() : defaultName;
+
     const newSnapshot: Snapshot = {
-        id: generateId(),
-        name: `Manual Snapshot ${new Date().toLocaleDateString()}`,
-        timestamp: new Date().toISOString(),
-        data: { projects: c.projects || [], adHocTasks: c.adHocTasks || [] }
+      id: generateId(),
+      name: snapshotName,
+      timestamp: now.toISOString(),
+      data: {
+        collections: JSON.parse(JSON.stringify(collectionsRef.current)),
+        activeCollectionId: activeCollectionIdRef.current,
+        timestamp: now.toISOString(),
+      }
     };
-    setSaveHistory(prev => [newSnapshot, ...prev]);
-    localStorage.setItem('timeline_version_history', JSON.stringify([newSnapshot, ...saveHistory]));
+
+    setSaveHistory(prev => {
+      const next = [newSnapshot, ...prev];
+      try {
+        localStorage.setItem('timeline_version_history', JSON.stringify(next));
+      } catch(e) {
+        console.error("Failed to save history", e);
+      }
+      return next;
+    });
+
+    // Also attempt server snapshot save
+    fetch('/api/save-snapshot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: newSnapshot.data })
+    }).catch(err => console.warn("Cloud snapshot save error:", err));
   };
 
   const deleteSnapshot = (e: React.MouseEvent, id: string) => {
@@ -190,7 +283,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (actualIsReadOnly) return;
     const newHistory = saveHistory.filter(s => s.id !== id);
     setSaveHistory(newHistory);
-    localStorage.setItem('timeline_version_history', JSON.stringify(newHistory));
+    try {
+      localStorage.setItem('timeline_version_history', JSON.stringify(newHistory));
+    } catch(e) {}
   };
 
   useEffect(() => {
@@ -204,31 +299,38 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         const now = Date.now();
         const interval = autoSnapshotSettings === 'daily' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
         
-        if (now - lastSnapshot > interval && collections.length > 0) {
-           const c = collections.find(col => col.id === activeCollectionId);
-           if (!c) return;
-           
-           const newSnapshot: Snapshot = {
-             id: generateId(),
-             name: `Auto ${autoSnapshotSettings.charAt(0).toUpperCase() + autoSnapshotSettings.slice(1)} Snapshot`,
-             timestamp: new Date().toISOString(),
-             data: { collections, timestamp: new Date().toISOString() }
-           };
-           
-           setSaveHistory(prev => {
-             const next = [newSnapshot, ...prev].slice(0, 50); // Keep last 50
-             localStorage.setItem('timeline_version_history', JSON.stringify(next));
-             return next;
-           });
-           
-           localStorage.setItem('last_auto_snapshot', now.toString());
-           
-           // Also backup to server if possible
-           await fetch('/api/save-snapshot', {
-             method: 'POST',
-             headers: { 'Content-Type': 'application/json' },
-             body: JSON.stringify({ data: { collections, timestamp: new Date().toISOString() } })
-           });
+        if (now - lastSnapshot > interval && collectionsRef.current.length > 0) {
+          const nowDate = new Date();
+          const formattedDate = nowDate.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+          const formattedTime = nowDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          
+          const newSnapshot: Snapshot = {
+            id: generateId(),
+            name: `Auto ${autoSnapshotSettings.charAt(0).toUpperCase() + autoSnapshotSettings.slice(1)} Snapshot (${formattedDate}, ${formattedTime})`,
+            timestamp: nowDate.toISOString(),
+            data: {
+              collections: JSON.parse(JSON.stringify(collectionsRef.current)),
+              activeCollectionId: activeCollectionIdRef.current,
+              timestamp: nowDate.toISOString()
+            }
+          };
+          
+          setSaveHistory(prev => {
+            const next = [newSnapshot, ...prev].slice(0, 50); // Keep last 50
+            try {
+              localStorage.setItem('timeline_version_history', JSON.stringify(next));
+            } catch(e) {}
+            return next;
+          });
+          
+          localStorage.setItem('last_auto_snapshot', now.toString());
+          
+          // Also backup to server if possible
+          await fetch('/api/save-snapshot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data: newSnapshot.data })
+          });
         }
       } catch(e) {
         console.error("Auto snapshot failed", e);
@@ -237,7 +339,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     const checkInterval = setInterval(checkAutoSnapshot, 60000 * 5); // Check every 5 minutes
     checkAutoSnapshot();
     return () => clearInterval(checkInterval);
-  }, [collections, autoSnapshotSettings, activeCollectionId]);
+  }, [autoSnapshotSettings]);
 
   const setProjects = (newProjectsOrUpdater: Project[] | ((prev: Project[]) => Project[])) => {
     if (isReadOnly) return;
@@ -323,26 +425,92 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   });
 
   const applyLoadedData = (data: any, isHistoryRestore = false) => {
+    if (!data) return;
     let loadedCollections: any[] = [];
-    if (data.collections) {
+    let targetActiveId: string | null = null;
+
+    if (Array.isArray(data)) {
+      loadedCollections = data;
+    } else if (data.collections) {
       loadedCollections = typeof data.collections === 'string' ? JSON.parse(data.collections) : data.collections;
+      if (data.activeCollectionId) targetActiveId = data.activeCollectionId;
     } else if (data.projects) {
       let parsedProjects = typeof data.projects === 'string' ? JSON.parse(data.projects) : data.projects;
       let parsedMembers = typeof data.teamMembers === 'string' ? JSON.parse(data.teamMembers) : (data.teamMembers || []);
-      loadedCollections = [{ id: 'default', title: 'Imported Master Collection', projects: parsedProjects, teamMembers: parsedMembers, adHocTasks: [] }];
+      let parsedAdHoc = typeof data.adHocTasks === 'string' ? JSON.parse(data.adHocTasks) : (data.adHocTasks || []);
+      loadedCollections = [{
+        id: 'default',
+        title: 'Master Collection',
+        projects: parsedProjects,
+        teamMembers: parsedMembers,
+        adHocTasks: parsedAdHoc,
+        phaseColors: data.phaseColors || DEFAULT_PHASE_COLORS
+      }];
     }
 
     if (loadedCollections && loadedCollections.length > 0) {
-      const processedCollections = loadedCollections.map(c => ({
-        ...c,
+      const processedCollections: Collection[] = loadedCollections.map(c => ({
+        id: c.id || generateId(),
+        title: c.title || 'Collection',
         phaseColors: c.phaseColors || DEFAULT_PHASE_COLORS,
         teamMembers: (c.teamMembers || []).map((m: any) => typeof m === 'string' ? { name: m, isLocked: false } : m),
-        adHocTasks: (c.adHocTasks || []).map((t: any) => ({ ...t, start: t.start ? new Date(t.start) : null, end: t.end ? new Date(t.end) : null })),
+        adHocTasks: (c.adHocTasks || []).map((t: any) => ({
+          ...t,
+          start: t.start ? new Date(t.start) : null,
+          end: t.end ? new Date(t.end) : null,
+          subTasks: t.subTasks || []
+        })),
         projects: (c.projects || []).map(rehydrateProject)
       }));
       setCollections(processedCollections);
-      if (isHistoryRestore && data.activeCollectionId) setActiveCollectionId(data.activeCollectionId);
+      if (targetActiveId && processedCollections.some(c => c.id === targetActiveId)) {
+        setActiveCollectionId(targetActiveId);
+      } else if (processedCollections.length > 0) {
+        if (!processedCollections.some(c => c.id === activeCollectionIdRef.current)) {
+          setActiveCollectionId(processedCollections[0].id);
+        }
+      }
     }
+  };
+
+  const handleViewSnapshot = (snapshot: Snapshot) => {
+    if (!viewingSnapshot) {
+      // Stash the live state before viewing historical snapshot
+      setStashedLiveData({
+        collections: JSON.parse(JSON.stringify(collectionsRef.current)),
+        activeCollectionId: activeCollectionIdRef.current,
+        timestamp: lastSavedTimestampRef.current
+      });
+    }
+    setViewingSnapshot(snapshot);
+    applyLoadedData(snapshot.data, false);
+    setShowHistoryModal(false);
+  };
+
+  const handleExitSnapshotView = () => {
+    if (stashedLiveData) {
+      applyLoadedData(stashedLiveData, true);
+      setStashedLiveData(null);
+    }
+    setViewingSnapshot(null);
+  };
+
+  const handleRestoreSnapshot = (snapshotData: any) => {
+    applyLoadedData(snapshotData, true);
+    setStashedLiveData(null);
+    setViewingSnapshot(null);
+    setConfirmRestoreIdx(null);
+    setShowHistoryModal(false);
+    
+    // Save to local storage and queue cloud save
+    const ts = Date.now();
+    lastSavedTimestampRef.current = ts;
+    try {
+      localStorage.setItem('timeline_data', JSON.stringify({
+        collections: collectionsRef.current,
+        timestamp: ts
+      }));
+    } catch(e) {}
   };
 
   const lastSavedTimestampRef = useRef(0);
@@ -1374,18 +1542,58 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
 
   return (
     <div id="main-app-container" className="flex flex-col h-[100dvh] w-full absolute inset-0 overflow-hidden bg-slate-50">
+      {/* Seasonal Live Ambient Animation Overlay */}
+      <SeasonalThemeOverlay 
+        theme={currentTheme} 
+        enabled={animationEnabled} 
+        intensity={animationIntensity} 
+      />
+
+      {/* Animated Characters moving along timeline (Skier, Snowman, Santa, etc.) */}
+      <TimelineAnimatedCharacters
+        theme={currentTheme}
+        enabled={animationEnabled}
+      />
+
       {viewingSnapshot && (
-        <div className="flex-shrink-0 bg-amber-500 text-white px-4 py-2 flex flex-col md:flex-row md:justify-between items-center z-[100] relative text-sm font-medium shadow-md gap-2">
-          <div className="flex items-center gap-2">
-            <Icons.Eye /> You are currently viewing a read-only snapshot: {viewingSnapshot.name}
+        <div className="flex-shrink-0 bg-gradient-to-r from-amber-600 via-amber-500 to-orange-600 text-white px-3.5 py-2 flex flex-col md:flex-row md:justify-between items-center z-[100] relative text-xs md:text-sm font-medium shadow-md gap-2 border-b border-amber-400/40">
+          <div className="flex items-center gap-2.5 flex-wrap justify-center md:justify-start">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-black/20 text-white shrink-0">
+              <Icons.Eye />
+            </span>
+            <span className="font-bold tracking-wide uppercase text-[10px] bg-black/30 px-2 py-0.5 rounded">
+              Snapshot View (Read-Only)
+            </span>
+            <span className="font-bold text-white drop-shadow-xs">{viewingSnapshot.name}</span>
+            <span className="text-amber-200 text-xs hidden sm:inline">•</span>
+            <span className="text-xs text-amber-100 flex items-center gap-1">
+              <Icons.Clock className="w-3.5 h-3.5 opacity-90" />
+              Captured: <strong className="text-white font-mono">{formatSnapshotDateTime(viewingSnapshot.timestamp)}</strong>
+            </span>
           </div>
-          <button onClick={() => setViewingSnapshot(null)} className="bg-black/20 hover:bg-black/30 px-3 py-1 rounded transition-colors text-xs font-bold uppercase tracking-wider whitespace-nowrap">
-            Return to Live Timeline
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button 
+              onClick={() => handleRestoreSnapshot(viewingSnapshot.data)} 
+              className="bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white px-3 py-1 rounded transition-all text-xs font-bold shadow flex items-center gap-1.5 whitespace-nowrap"
+              title="Make this snapshot state your active live timeline"
+            >
+              <Icons.Check className="w-3.5 h-3.5" /> Restore As Live Timeline
+            </button>
+            <button 
+              onClick={handleExitSnapshotView} 
+              className="bg-black/30 hover:bg-black/50 active:scale-95 text-white px-3 py-1 rounded transition-all text-xs font-bold uppercase tracking-wider whitespace-nowrap border border-white/20 flex items-center gap-1"
+              title="Return to your live editable timeline"
+            >
+              <Icons.X /> Return to Live
+            </button>
+          </div>
         </div>
       )}
 
-      <div className="flex-shrink-0 bg-slate-900 text-white px-2 py-1.5 md:px-4 md:py-2 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-1.5 md:gap-2">
+      <div className={`flex-shrink-0 text-white px-2 py-1.5 md:px-4 md:py-2 shadow-md flex flex-col lg:flex-row justify-between items-center z-50 relative gap-1.5 md:gap-2 transition-all duration-300 ${currentTheme.headerBg} ${currentTheme.headerBorder}`}>
+        {/* Theme Garland / Fairy Lights / Icicles */}
+        <ThemeHeaderGarland theme={currentTheme} />
+
         <div className="relative group/collection z-50 flex items-center">
           <div className="flex flex-col text-center lg:text-left justify-center">
             <div className="flex items-center justify-center lg:justify-start gap-1 cursor-pointer" onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}>
@@ -1398,6 +1606,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                 placeholder="Collection Name"
               />
               <Icons.ChevronDown />
+              
+              {/* Graphic Logo Badge on Titles */}
+              <ThemeHeaderGraphic theme={currentTheme} onThemeClick={() => setShowThemeModal(true)} />
             </div>
           </div>
           
@@ -1465,6 +1676,22 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
             <button onClick={() => setShowPDFModal(true)} className="p-1 rounded text-slate-300 hover:text-white hover:bg-slate-700 flex items-center gap-1 text-[10px] md:text-xs font-medium" title="Export to PDF">
               <Icons.Download /> <span className="hidden md:inline">PDF</span>
+            </button>
+            <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
+            <button 
+              onClick={() => setShowThemeModal(true)} 
+              className={`p-1 px-1.5 rounded flex items-center gap-1 text-[10px] md:text-xs font-medium transition-all ${
+                themeId !== 'default' 
+                  ? 'bg-blue-600/30 text-blue-200 border border-blue-400/40 hover:bg-blue-600/50 shadow-sm' 
+                  : 'text-slate-300 hover:text-white hover:bg-slate-700'
+              }`} 
+              title={`Seasonal & Holiday Theme: ${currentTheme.name} (${animationEnabled ? 'Animation Active' : 'Animation Off'})`}
+            >
+              {renderThemeIcon(currentTheme.iconName, themeId !== 'default' ? "w-3.5 h-3.5 text-amber-300" : "w-3.5 h-3.5 text-slate-300")} 
+              <span className="hidden md:inline">Theme</span>
+              {animationEnabled && currentTheme.animationType !== 'none' && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse ml-0.5"></span>
+              )}
             </button>
             <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
             <button onClick={() => setShowSettings(!showSettings)} className={`p-1 rounded flex items-center gap-1 text-[10px] md:text-xs font-medium transition-colors ${showSettings ? 'bg-blue-600 text-white' : 'text-slate-300 hover:text-white hover:bg-slate-700'}`} title="Timeline Settings">
@@ -1671,7 +1898,75 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       )}
 
       {showSettings && (
-        <div className="flex-shrink-0 bg-white border-b border-slate-200 p-4 shadow-sm z-40 overflow-x-auto">
+        <div className="flex-shrink-0 bg-white border-b border-slate-200 p-4 shadow-sm z-40 overflow-x-auto space-y-4">
+          {/* Seasonal Theme & Holiday Controls Section */}
+          <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="space-y-0.5">
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Icons.Sparkles className="w-4 h-4 text-purple-600" /> Seasonal Themes & Holiday Occasions
+              </h3>
+              <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">
+                Switch workspace atmosphere for Christmas, British holidays & live ambient animations
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {OCCASION_THEMES.map((t) => {
+                const isSelected = themeId === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => handleSelectTheme(t.id)}
+                    className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                      isSelected
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                    }`}
+                  >
+                    {renderThemeIcon(t.iconName, isSelected ? "w-3.5 h-3.5 text-amber-300" : "w-3.5 h-3.5 text-slate-500")}
+                    <span>{t.name.split(' (')[0]}</span>
+                    {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>}
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => { setShowSettings(false); setShowThemeModal(true); }}
+                className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-md text-xs font-bold transition-colors flex items-center gap-1"
+              >
+                <Icons.Sparkles className="w-3 h-3" /> All Themes
+              </button>
+            </div>
+
+            <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg shrink-0">
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={animationEnabled}
+                  onChange={(e) => handleToggleAnimation(e.target.checked)}
+                  className="w-3.5 h-3.5 rounded text-blue-600 bg-white border-slate-300"
+                />
+                Live Animation
+              </label>
+              {animationEnabled && (
+                <div className="flex items-center gap-1 border-l border-slate-200 pl-2">
+                  {(['low', 'medium', 'high'] as const).map(lvl => (
+                    <button
+                      key={lvl}
+                      onClick={() => handleChangeIntensity(lvl)}
+                      className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${
+                        animationIntensity === lvl ? 'bg-blue-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      {lvl[0]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Phase Color Configuration Section */}
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
               <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -1893,8 +2188,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           importFileRef={importFileRef}
           handleImportJSON={handleImportJSON}
           exportToJSON={exportToJSON}
-          handleViewSnapshot={(s) => { setViewingSnapshot(s); setShowHistoryModal(false); }}
-          handleExitSnapshotView={() => setViewingSnapshot(null)}
+          handleViewSnapshot={handleViewSnapshot}
+          handleExitSnapshotView={handleExitSnapshotView}
           viewingSnapshot={viewingSnapshot}
           applyLoadedData={applyLoadedData}
           deleteSnapshot={deleteSnapshot}
@@ -1912,6 +2207,18 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           projects={projects}
           phaseColors={phaseColors}
           onClose={() => setShowPDFModal(false)}
+        />
+      )}
+
+      {showThemeModal && (
+        <ThemeSelectorModal
+          currentTheme={currentTheme}
+          onSelectTheme={handleSelectTheme}
+          animationEnabled={animationEnabled}
+          onToggleAnimation={handleToggleAnimation}
+          animationIntensity={animationIntensity}
+          onChangeIntensity={handleChangeIntensity}
+          onClose={() => setShowThemeModal(false)}
         />
       )}
     </div>
