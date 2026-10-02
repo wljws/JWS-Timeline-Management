@@ -39,6 +39,8 @@ interface ProjectViewProps {
   activeCollectionId: string;
   deleteProject: (id: string) => void;
   toggleProjectVisibility: (id: string) => void;
+  duplicatePhase?: (pId: string, phId: string) => void;
+  unlinkProject?: (pId: string) => void;
   handleBlockMouseDown: (e: any, pId: string, phId: string, type: string, start: Date | null, end: Date | null) => void;
   handleBlockClick: (e: any, pId: string, phase: Phase, colorIdx: number) => void;
   selectedPhaseIds: Set<string>;
@@ -66,6 +68,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   draggedProjectId, onDragStartRow, onDragOverRow, onDragEndRow, toggleProjectExpand, updateProjectColor,
   updateProjectTitle, addPhase, copyProjectMenuId, setCopyProjectMenuId, copyAsSynced, setCopyAsSynced,
   handleCopyProject, collections, activeCollectionId, deleteProject, toggleProjectVisibility,
+  duplicatePhase, unlinkProject,
   handleBlockMouseDown, handleBlockClick, selectedPhaseIds, toggleProjectSelection, togglePhaseSelection,
   editPhaseTitle, toggleLock, removePhase, draggedPhase, onDragStartPhase, onDragOverPhase, onDragEndPhase,
   handleGridClick, addProject, showHiddenProjects, setShowHiddenProjects, hiddenCount, phaseColors
@@ -204,9 +207,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         )}
                       </div>
 
-                      {project.syncId && <Icons.Link className="text-blue-500 w-3.5 h-3.5 mr-1.5 shrink-0" title="Linked Project (Synced)" />}
+                      {project.syncId && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); unlinkProject && unlinkProject(project.id); }} 
+                          className="text-blue-500 hover:text-red-500 mr-1.5 shrink-0 flex items-center gap-1 text-[10px] bg-blue-50 hover:bg-red-50 px-1.5 py-0.5 rounded border border-blue-200 hover:border-red-200 transition-colors" 
+                          title="Linked project. Click to unlink and make independent."
+                        >
+                          <Icons.Link className="w-3 h-3" />
+                          <span className="font-semibold text-[9px]">Unlink</span>
+                        </button>
+                      )}
 
-                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Select All Phases to shift timeline" />
+                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Tick check all phases in this project to move together" />
                       <input value={project.title} readOnly={isReadOnly || !isAdmin} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 min-w-0 ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} />
                       
                       {!isReadOnly && isAdmin && (
@@ -220,13 +232,12 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             {copyProjectMenuId === project.id && (
                               <div className="absolute top-full right-0 pt-1.5 w-56 z-[100]" onMouseDown={e => e.stopPropagation()}>
                                 <div className="bg-white border border-slate-200 shadow-xl rounded-md py-1 max-h-48 overflow-y-auto">
-                                  <div className="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
-                                    <input type="checkbox" id={`sync-toggle-${project.id}`} checked={copyAsSynced} onChange={(e) => setCopyAsSynced(e.target.checked)} className="cursor-pointer accent-blue-500 w-3.5 h-3.5 shrink-0" />
-                                    <label htmlFor={`sync-toggle-${project.id}`} className="text-xs text-slate-700 font-bold cursor-pointer select-none leading-tight">Link Synced Copy<br/><span className="font-normal text-[9px] text-slate-400">Edits replicate across collections</span></label>
+                                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 flex items-center gap-1.5">
+                                    <Icons.Copy className="w-3 h-3 text-blue-500" />
+                                    <span>Copy to Collection</span>
                                   </div>
-                                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-1">Select Target Collection</div>
                                   {collections.map(c => (
-                                    <div key={c.id} onClick={(e) => { e.stopPropagation(); handleCopyProject(project.id, c.id, copyAsSynced); }} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 flex items-center justify-between text-slate-700 font-medium">
+                                    <div key={c.id} onClick={(e) => { e.stopPropagation(); handleCopyProject(project.id, c.id, false); }} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 flex items-center justify-between text-slate-700 font-medium">
                                       <span className="truncate">{c.title}</span>
                                       {c.id === activeCollectionId && <span className="text-[9px] text-slate-400 font-normal ml-2 shrink-0">(Current)</span>}
                                     </div>
@@ -382,12 +393,28 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         <div className="flex w-full items-center pl-6 md:pl-8 pr-2 md:pr-3 overflow-hidden">
                           {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
                           <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
-                          <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={selectedPhaseIds.has(phase.id)} onChange={() => togglePhaseSelection(phase.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" />
+                          <input 
+                            type="checkbox" 
+                            disabled={isReadOnly || !isAdmin} 
+                            checked={selectedPhaseIds.has(phase.id)} 
+                            onChange={() => togglePhaseSelection(phase.id)} 
+                            className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" 
+                            title="Tick check to link & move with other checked blocks"
+                          />
                           <input list="standard-phases-list" readOnly={isReadOnly || !isAdmin || project.isLocked || globalLocked} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${(isReadOnly || !isAdmin || project.isLocked || globalLocked) ? 'cursor-default' : ''}`} placeholder="Phase Title" />
                           {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && (
-                            <>
-                              <button onClick={() => removePhase(project.id, phase.id)} className="opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 p-2 md:p-1 text-slate-400 hover:text-red-500 transition-opacity ml-1 shrink-0" title="Delete Phase"><Icons.Trash /></button>
-                            </>
+                            <div className="flex items-center gap-0.5 ml-1 shrink-0 opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 transition-opacity">
+                              {duplicatePhase && (
+                                <button 
+                                  onClick={() => duplicatePhase(project.id, phase.id)} 
+                                  className="p-2 md:p-1 text-slate-400 hover:text-blue-600 transition-colors" 
+                                  title="Duplicate Phase (creates independent timeline block)"
+                                >
+                                  <Icons.Copy className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button onClick={() => removePhase(project.id, phase.id)} className="p-2 md:p-1 text-slate-400 hover:text-red-500 transition-colors" title="Delete Phase"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                            </div>
                           )}
                         </div>
                       )}

@@ -159,6 +159,21 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const [isAltPressed, setIsAltPressed] = useState(false);
   const interactionTimeRef = useRef(0);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setIsAltPressed(true);
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Alt') setIsAltPressed(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
   const [collections, setCollections] = useState<Collection[]>([
     {
       id: 'default',
@@ -348,24 +363,10 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       if (!activeCol) return prevCols;
       const currentProjects = activeCol.projects || [];
       const nextProjects = typeof newProjectsOrUpdater === 'function' ? newProjectsOrUpdater(currentProjects) : newProjectsOrUpdater;
-      const syncedMap = new Map();
-      nextProjects.forEach(p => {
-        if (p.syncId) {
-          const oldP = currentProjects.find(cp => cp.id === p.id);
-          if (!oldP || oldP !== p) syncedMap.set(p.syncId, p);
-        }
-      });
       return prevCols.map(c => {
-        const isTargetActive = c.id === activeCollectionIdRef.current;
-        const sourceProjects = isTargetActive ? nextProjects : (c.projects || []);
-        const updatedProjects = sourceProjects.map(p => {
-          if (p.syncId && syncedMap.has(p.syncId)) {
-            const syncedData = syncedMap.get(p.syncId);
-            if (p !== syncedData) return { ...syncedData, id: p.id }; 
-          }
-          return p;
-        });
-        if (isTargetActive || updatedProjects !== sourceProjects) return { ...c, projects: updatedProjects };
+        if (c.id === activeCollectionIdRef.current) {
+          return { ...c, projects: nextProjects };
+        }
         return c;
       });
     });
@@ -406,22 +407,73 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     return { ...task, start: min, end: max };
   };
 
-  const rehydrateProject = (p: any) => ({
+  const rehydrateProject = (p: any, seenPhaseIds?: Set<string>, seenTaskIds?: Set<string>, seenAllocIds?: Set<string>) => ({
     ...p,
-    phases: (p.phases || []).map((ph: any) => ({
-      ...ph,
-      start: ph.start ? new Date(ph.start) : null,
-      end: ph.end ? new Date(ph.end) : null,
-      milestones: (ph.milestones || []).map((m: Milestone) => ({ ...m, date: m.date ? new Date(m.date) : null })),
-      internalReviews: (ph.internalReviews || []).map((m: Milestone) => ({ ...m, date: m.date ? new Date(m.date) : null })),
-      tasks: (ph.tasks || []).map((t: any) => {
-        const safeAllocs = (t.allocations || []).length > 0 
-          ? t.allocations.map((a: any) => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-          : (t.start && t.end ? [{ id: generateId(), start: new Date(t.start), end: new Date(t.end), subTasks: [] }] : []);
-        return { ...t, start: t.start ? new Date(t.start) : null, end: t.end ? new Date(t.end) : null, assignees: t.assignees || (t.assignee ? [t.assignee] : []), assignee: '', allocations: safeAllocs }
-      }),
-      teamAllocations: (ph.teamAllocations || []).map((a: any) => ({ ...a, start: new Date(a.start), end: new Date(a.end) }))
-    }))
+    syncId: null, // Ensure all projects and timeline blocks operate independently
+    phases: (p.phases || []).map((ph: any) => {
+      let phaseId = ph.id;
+      if (!phaseId || (seenPhaseIds && seenPhaseIds.has(phaseId))) {
+        phaseId = generateId();
+      }
+      if (seenPhaseIds) seenPhaseIds.add(phaseId);
+
+      return {
+        ...ph,
+        id: phaseId,
+        start: ph.start ? new Date(ph.start) : null,
+        end: ph.end ? new Date(ph.end) : null,
+        milestones: (ph.milestones || []).map((m: Milestone) => ({
+          ...m,
+          id: m.id || generateId(),
+          date: m.date ? new Date(m.date) : null
+        })),
+        internalReviews: (ph.internalReviews || []).map((m: Milestone) => ({
+          ...m,
+          id: m.id || generateId(),
+          date: m.date ? new Date(m.date) : null
+        })),
+        tasks: (ph.tasks || []).map((t: any) => {
+          let taskId = t.id;
+          if (!taskId || (seenTaskIds && seenTaskIds.has(taskId))) {
+            taskId = generateId();
+          }
+          if (seenTaskIds) seenTaskIds.add(taskId);
+
+          const safeAllocs = (t.allocations || []).length > 0 
+            ? t.allocations.map((a: any) => {
+                let allocId = a.id;
+                if (!allocId || (seenAllocIds && seenAllocIds.has(allocId))) {
+                  allocId = generateId();
+                }
+                if (seenAllocIds) seenAllocIds.add(allocId);
+                return { ...a, id: allocId, start: new Date(a.start), end: new Date(a.end) };
+              })
+            : (t.start && t.end ? (() => {
+                const allocId = generateId();
+                if (seenAllocIds) seenAllocIds.add(allocId);
+                return [{ id: allocId, start: new Date(t.start), end: new Date(t.end), subTasks: [] }];
+              })() : []);
+
+          return {
+            ...t,
+            id: taskId,
+            start: t.start ? new Date(t.start) : null,
+            end: t.end ? new Date(t.end) : null,
+            assignees: t.assignees || (t.assignee ? [t.assignee] : []),
+            assignee: '',
+            allocations: safeAllocs
+          };
+        }),
+        teamAllocations: (ph.teamAllocations || []).map((a: any) => {
+          let allocId = a.id;
+          if (!allocId || (seenAllocIds && seenAllocIds.has(allocId))) {
+            allocId = generateId();
+          }
+          if (seenAllocIds) seenAllocIds.add(allocId);
+          return { ...a, id: allocId, start: new Date(a.start), end: new Date(a.end) };
+        })
+      };
+    })
   });
 
   const applyLoadedData = (data: any, isHistoryRestore = false) => {
@@ -449,6 +501,10 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     }
 
     if (loadedCollections && loadedCollections.length > 0) {
+      const seenPhaseIds = new Set<string>();
+      const seenTaskIds = new Set<string>();
+      const seenAllocIds = new Set<string>();
+
       const processedCollections: Collection[] = loadedCollections.map(c => ({
         id: c.id || generateId(),
         title: c.title || 'Collection',
@@ -460,7 +516,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           end: t.end ? new Date(t.end) : null,
           subTasks: t.subTasks || []
         })),
-        projects: (c.projects || []).map(rehydrateProject)
+        projects: (c.projects || []).map(p => rehydrateProject(p, seenPhaseIds, seenTaskIds, seenAllocIds))
       }));
       setCollections(processedCollections);
       if (targetActiveId && processedCollections.some(c => c.id === targetActiveId)) {
@@ -795,7 +851,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
 
           setProjects(prev => prev.map(p => ({
             ...p, phases: p.phases.map(ph => {
-              const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && (b.projectId ? b.projectId === p.id : true));
+              const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && b.projectId === p.id);
               if (!block) return ph;
               
               if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
@@ -843,6 +899,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
               }
               
               if (block.taskId && block.allocationId) {
+                if (p.id !== block.projectId || ph.id !== block.phaseId) return ph;
                 return {
                   ...ph,
                   teamAllocations: (ph.teamAllocations || []).map(a => {
@@ -1004,19 +1061,13 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     };
   };
 
-  const handleCopyProject = (projectId: string, targetCollectionId: string, isSynced = false) => {
+  const handleCopyProject = (projectId: string, targetCollectionId: string, _isSynced = false) => {
     if (isReadOnly) return;
     recordHistory();
     const projectToCopy = projects.find(p => p.id === projectId);
     if (!projectToCopy) return;
-    let clonedProject;
-    if (isSynced) {
-      const syncId = projectToCopy.syncId || generateId();
-      clonedProject = { ...projectToCopy, id: generateId(), syncId: syncId };
-      setProjects(prev => prev.map(p => p.id === projectId ? { ...p, syncId } : p));
-    } else {
-      clonedProject = cloneAndRegenerateProjectIds(projectToCopy);
-    }
+    // Always clone and regenerate all IDs so all timeline blocks are completely independent
+    const clonedProject = cloneAndRegenerateProjectIds(projectToCopy);
     setCollections(prev => prev.map(c => c.id === targetCollectionId ? { ...c, projects: [...(c.projects || []), clonedProject] } : c));
     setCopyProjectMenuId(null);
     setCopyAsSynced(false);
@@ -1255,9 +1306,102 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   };
   const toggleProjectVisibility = (id: string) => { recordHistory(); setProjects(prev => prev.map(p => p.id === id ? { ...p, isHidden: !p.isHidden } : p)); };
   const addProject = () => { recordHistory(); setProjects([...projects, { id: generateId(), title: 'New Project', color: 'blue', isExpanded: true, isLocked: false, phases: STANDARD_TEMPLATE_PHASES.map(t => ({ id: generateId(), title: t.title, start: null, end: null, milestones: [], internalReviews: [], tasks: t.tasks.map(tt => ({ id: generateId(), text: tt.text, done: false, assignees: [], assignee: '', start: null, end: null, allocations: [] })) })) }]); };
-  const deleteProject = (id: string) => { recordHistory(); setProjects(projects.filter(p => p.id !== id)); };
+  const deleteProject = (id: string) => { 
+    recordHistory(); 
+    const proj = projects.find(p => p.id === id);
+    if (proj) {
+      setSelectedPhaseIds(prev => {
+        const next = new Set(prev);
+        proj.phases.forEach(ph => next.delete(ph.id));
+        return next;
+      });
+    }
+    setProjects(projects.filter(p => p.id !== id)); 
+  };
   const addPhase = (pId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, isExpanded: true, phases: [...p.phases, { id: generateId(), title: 'New Phase', assignees: [], start: null, end: null, tasks: [], milestones: [], internalReviews: [] }] } : p)); };
-  const removePhase = (pId: string, phId: string) => { recordHistory(); setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.filter(ph => ph.id !== phId) } : p)); if (modalData?.phase.id === phId) setModalData(null); };
+  const removePhase = (pId: string, phId: string) => { 
+    recordHistory(); 
+    setSelectedPhaseIds(prev => {
+      if (prev.has(phId)) {
+        const next = new Set(prev);
+        next.delete(phId);
+        return next;
+      }
+      return prev;
+    });
+    setProjects(projects.map(p => p.id === pId ? { ...p, phases: p.phases.filter(ph => ph.id !== phId) } : p)); 
+    if (modalData?.phase.id === phId) setModalData(null); 
+  };
+  const duplicatePhase = (pId: string, phId: string) => {
+    if (isReadOnly) return;
+    recordHistory();
+    setProjects(prev => prev.map(p => {
+      if (p.id !== pId) return p;
+      const targetPhaseIndex = p.phases.findIndex(ph => ph.id === phId);
+      if (targetPhaseIndex === -1) return p;
+      const ph = p.phases[targetPhaseIndex];
+      const clonedPhase: Phase = {
+        ...ph,
+        id: generateId(),
+        title: ph.title.endsWith('(Copy)') ? ph.title : `${ph.title} (Copy)`,
+        start: ph.start ? new Date(ph.start) : null,
+        end: ph.end ? new Date(ph.end) : null,
+        milestones: (ph.milestones || []).map(m => ({
+          ...m,
+          id: generateId(),
+          date: m.date ? new Date(m.date) : null
+        })),
+        internalReviews: (ph.internalReviews || []).map(m => ({
+          ...m,
+          id: generateId(),
+          date: m.date ? new Date(m.date) : null
+        })),
+        tasks: (ph.tasks || []).map(t => ({
+          ...t,
+          id: generateId(),
+          start: t.start ? new Date(t.start) : null,
+          end: t.end ? new Date(t.end) : null,
+          allocations: (t.allocations || []).map(a => ({
+            ...a,
+            id: generateId(),
+            start: a.start ? new Date(a.start) : null,
+            end: a.end ? new Date(a.end) : null,
+            subTasks: (a.subTasks || []).map(s => ({ ...s, id: generateId() }))
+          }))
+        })),
+        teamAllocations: (ph.teamAllocations || []).map(a => ({
+          ...a,
+          id: generateId(),
+          start: a.start ? new Date(a.start) : null,
+          end: a.end ? new Date(a.end) : null,
+          subTasks: (a.subTasks || []).map(s => ({ ...s, id: generateId() }))
+        }))
+      };
+      const nextPhases = [...p.phases];
+      nextPhases.splice(targetPhaseIndex + 1, 0, clonedPhase);
+      return { ...p, phases: nextPhases };
+    }));
+  };
+  const unlinkProject = (pId: string) => {
+    if (isReadOnly) return;
+    recordHistory();
+    setProjects(prev => prev.map(p => p.id === pId ? { ...p, syncId: null } : p));
+  };
+  const toggleProjectSelection = (pId: string) => {
+    const proj = projects.find(p => p.id === pId);
+    if (!proj) return;
+    const projectPhaseIds = proj.phases.map(ph => ph.id);
+    const allSelected = projectPhaseIds.length > 0 && projectPhaseIds.every(id => selectedPhaseIds.has(id));
+    setSelectedPhaseIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) {
+        projectPhaseIds.forEach(id => next.delete(id));
+      } else {
+        projectPhaseIds.forEach(id => next.add(id));
+      }
+      return next;
+    });
+  };
   const toggleLock = (pId: string) => { 
     if (!isAdmin) return;
     setProjects(projects.map(p => {
@@ -2013,8 +2157,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           copyAsSynced={copyAsSynced} setCopyAsSynced={setCopyAsSynced} handleCopyProject={handleCopyProject}
           collections={collections} activeCollectionId={activeCollectionId} deleteProject={deleteProject}
           toggleProjectVisibility={toggleProjectVisibility} handleBlockMouseDown={handleBlockMouseDown} handleBlockClick={(e, pId, phase, idx) => setModalData({ projectId: pId, phase, colorIndex: idx })}
-          selectedPhaseIds={selectedPhaseIds} toggleProjectSelection={() => {}} togglePhaseSelection={(id) => setSelectedPhaseIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
+          selectedPhaseIds={selectedPhaseIds} toggleProjectSelection={toggleProjectSelection} togglePhaseSelection={(id) => setSelectedPhaseIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; })}
           editPhaseTitle={editPhaseTitle} updatePhaseAssignees={updatePhaseAssignees} toggleLock={toggleLock} removePhase={removePhase}
+          duplicatePhase={duplicatePhase} unlinkProject={unlinkProject}
           draggedPhase={draggedPhase} onDragStartPhase={onDragStartPhase} onDragOverPhase={onDragOverPhase} onDragEndPhase={onDragEndPhase}
           handleGridClick={handleGridClick} addProject={addProject} showHiddenProjects={showHiddenProjects} setShowHiddenProjects={setShowHiddenProjects} hiddenCount={projects.filter(p => p.isHidden).length}
           phaseColors={phaseColors}
@@ -2107,6 +2252,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           toggleTask={toggleTask} addTask={addTask}
           updateTaskText={updateTaskText} updateTaskAssignees={updateTaskAssignees} updateTaskDates={updateTaskDates}
           deleteTask={deleteTask} removePhase={removePhase} recordHistory={recordHistory} updateTasksInState={updateTasksInState}
+          duplicatePhase={duplicatePhase}
           teamMembers={teamMembers} openDropdownId={openDropdownId} setOpenDropdownId={setOpenDropdownId}
           onDragStartTask={() => {}} onDragOverTask={() => {}} onDragEndTask={() => {}}
           onDragStartMilestone={() => {}} onDragOverMilestone={() => {}} onDragEndMilestone={() => {}}

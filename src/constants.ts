@@ -28,35 +28,38 @@ export const STANDARD_TEMPLATE_PHASES = [
 
 export const generateDefaultProjects = (): Project[] => ([
   {
-    id: 'p1',
+    id: generateId(),
     title: 'Project Template',
     color: 'blue',
     isExpanded: true,
     isLocked: false,
-    phases: STANDARD_TEMPLATE_PHASES.map((t, i) => ({
-      id: `ph_${i}`,
-      title: t.title,
-      assignees: [],
-      start: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 5) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth(), 25) : null),
-      end: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 20) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth() + 1, 20) : null),
-      tasks: t.tasks.map((taskTemplate, tIdx) => {
-        const isAllocated = i === 0 && tIdx === 0;
-        const tStart = isAllocated ? new Date(new Date().getFullYear(), new Date().getMonth(), 6) : null;
-        const tEnd = isAllocated ? new Date(new Date().getFullYear(), new Date().getMonth(), 8) : null;
-        return {
-          id: `t_${i}_${tIdx}`,
-          text: taskTemplate.text,
-          done: false,
-          assignees: isAllocated ? ['Alice Design'] : [],
-          assignee: '',
-          start: tStart,
-          end: tEnd,
-          allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
-        }
-      }),
-      milestones: [],
-      internalReviews: []
-    }))
+    phases: STANDARD_TEMPLATE_PHASES.map((t, i) => {
+      const phId = generateId();
+      return {
+        id: phId,
+        title: t.title,
+        assignees: [],
+        start: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 5) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth(), 25) : null),
+        end: i === 0 ? new Date(new Date().getFullYear(), new Date().getMonth(), 20) : (i === 1 ? new Date(new Date().getFullYear(), new Date().getMonth() + 1, 20) : null),
+        tasks: t.tasks.map((taskTemplate, tIdx) => {
+          const isAllocated = i === 0 && tIdx === 0;
+          const tStart = isAllocated ? new Date(new Date().getFullYear(), new Date().getMonth(), 6) : null;
+          const tEnd = isAllocated ? new Date(new Date().getFullYear(), new Date().getMonth(), 8) : null;
+          return {
+            id: generateId(),
+            text: taskTemplate.text,
+            done: false,
+            assignees: isAllocated ? ['Alice Design'] : [],
+            assignee: '',
+            start: tStart,
+            end: tEnd,
+            allocations: (tStart && tEnd) ? [{ id: generateId(), start: tStart, end: tEnd, subTasks: [] }] : []
+          };
+        }),
+        milestones: [],
+        internalReviews: []
+      };
+    })
   }
 ]);
 

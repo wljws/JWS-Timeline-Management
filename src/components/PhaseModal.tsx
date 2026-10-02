@@ -47,6 +47,7 @@ interface PhaseModalProps {
   draggedMilestoneIndex: number | null;
   interactionTimeRef: React.MutableRefObject<number>;
   updatePhaseAssignees: (pId: string, phId: string, assignees: string[]) => void;
+  duplicatePhase?: (pId: string, phId: string) => void;
 }
 
 export const PhaseModal: React.FC<PhaseModalProps> = ({
@@ -57,7 +58,7 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
   toggleTask, addTask, updateTaskText, updateTaskAssignees, updateTaskDates, deleteTask,
   removePhase, recordHistory, updateTasksInState, teamMembers, openDropdownId, setOpenDropdownId,
   onDragStartTask, onDragOverTask, onDragEndTask, onDragStartMilestone, onDragOverMilestone, onDragEndMilestone,
-  draggedTaskIndex, draggedMilestoneIndex, interactionTimeRef, updatePhaseAssignees
+  draggedTaskIndex, draggedMilestoneIndex, interactionTimeRef, updatePhaseAssignees, duplicatePhase
 }) => {
   const phaseAssignees = modalData.phase.assignees || [];
   return (
@@ -319,7 +320,18 @@ export const PhaseModal: React.FC<PhaseModalProps> = ({
         
         <div className="bg-slate-50 p-4 border-t border-slate-200 flex justify-between items-center shrink-0">
           {!isReadOnly ? (
-            <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-sm md:text-xs text-red-500 hover:text-red-700 font-medium p-2">Delete Phase</button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => removePhase(activeProject.id, modalData.phase.id)} className="text-sm md:text-xs text-red-500 hover:text-red-700 font-medium p-2">Delete Phase</button>
+              {duplicatePhase && (
+                <button 
+                  onClick={() => { duplicatePhase(activeProject.id, modalData.phase.id); setModalData(null); }} 
+                  className="text-sm md:text-xs text-blue-600 hover:text-blue-800 font-medium p-2 flex items-center gap-1.5 hover:bg-blue-50 rounded transition-colors"
+                  title="Duplicate this phase into an independent timeline block"
+                >
+                  <Icons.Copy className="w-3.5 h-3.5" /> Duplicate Phase
+                </button>
+              )}
+            </div>
           ) : <div></div>}
           <button onClick={() => { setModalData(null); setSelectedTaskIdsToCopy(new Set()); }} className="bg-slate-800 hover:bg-slate-700 text-white text-base md:text-sm font-medium px-8 py-3 md:py-2 rounded-lg md:rounded shadow-sm">Done</button>
         </div>
