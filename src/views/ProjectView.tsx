@@ -74,6 +74,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
   handleGridClick, addProject, showHiddenProjects, setShowHiddenProjects, hiddenCount, phaseColors
 }) => {
   const dragStartPos = React.useRef({ x: 0, y: 0 });
+  const [mobileMenuProjectId, setMobileMenuProjectId] = React.useState<string | null>(null);
   return (
     <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative touch-pan-x touch-pan-y" ref={scrollContainerRef}>
       <div className="relative min-w-full w-max min-h-full">
@@ -173,24 +174,26 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
               className={`flex flex-col relative border-b border-slate-200 bg-transparent hover:z-40 ${draggedProjectId === project.id ? 'opacity-50 bg-slate-100 z-50' : 'z-10'}`}
             >
               <div className={`flex w-full group relative z-20 ${project.isHidden ? 'opacity-60 bg-slate-100' : ''}`}>
-                <div className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover:bg-slate-50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 flex items-center h-[48px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-visible" style={{ width: currentLeftWidth, paddingLeft: isLeftPanelCollapsed ? '0' : '0.5rem' }}>
+                <div className="flex-shrink-0 sticky left-0 z-30 bg-white group-hover:bg-slate-50 transition-[width,background-color] duration-300 ease-in-out border-r border-slate-300 flex items-center h-[48px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] overflow-visible" style={{ width: currentLeftWidth, paddingLeft: isLeftPanelCollapsed ? '0' : '0.375rem' }}>
                   {isLeftPanelCollapsed ? (
-                    <div className="w-full flex justify-center cursor-pointer hover:bg-slate-100 h-full items-center" onClick={() => toggleProjectExpand(project.id)} title={`Expand - ${project.title}`}>
-                      <div className="w-4 h-4 rounded-full shadow-sm border border-slate-200" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
+                    <div className="w-full flex justify-center cursor-pointer hover:bg-slate-100 h-full items-center relative group/tip" onClick={() => toggleProjectExpand(project.id)} title={`Expand - ${project.title}`}>
+                      <div className="w-5 h-5 rounded-full shadow-sm border border-slate-200 flex items-center justify-center text-[10px] font-bold text-white shrink-0" style={{backgroundColor: getIndicatorColor(project.color)}}>
+                        {project.title.substring(0, 1).toUpperCase()}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex w-full items-center pr-1 min-w-0">
                       {!isReadOnly && isAdmin && (
-                        <div className="w-6 md:w-8 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover:opacity-100 cursor-grab shrink-0">
+                        <div className="hidden md:flex w-6 md:w-8 justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover:opacity-100 cursor-grab shrink-0">
                           <Icons.Grip />
                         </div>
                       )}
-                      <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-1 text-slate-400 hover:text-slate-700 shrink-0">
+                      <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-0.5 text-slate-400 hover:text-slate-700 shrink-0" title={project.isExpanded ? "Collapse" : "Expand"}>
                         {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
                       </button>
 
-                      <div className="relative group/color mr-2 flex items-center h-full shrink-0">
-                        <div className="w-4 h-4 md:w-3 md:h-3 rounded-full cursor-pointer" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
+                      <div className="relative group/color mr-1.5 flex items-center h-full shrink-0">
+                        <div className="w-3.5 h-3.5 rounded-full cursor-pointer shadow-sm hover:scale-110 transition-transform" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
                         {!isReadOnly && isAdmin && (
                           <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
                             <div className="flex gap-1.5 bg-white border border-slate-200 shadow-xl rounded-md p-1.5 items-center">
@@ -210,57 +213,110 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                       {project.syncId && (
                         <button 
                           onClick={(e) => { e.stopPropagation(); unlinkProject && unlinkProject(project.id); }} 
-                          className="text-blue-500 hover:text-red-500 mr-1.5 shrink-0 flex items-center gap-1 text-[10px] bg-blue-50 hover:bg-red-50 px-1.5 py-0.5 rounded border border-blue-200 hover:border-red-200 transition-colors" 
+                          className="text-blue-500 hover:text-red-500 mr-1 shrink-0 flex items-center gap-0.5 text-[9px] bg-blue-50 hover:bg-red-50 px-1 py-0.5 rounded border border-blue-200 hover:border-red-200 transition-colors" 
                           title="Linked project. Click to unlink and make independent."
                         >
-                          <Icons.Link className="w-3 h-3" />
-                          <span className="font-semibold text-[9px]">Unlink</span>
+                          <Icons.Link className="w-2.5 h-2.5" />
                         </button>
                       )}
 
-                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Tick check all phases in this project to move together" />
-                      <input value={project.title} readOnly={isReadOnly || !isAdmin} onChange={(e) => updateProjectTitle(project.id, e.target.value)} className={`flex-1 bg-transparent text-sm font-semibold text-slate-800 focus:outline-none focus:border-b border-blue-300 mr-2 min-w-0 ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} />
+                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-1.5 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Tick check all phases in this project to move together" />
+                      
+                      {/* Project Title Input: Full visibility, bold and legible */}
+                      <input 
+                        value={project.title} 
+                        readOnly={isReadOnly || !isAdmin} 
+                        onChange={(e) => updateProjectTitle(project.id, e.target.value)} 
+                        className={`flex-1 bg-transparent text-xs md:text-sm font-bold text-slate-800 focus:outline-none focus:border-b border-blue-400 mr-1 min-w-0 truncate ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} 
+                        title={project.title}
+                        placeholder="Project Title"
+                      />
                       
                       {!isReadOnly && isAdmin && (
-                        <div className="flex items-center shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 z-10 md:absolute md:right-0 md:top-0 md:bottom-0 md:pl-10 md:pr-1 md:bg-gradient-to-r from-white/0 via-white to-white group-hover:from-slate-50/0 group-hover:via-slate-50 group-hover:to-slate-50 pointer-events-none *:pointer-events-auto transition-opacity">
-                          <button onClick={() => addPhase(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase"><Icons.Plus /></button>
-                          
-                          <div className="relative group/copy mr-1 shrink-0" onMouseLeave={() => { setCopyProjectMenuId(null); setCopyAsSynced(false); }}>
-                            <button onClick={(e) => { e.stopPropagation(); setCopyProjectMenuId(copyProjectMenuId === project.id ? null : project.id); }} className="p-2 md:p-1 text-slate-400 hover:text-blue-600 flex items-center justify-center" title="Copy Project to Collection">
-                              <Icons.Copy />
-                            </button>
-                            {copyProjectMenuId === project.id && (
-                              <div className="absolute top-full right-0 pt-1.5 w-56 z-[100]" onMouseDown={e => e.stopPropagation()}>
-                                <div className="bg-white border border-slate-200 shadow-xl rounded-md py-1 max-h-48 overflow-y-auto">
-                                  <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 flex items-center gap-1.5">
-                                    <Icons.Copy className="w-3 h-3 text-blue-500" />
-                                    <span>Copy to Collection</span>
-                                  </div>
-                                  {collections.map(c => (
-                                    <div key={c.id} onClick={(e) => { e.stopPropagation(); handleCopyProject(project.id, c.id, false); }} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 flex items-center justify-between text-slate-700 font-medium">
-                                      <span className="truncate">{c.title}</span>
-                                      {c.id === activeCollectionId && <span className="text-[9px] text-slate-400 font-normal ml-2 shrink-0">(Current)</span>}
+                        <>
+                          {/* Desktop Action Buttons (Hover overlay to avoid squeezing title) */}
+                          <div className="hidden md:flex items-center shrink-0 opacity-0 group-hover:opacity-100 z-10 absolute right-0 top-0 bottom-0 pl-10 pr-1 bg-gradient-to-r from-white/0 via-white to-white group-hover:from-slate-50/0 group-hover:via-slate-50 group-hover:to-slate-50 pointer-events-none *:pointer-events-auto transition-opacity">
+                            <button onClick={() => addPhase(project.id)} className="p-1 text-slate-400 hover:text-blue-600 shrink-0" title="Add Phase"><Icons.Plus /></button>
+                            
+                            <div className="relative group/copy mr-1 shrink-0" onMouseLeave={() => { setCopyProjectMenuId(null); setCopyAsSynced(false); }}>
+                              <button onClick={(e) => { e.stopPropagation(); setCopyProjectMenuId(copyProjectMenuId === project.id ? null : project.id); }} className="p-1 text-slate-400 hover:text-blue-600 flex items-center justify-center" title="Copy Project to Collection">
+                                <Icons.Copy />
+                              </button>
+                              {copyProjectMenuId === project.id && (
+                                <div className="absolute top-full right-0 pt-1.5 w-56 z-[100]" onMouseDown={e => e.stopPropagation()}>
+                                  <div className="bg-white border border-slate-200 shadow-xl rounded-md py-1 max-h-48 overflow-y-auto">
+                                    <div className="px-3 py-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100 flex items-center gap-1.5">
+                                      <Icons.Copy className="w-3 h-3 text-blue-500" />
+                                      <span>Copy to Collection</span>
                                     </div>
-                                  ))}
+                                    {collections.map(c => (
+                                      <div key={c.id} onClick={(e) => { e.stopPropagation(); handleCopyProject(project.id, c.id, false); }} className="px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 flex items-center justify-between text-slate-700 font-medium">
+                                        <span className="truncate">{c.title}</span>
+                                        {c.id === activeCollectionId && <span className="text-[9px] text-slate-400 font-normal ml-2 shrink-0">(Current)</span>}
+                                      </div>
+                                    ))}
+                                  </div>
                                 </div>
+                              )}
+                            </div>
+
+                            <button onClick={() => deleteProject(project.id)} className="p-1 text-slate-400 hover:text-red-500 mr-1.5 shrink-0" title="Delete Project"><Icons.Trash /></button>
+                            
+                            <button onClick={() => toggleLock(project.id)} className={`p-1 transition-colors mr-1.5 shrink-0 ${ (globalLocked || project.isLocked) ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500'}`} title={ (globalLocked || project.isLocked) ? "Unlock Project Dates" : "Lock Project Dates"}>{ (globalLocked || project.isLocked) ? <Icons.Lock /> : <Icons.Unlock />}</button>
+
+                            <button onClick={() => toggleProjectVisibility(project.id)} className="p-1 text-slate-400 hover:text-slate-600 shrink-0" title={project.isHidden ? "Unhide Project" : "Hide Project"}>
+                              {project.isHidden ? <Icons.Eye /> : <Icons.EyeOff />}
+                            </button>
+                          </div>
+
+                          {/* Mobile Action Dropdown (Keeps title full width without crowding) */}
+                          <div className="flex md:hidden items-center shrink-0 relative">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setMobileMenuProjectId(mobileMenuProjectId === project.id ? null : project.id); }} 
+                              className="p-1 text-slate-400 hover:text-slate-700 active:bg-slate-100 rounded shrink-0 touch-manipulation"
+                              title="Project options"
+                            >
+                              <Icons.MoreVertical className="w-3.5 h-3.5" />
+                            </button>
+                            {mobileMenuProjectId === project.id && (
+                              <div className="absolute right-0 top-full mt-1 w-44 bg-white border border-slate-200 shadow-xl rounded-md py-1 z-50 text-xs" onMouseDown={(e) => e.stopPropagation()}>
+                                <button onClick={() => { addPhase(project.id); setMobileMenuProjectId(null); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                                  <Icons.Plus className="w-3.5 h-3.5 text-blue-500" /> <span>Add Phase</span>
+                                </button>
+                                <button onClick={() => { setCopyProjectMenuId(project.id); setMobileMenuProjectId(null); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                                  <Icons.Copy className="w-3.5 h-3.5 text-slate-500" /> <span>Copy to Collection</span>
+                                </button>
+                                <button onClick={() => { toggleLock(project.id); setMobileMenuProjectId(null); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                                  {project.isLocked ? <Icons.Lock className="w-3.5 h-3.5 text-amber-500" /> : <Icons.Unlock className="w-3.5 h-3.5 text-slate-400" />}
+                                  <span>{project.isLocked ? 'Unlock Project' : 'Lock Project'}</span>
+                                </button>
+                                <button onClick={() => { toggleProjectVisibility(project.id); setMobileMenuProjectId(null); }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700">
+                                  {project.isHidden ? <Icons.Eye className="w-3.5 h-3.5 text-slate-500" /> : <Icons.EyeOff className="w-3.5 h-3.5 text-slate-400" />}
+                                  <span>{project.isHidden ? 'Unhide' : 'Hide'}</span>
+                                </button>
+                                <div className="border-t border-slate-100 my-1"></div>
+                                <button onClick={() => { deleteProject(project.id); setMobileMenuProjectId(null); }} className="w-full text-left px-3 py-2 hover:bg-red-50 flex items-center gap-2 text-red-600 font-medium">
+                                  <Icons.Trash className="w-3.5 h-3.5 text-red-500" /> <span>Delete Project</span>
+                                </button>
                               </div>
                             )}
                           </div>
-
-                          <button onClick={() => deleteProject(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-red-500 mr-2 shrink-0" title="Delete Project"><Icons.Trash /></button>
-                          
-                          <button onClick={() => toggleLock(project.id)} className={`p-2 md:p-1 transition-colors mr-2 shrink-0 ${ (globalLocked || project.isLocked) ? 'text-amber-500' : 'text-slate-300 hover:text-amber-500 opacity-100 md:opacity-0 md:group-hover:opacity-100'}`} title={ (globalLocked || project.isLocked) ? "Unlock Project Dates" : "Lock Project Dates"}>{ (globalLocked || project.isLocked) ? <Icons.Lock /> : <Icons.Unlock />}</button>
-
-                          <button onClick={() => toggleProjectVisibility(project.id)} className="p-2 md:p-1 text-slate-400 hover:text-slate-600 shrink-0" title={project.isHidden ? "Unhide Project" : "Hide Project"}>
-                            {project.isHidden ? <Icons.Eye /> : <Icons.EyeOff />}
-                          </button>
-                        </div>
+                        </>
                       )}
                     </div>
                   )}
                 </div>
                 
                 <div className="flex-shrink-0 relative h-[48px] bg-slate-50/10 group-hover:bg-slate-50/30 transition-colors" style={{ width: gridWidth }}>
+                  {/* Sticky Project Title Indicator in Timeline Track */}
+                  <div className="sticky left-2 md:left-3 z-20 pointer-events-none inline-flex items-center h-full float-left mr-2">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/85 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[200px] md:max-w-[320px] pointer-events-auto">
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
+                      <span className="text-[11px] md:text-xs font-bold truncate drop-shadow-sm">{project.title}</span>
+                      {project.isExpanded && <span className="text-[9px] text-slate-300 font-normal shrink-0 hidden sm:inline">({project.phases.length} phases)</span>}
+                    </div>
+                  </div>
+
                   {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                     const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
@@ -390,30 +446,30 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                           <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
                         </div>
                       ) : (
-                        <div className="flex w-full items-center pl-6 md:pl-8 pr-2 md:pr-3 overflow-hidden">
-                          {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && <div className="w-6 flex justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
+                        <div className="flex w-full items-center pl-3 md:pl-7 pr-1 md:pr-3 overflow-hidden">
+                          {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && <div className="hidden md:flex w-6 justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
                           <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
                           <input 
                             type="checkbox" 
                             disabled={isReadOnly || !isAdmin} 
                             checked={selectedPhaseIds.has(phase.id)} 
                             onChange={() => togglePhaseSelection(phase.id)} 
-                            className="mr-2 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" 
+                            className="mr-1.5 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0" 
                             title="Tick check to link & move with other checked blocks"
                           />
-                          <input list="standard-phases-list" readOnly={isReadOnly || !isAdmin || project.isLocked || globalLocked} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-sm md:text-xs text-slate-600 focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${(isReadOnly || !isAdmin || project.isLocked || globalLocked) ? 'cursor-default' : ''}`} placeholder="Phase Title" />
+                          <input list="standard-phases-list" readOnly={isReadOnly || !isAdmin || project.isLocked || globalLocked} value={phase.title} onChange={(e) => editPhaseTitle(project.id, phase.id, e.target.value)} className={`flex-1 bg-transparent text-xs text-slate-700 font-medium focus:outline-none focus:border-b border-blue-300 truncate min-w-0 ${(isReadOnly || !isAdmin || project.isLocked || globalLocked) ? 'cursor-default' : ''}`} placeholder="Phase Title" />
                           {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && (
                             <div className="flex items-center gap-0.5 ml-1 shrink-0 opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 transition-opacity">
                               {duplicatePhase && (
                                 <button 
                                   onClick={() => duplicatePhase(project.id, phase.id)} 
-                                  className="p-2 md:p-1 text-slate-400 hover:text-blue-600 transition-colors" 
+                                  className="p-1 text-slate-400 hover:text-blue-600 transition-colors" 
                                   title="Duplicate Phase (creates independent timeline block)"
                                 >
                                   <Icons.Copy className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              <button onClick={() => removePhase(project.id, phase.id)} className="p-2 md:p-1 text-slate-400 hover:text-red-500 transition-colors" title="Delete Phase"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => removePhase(project.id, phase.id)} className="p-1 text-slate-400 hover:text-red-500 transition-colors" title="Delete Phase"><Icons.Trash className="w-3.5 h-3.5" /></button>
                             </div>
                           )}
                         </div>
@@ -442,7 +498,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, colorIndex) 
                           }}
                         >
-                        <span className="truncate drop-shadow-md flex items-center gap-1">{(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3" />} {abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                        <span className="truncate drop-shadow-md flex items-center gap-1">
+                          {(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3" />}
+                          <span className="font-extrabold text-[9px] bg-black/25 px-1 py-0.5 rounded mr-0.5 md:hidden text-white/95 uppercase tracking-wider shrink-0">{project.title}</span>
+                          <span className="truncate">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                        </span>
                         {taskCount > 0 && width > 100 && <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>}
 
                         {!isReadOnly && isAdmin && (

@@ -33,7 +33,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const [viewMode, setViewMode] = useState<ViewMode>('projects'); 
   const [zoomLevel, setZoomLevel] = useState(5); 
   const [hideWeekends, setHideWeekends] = useState(true);
-  const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 160 : 380); 
+  const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 190 : 380); 
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
   const [globalLocked, setGlobalLocked] = useState(false);
   
@@ -1743,10 +1743,13 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             <div className="flex items-center justify-center lg:justify-start gap-1 cursor-pointer" onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}>
               <input 
                 type="text" 
-                value={activeCollection?.title || ''} 
-                onChange={(e) => setCollections(prev => prev.map(c => c.id === activeCollectionId ? { ...c, title: e.target.value } : c))}
-                readOnly={isReadOnly}
-                className="bg-transparent text-base md:text-lg font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-64 leading-tight"
+                value={viewMode === 'overview' ? 'All Projects Overview' : (activeCollection?.title || '')} 
+                onChange={(e) => {
+                  if (viewMode === 'overview') return;
+                  setCollections(prev => prev.map(c => c.id === activeCollectionId ? { ...c, title: e.target.value } : c));
+                }}
+                readOnly={isReadOnly || viewMode === 'overview'}
+                className="bg-transparent text-base md:text-lg font-bold border-b border-transparent hover:border-slate-500 focus:border-blue-400 focus:outline-none transition-colors w-64 leading-tight truncate"
                 placeholder="Collection Name"
               />
               <Icons.ChevronDown />
@@ -1792,6 +1795,9 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           <div className="flex bg-slate-800 rounded p-0.5">
             <button onClick={() => setViewMode('projects')} className={`px-2 py-1 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 ${viewMode === 'projects' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
               <Icons.Layout className="w-3 h-3"/> Projects
+            </button>
+            <button onClick={() => setViewMode('overview')} className={`px-2 py-1 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 ${viewMode === 'overview' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
+              <Icons.Eye className="w-3 h-3"/> Overview
             </button>
             <button onClick={() => setViewMode('team')} className={`px-2 py-1 rounded text-[10px] md:text-xs font-medium transition-colors flex items-center gap-1 ${viewMode === 'team' ? 'bg-slate-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'}`}>
               <Icons.Users className="w-3 h-3"/> Team View

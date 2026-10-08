@@ -113,61 +113,86 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
           {overviewData.map(collection => (
             <React.Fragment key={collection.collectionId}>
               <div className="flex w-full group relative z-20 bg-slate-100 border-b border-slate-200">
-                <div className="flex-shrink-0 sticky left-0 z-30 bg-slate-100 border-r border-slate-300 flex items-center h-[36px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] px-4" style={{ width: currentLeftWidth }}>
-                  {!isLeftPanelCollapsed && <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider truncate">{collection.collectionTitle}</span>}
+                <div className="flex-shrink-0 sticky left-0 z-30 bg-slate-100 border-r border-slate-300 flex items-center h-[36px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] px-3 md:px-4" style={{ width: currentLeftWidth }}>
+                  {!isLeftPanelCollapsed ? (
+                    <span className="text-[10px] md:text-xs font-extrabold text-slate-700 uppercase tracking-wider truncate">{collection.collectionTitle}</span>
+                  ) : (
+                    <span className="text-[9px] font-bold text-slate-500 uppercase truncate text-center w-full">{collection.collectionTitle.substring(0, 2)}</span>
+                  )}
                 </div>
-                <div className="flex-shrink-0 relative h-[36px]" style={{ width: gridWidth }}></div>
+                <div className="flex-shrink-0 relative h-[36px] flex items-center" style={{ width: gridWidth }}>
+                  {/* Sticky Collection Header Tag for Horizontal Scrolling */}
+                  <div className="sticky left-2 md:left-3 z-10 inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider bg-slate-200/90 px-2 py-0.5 rounded shadow-xs">
+                    <span>{collection.collectionTitle}</span>
+                    <span className="text-[10px] text-slate-500 font-normal">({collection.projects.length} projects)</span>
+                  </div>
+                </div>
               </div>
               
               {collection.projects.map(project => (
                 <div key={project.id} className="flex flex-col relative border-b border-slate-100 bg-transparent hover:bg-slate-50 transition-colors z-10 h-[48px]">
                   <div className="flex w-full relative z-20 h-full">
-                    <div className="flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-300 flex items-center h-[48px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] px-2 md:px-6" style={{ width: currentLeftWidth }}>
-                      {!isLeftPanelCollapsed && (
+                    <div className="flex-shrink-0 sticky left-0 z-30 bg-white border-r border-slate-300 flex items-center h-[48px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] px-2 md:px-4" style={{ width: currentLeftWidth }}>
+                      {!isLeftPanelCollapsed ? (
                         <div className="flex w-full items-center pr-1 min-w-0">
-                          <div className="w-3 h-3 rounded-full mr-2 shrink-0" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
-                          <span className="text-sm font-semibold text-slate-800 truncate">{project.title}</span>
+                          <div className="w-3.5 h-3.5 md:w-3 md:h-3 rounded-full mr-1.5 md:mr-2 shrink-0 shadow-sm" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
+                          <span className="text-xs md:text-sm font-bold text-slate-800 truncate" title={project.title}>{project.title}</span>
+                        </div>
+                      ) : (
+                        <div className="w-full flex items-center justify-center cursor-pointer h-full relative group/tip" onClick={() => setIsLeftPanelCollapsed(false)} title={`Expand - ${project.title}`}>
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm shrink-0" style={{ backgroundColor: getIndicatorColor(project.color) }}>
+                            {project.title.substring(0, 1).toUpperCase()}
+                          </div>
                         </div>
                       )}
                     </div>
                     <div className="flex-shrink-0 relative h-[48px]" style={{ width: gridWidth }}>
-                        {project.phases.map((phase, pIdx) => {
-                          if (!phase.start || !phase.end) return null;
-                          const left = getDayOffset(timelineStart, phase.start, !!hideWeekends) * zoomLevel;
-                          const durationDays = diffDays(phase.start, phase.end) + 1;
-                          const width = countVisibleDays(phase.start, phase.end, !!hideWeekends) * zoomLevel;
-                          const isVisible = left + width >= 0 && left <= gridWidth;
-                          const durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
-
-                          return (
-                            <React.Fragment key={phase.id}>
-                              {isVisible && (
-                                <div 
-                                  className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-[10px] font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-default`}
-                                  style={{ 
-                                    left: `${left}px`, 
-                                    width: `${Math.max(width, zoomLevel/2)}px`, 
-                                    backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, pIdx % 6) 
-                                  }}
-                                  title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
-                                >
-                                  <div className="truncate drop-shadow-md flex items-center gap-1">
-                                    {project.isLocked && <Icons.Lock className="w-2.5 h-2.5 shrink-0 text-amber-300" />}
-                                    {phase.title} ({durationWeeks}w)
-                                  </div>
-                                  <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none opacity-80" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
-                                </div>
-                              )}
-                            </React.Fragment>
-                          );
-                        })}
+                      {/* Sticky Project Title Indicator in Timeline Track */}
+                      <div className="sticky left-2 md:left-3 z-20 pointer-events-none inline-flex items-center h-full float-left mr-2">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/85 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[190px] md:max-w-[280px] pointer-events-auto">
+                          <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
+                          <span className="text-[11px] md:text-xs font-bold truncate drop-shadow-sm">{project.title}</span>
+                        </div>
                       </div>
+
+                      {project.phases.map((phase, pIdx) => {
+                        if (!phase.start || !phase.end) return null;
+                        const left = getDayOffset(timelineStart, phase.start, !!hideWeekends) * zoomLevel;
+                        const durationDays = diffDays(phase.start, phase.end) + 1;
+                        const width = countVisibleDays(phase.start, phase.end, !!hideWeekends) * zoomLevel;
+                        const isVisible = left + width >= 0 && left <= gridWidth;
+                        const durationWeeks = (durationDays / 7).toFixed(1).replace(/\.0$/, '');
+
+                        return (
+                          <React.Fragment key={phase.id}>
+                            {isVisible && (
+                              <div 
+                                className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-[10px] font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-default`}
+                                style={{ 
+                                  left: `${left}px`, 
+                                  width: `${Math.max(width, zoomLevel/2)}px`, 
+                                  backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, pIdx % 6) 
+                                }}
+                                title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
+                              >
+                                <div className="truncate drop-shadow-md flex items-center gap-1.5">
+                                  {project.isLocked && <Icons.Lock className="w-2.5 h-2.5 shrink-0 text-amber-300" />}
+                                  <span className="font-extrabold text-white bg-black/30 px-1.5 py-0.5 rounded text-[9px] shrink-0 tracking-wide uppercase drop-shadow-xs">{project.title}</span>
+                                  <span className="truncate font-semibold">{phase.title} ({durationWeeks}w)</span>
+                                </div>
+                                <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none opacity-80" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
                     </div>
                   </div>
-                ))}
-              </React.Fragment>
-            ))}
-          </div>
+                </div>
+              ))}
+            </React.Fragment>
+          ))}
+        </div>
         </div>
       </div>
     );
