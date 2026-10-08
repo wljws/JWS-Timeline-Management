@@ -25,8 +25,41 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
   overviewData, currentLeftWidth, gridWidth, weeks, zoomLevel, timelineStart, today, totalDays,
   hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, phaseColors
 }) => {
+  const [tappedBlock, setTappedBlock] = React.useState<{ project: any; phase: any; durationWeeks: string } | null>(null);
+
   return (
     <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative touch-pan-x touch-pan-y" ref={scrollContainerRef}>
+      {/* Mobile Block Details Card */}
+      {tappedBlock && (
+        <div className="fixed bottom-4 left-4 right-4 md:left-auto md:right-6 md:bottom-6 md:w-80 bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-xl shadow-2xl border border-slate-700/80 z-50 animate-fade-in">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-3.5 h-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(tappedBlock.project.color) }}></div>
+              <h4 className="text-sm font-extrabold text-white truncate">{tappedBlock.project.title}</h4>
+            </div>
+            <button onClick={() => setTappedBlock(null)} className="text-slate-400 hover:text-white p-0.5 rounded touch-manipulation">
+              <Icons.X className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="mt-2 pt-2 border-t border-slate-800 text-xs flex flex-col gap-1">
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="font-semibold text-slate-400">Phase:</span>
+              <span className="font-bold text-white">{tappedBlock.phase.title}</span>
+            </div>
+            <div className="flex items-center justify-between text-slate-300">
+              <span className="font-semibold text-slate-400">Duration:</span>
+              <span className="font-bold text-blue-400">{tappedBlock.durationWeeks} weeks</span>
+            </div>
+            {tappedBlock.phase.start && tappedBlock.phase.end && (
+              <div className="flex items-center justify-between text-slate-300">
+                <span className="font-semibold text-slate-400">Dates:</span>
+                <span className="text-[11px] font-mono text-slate-300">{formatDate(tappedBlock.phase.start)} - {formatDate(tappedBlock.phase.end)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="relative min-w-full w-max min-h-full">
         
         {/* Grid Background */}
@@ -122,7 +155,10 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                 </div>
                 <div className="flex-shrink-0 relative h-[36px] flex items-center" style={{ width: gridWidth }}>
                   {/* Sticky Collection Header Tag for Horizontal Scrolling */}
-                  <div className="sticky left-2 md:left-3 z-10 inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider bg-slate-200/90 px-2 py-0.5 rounded shadow-xs">
+                  <div 
+                    className="sticky z-10 inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider bg-slate-200/90 px-2 py-0.5 rounded shadow-xs"
+                    style={{ left: `calc(${currentLeftWidth}px + 8px)` }}
+                  >
                     <span>{collection.collectionTitle}</span>
                     <span className="text-[10px] text-slate-500 font-normal">({collection.projects.length} projects)</span>
                   </div>
@@ -136,7 +172,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       {!isLeftPanelCollapsed ? (
                         <div className="flex w-full items-center pr-1 min-w-0">
                           <div className="w-3.5 h-3.5 md:w-3 md:h-3 rounded-full mr-1.5 md:mr-2 shrink-0 shadow-sm" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
-                          <span className="text-xs md:text-sm font-bold text-slate-800 truncate" title={project.title}>{project.title}</span>
+                          <span className="text-xs md:text-sm font-extrabold md:font-bold text-slate-900 md:text-slate-800 truncate tracking-tight" title={project.title}>{project.title}</span>
                         </div>
                       ) : (
                         <div className="w-full flex items-center justify-center cursor-pointer h-full relative group/tip" onClick={() => setIsLeftPanelCollapsed(false)} title={`Expand - ${project.title}`}>
@@ -148,10 +184,13 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                     </div>
                     <div className="flex-shrink-0 relative h-[48px]" style={{ width: gridWidth }}>
                       {/* Sticky Project Title Indicator in Timeline Track */}
-                      <div className="sticky left-2 md:left-3 z-20 pointer-events-none inline-flex items-center h-full float-left mr-2">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/85 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[190px] md:max-w-[280px] pointer-events-auto">
+                      <div 
+                        className="sticky z-20 pointer-events-none inline-flex items-center h-full float-left mr-2"
+                        style={{ left: `calc(${currentLeftWidth}px + 8px)` }}
+                      >
+                        <div className="inline-flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-md bg-slate-900/90 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[190px] sm:max-w-[260px] md:max-w-[320px] pointer-events-auto">
                           <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
-                          <span className="text-[11px] md:text-xs font-bold truncate drop-shadow-sm">{project.title}</span>
+                          <span className="text-[11px] md:text-xs font-extrabold md:font-bold truncate drop-shadow-sm tracking-tight">{project.title}</span>
                         </div>
                       </div>
 
@@ -167,17 +206,18 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                           <React.Fragment key={phase.id}>
                             {isVisible && (
                               <div 
-                                className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-[10px] font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-default`}
+                                onClick={() => setTappedBlock({ project, phase, durationWeeks })}
+                                className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-[10px] font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-pointer active:scale-95 transition-transform`}
                                 style={{ 
                                   left: `${left}px`, 
                                   width: `${Math.max(width, zoomLevel/2)}px`, 
                                   backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, pIdx % 6) 
                                 }}
-                                title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
+                                title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)}) - Tap for details`}
                               >
                                 <div className="truncate drop-shadow-md flex items-center gap-1.5">
                                   {project.isLocked && <Icons.Lock className="w-2.5 h-2.5 shrink-0 text-amber-300" />}
-                                  <span className="font-extrabold text-white bg-black/30 px-1.5 py-0.5 rounded text-[9px] shrink-0 tracking-wide uppercase drop-shadow-xs">{project.title}</span>
+                                  <span className="font-extrabold text-white bg-black/35 px-1.5 py-0.5 rounded text-[9px] shrink-0 tracking-wide uppercase drop-shadow-xs">{project.title}</span>
                                   <span className="truncate font-semibold">{phase.title} ({durationWeeks}w)</span>
                                 </div>
                                 <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none opacity-80" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>

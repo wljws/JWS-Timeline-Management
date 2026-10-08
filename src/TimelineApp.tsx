@@ -32,6 +32,7 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   const isAdmin = userRole === 'admin';
   const [viewMode, setViewMode] = useState<ViewMode>('projects'); 
   const [zoomLevel, setZoomLevel] = useState(5); 
+  const [isPinching, setIsPinching] = useState(false);
   const [hideWeekends, setHideWeekends] = useState(true);
   const [leftColWidth, setLeftColWidth] = useState(window.innerWidth < 768 ? 190 : 380); 
   const [isLeftPanelCollapsed, setIsLeftPanelCollapsed] = useState(false);
@@ -970,6 +971,122 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   }, [draggingBlock, isResizingCol]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const zoomLevelRef = useRef(zoomLevel);
+  zoomLevelRef.current = zoomLevel;
+  const currentLeftWidthRef = useRef(currentLeftWidth);
+  currentLeftWidthRef.current = currentLeftWidth;
+
+  // Mobile pinch-to-zoom gesture support for Project and Overview timelines
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    let initialDist = 0;
+    let initialZoom = zoomLevelRef.current;
+    let isPinchingGesture = false;
+    let focalDayOffset = 0;
+    let focalClientX = 0;
+    let pinchTimeout: any = null;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        isPinchingGesture = true;
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        initialDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        initialZoom = zoomLevelRef.current;
+        focalClientX = (t1.clientX + t2.clientX) / 2;
+
+        const rect = container.getBoundingClientRect();
+        const currentScrollLeft = container.scrollLeft;
+        const xInGrid = (focalClientX - rect.left + currentScrollLeft) - currentLeftWidthRef.current;
+        focalDayOffset = xInGrid > 0 ? xInGrid / Math.max(1, initialZoom) : 0;
+
+        setIsPinching(true);
+        if (pinchTimeout) clearTimeout(pinchTimeout);
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && isPinchingGesture && initialDist > 0) {
+        if (e.cancelable) e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const scale = currentDist / initialDist;
+
+        let nextZoom = Math.round(initialZoom * scale);
+        nextZoom = Math.min(100, Math.max(5, nextZoom));
+
+        if (nextZoom !== zoomLevelRef.current) {
+          setZoomLevel(nextZoom);
+
+          // Maintain focal date stability under user's fingers
+          const rect = container.getBoundingClientRect();
+          const currentMidX = (t1.clientX + t2.clientX) / 2;
+          const newXInGrid = focalDayOffset * nextZoom;
+          const newScrollLeft = (currentLeftWidthRef.current + newXInGrid) - (currentMidX - rect.left);
+          container.scrollLeft = Math.max(0, newScrollLeft);
+        }
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2 && isPinchingGesture) {
+        isPinchingGesture = false;
+        initialDist = 0;
+        pinchTimeout = setTimeout(() => {
+          setIsPinching(false);
+        }, 800);
+      }
+    };
+
+    // Safari iOS Gesture Event API
+    const onGestureStart = (e: any) => {
+      if (e.cancelable) e.preventDefault();
+      initialZoom = zoomLevelRef.current;
+      isPinchingGesture = true;
+      setIsPinching(true);
+      if (pinchTimeout) clearTimeout(pinchTimeout);
+    };
+
+    const onGestureChange = (e: any) => {
+      if (e.cancelable) e.preventDefault();
+      if (isPinchingGesture) {
+        let nextZoom = Math.min(100, Math.max(5, Math.round(initialZoom * e.scale)));
+        if (nextZoom !== zoomLevelRef.current) {
+          setZoomLevel(nextZoom);
+        }
+      }
+    };
+
+    const onGestureEnd = (e: any) => {
+      if (e.cancelable) e.preventDefault();
+      isPinchingGesture = false;
+      pinchTimeout = setTimeout(() => {
+        setIsPinching(false);
+      }, 800);
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
+    container.addEventListener('gesturestart', onGestureStart, { passive: false });
+    container.addEventListener('gesturechange', onGestureChange, { passive: false });
+    container.addEventListener('gestureend', onGestureEnd, { passive: false });
+
+    return () => {
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
+      container.removeEventListener('gesturestart', onGestureStart);
+      container.removeEventListener('gesturechange', onGestureChange);
+      container.removeEventListener('gestureend', onGestureEnd);
+      if (pinchTimeout) clearTimeout(pinchTimeout);
+    };
+  }, [viewMode, isLeftPanelCollapsed, leftColWidth, isDataLoaded]);
   
   useEffect(() => {
     if (isDataLoaded) {
@@ -2240,6 +2357,43 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           setIsResizingCol={() => {}} scrollContainerRef={scrollContainerRef}
           phaseColors={phaseColors}
         />
+      )}
+
+      {/* Mobile Pinch Zoom HUD Indicator */}
+      {isPinching && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/95 backdrop-blur-md border border-blue-500/60 shadow-2xl rounded-full px-4 py-2 flex items-center gap-2.5 text-white animate-fade-in pointer-events-none">
+          <Icons.Search className="w-4 h-4 text-blue-400 animate-pulse" />
+          <span className="text-xs font-bold whitespace-nowrap">Pinch Zoom: {zoomLevel}px / day</span>
+          <div className="w-16 bg-slate-700 h-1.5 rounded-full overflow-hidden">
+            <div className="bg-blue-500 h-full transition-all duration-75" style={{ width: `${Math.min(100, Math.max(0, ((zoomLevel - 5) / 95) * 100))}%` }}></div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile Floating Quick Zoom Controls (Bottom Right) */}
+      {(viewMode === 'projects' || viewMode === 'overview') && (
+        <div className="md:hidden fixed bottom-4 right-4 z-40 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 shadow-2xl rounded-full px-2 py-1 flex items-center gap-1.5 text-white">
+          <button 
+            onClick={() => setZoomLevel(prev => Math.max(5, prev - 5))}
+            className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-200 active:scale-95 text-sm font-bold touch-manipulation"
+            title="Zoom Out"
+          >
+            -
+          </button>
+          <div className="flex flex-col items-center px-1">
+            <span className="text-[10px] font-extrabold text-slate-200 select-none whitespace-nowrap leading-none">
+              {zoomLevel}px
+            </span>
+            <span className="text-[7.5px] text-slate-400 uppercase tracking-tighter leading-none mt-0.5">pinch zoom</span>
+          </div>
+          <button 
+            onClick={() => setZoomLevel(prev => Math.min(100, prev + 5))}
+            className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-200 active:scale-95 text-sm font-bold touch-manipulation"
+            title="Zoom In"
+          >
+            +
+          </button>
+        </div>
       )}
 
       {modalData && (

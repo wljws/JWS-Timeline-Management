@@ -188,11 +188,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                           <Icons.Grip />
                         </div>
                       )}
-                      <button onClick={() => toggleProjectExpand(project.id)} className="p-1 mr-0.5 text-slate-400 hover:text-slate-700 shrink-0" title={project.isExpanded ? "Collapse" : "Expand"}>
-                        {project.isExpanded ? <Icons.ChevronDown /> : <Icons.ChevronRight />}
+                      <button onClick={() => toggleProjectExpand(project.id)} className="p-0.5 md:p-1 mr-0.5 text-slate-400 hover:text-slate-700 shrink-0 touch-manipulation" title={project.isExpanded ? "Collapse" : "Expand"}>
+                        {project.isExpanded ? <Icons.ChevronDown className="w-3.5 h-3.5 md:w-4 md:h-4" /> : <Icons.ChevronRight className="w-3.5 h-3.5 md:w-4 md:h-4" />}
                       </button>
 
-                      <div className="relative group/color mr-1.5 flex items-center h-full shrink-0">
+                      <div className="relative group/color mr-1 md:mr-1.5 flex items-center h-full shrink-0">
                         <div className="w-3.5 h-3.5 rounded-full cursor-pointer shadow-sm hover:scale-110 transition-transform" style={{backgroundColor: getIndicatorColor(project.color)}}></div>
                         {!isReadOnly && isAdmin && (
                           <div className="absolute left-0 top-full hidden group-hover/color:block z-50 pt-2 pb-4 pl-0 pr-4 -ml-2 -mt-2">
@@ -220,14 +220,14 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         </button>
                       )}
 
-                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-1.5 w-4 h-4 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Tick check all phases in this project to move together" />
+                      <input type="checkbox" disabled={isReadOnly || !isAdmin} checked={allPhasesSelected} onChange={() => toggleProjectSelection(project.id)} className="mr-1 md:mr-1.5 w-3.5 h-3.5 md:w-3.5 md:h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer accent-blue-500 shrink-0 disabled:opacity-50" title="Tick check all phases in this project to move together" />
                       
-                      {/* Project Title Input: Full visibility, bold and legible */}
+                      {/* Project Title Input: Full visibility, bold and legible on both mobile & desktop */}
                       <input 
                         value={project.title} 
                         readOnly={isReadOnly || !isAdmin} 
                         onChange={(e) => updateProjectTitle(project.id, e.target.value)} 
-                        className={`flex-1 bg-transparent text-xs md:text-sm font-bold text-slate-800 focus:outline-none focus:border-b border-blue-400 mr-1 min-w-0 truncate ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} 
+                        className={`flex-1 bg-transparent text-xs md:text-sm font-extrabold md:font-bold text-slate-900 md:text-slate-800 focus:outline-none focus:border-b border-blue-400 mr-1 min-w-0 truncate tracking-tight ${(isReadOnly || !isAdmin) ? 'cursor-default' : ''}`} 
                         title={project.title}
                         placeholder="Project Title"
                       />
@@ -309,10 +309,17 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 
                 <div className="flex-shrink-0 relative h-[48px] bg-slate-50/10 group-hover:bg-slate-50/30 transition-colors" style={{ width: gridWidth }}>
                   {/* Sticky Project Title Indicator in Timeline Track */}
-                  <div className="sticky left-2 md:left-3 z-20 pointer-events-none inline-flex items-center h-full float-left mr-2">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-900/85 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[200px] md:max-w-[320px] pointer-events-auto">
+                  <div 
+                    className="sticky z-20 pointer-events-none inline-flex items-center h-full float-left mr-2"
+                    style={{ left: `calc(${currentLeftWidth}px + 8px)` }}
+                  >
+                    <div 
+                      onClick={(e) => { e.stopPropagation(); toggleProjectExpand(project.id); }}
+                      className="inline-flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-md bg-slate-900/90 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[190px] sm:max-w-[260px] md:max-w-[320px] pointer-events-auto cursor-pointer active:scale-95 transition-transform"
+                      title={`Click to ${project.isExpanded ? 'collapse' : 'expand'} - ${project.title}`}
+                    >
                       <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
-                      <span className="text-[11px] md:text-xs font-bold truncate drop-shadow-sm">{project.title}</span>
+                      <span className="text-[11px] md:text-xs font-extrabold md:font-bold truncate drop-shadow-sm tracking-tight">{project.title}</span>
                       {project.isExpanded && <span className="text-[9px] text-slate-300 font-normal shrink-0 hidden sm:inline">({project.phases.length} phases)</span>}
                     </div>
                   </div>
@@ -355,7 +362,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             }}
                           >
                             <div className="truncate drop-shadow-md flex items-center gap-1">
-                              {(globalLocked || project.isLocked) && <Icons.Lock />} {abbreviatePhase(phase.title)} ({durationWeeks}w)
+                              {(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3 shrink-0 text-amber-300" />}
+                              <span className="font-extrabold text-[9px] bg-black/35 px-1 py-0.5 rounded text-white/95 uppercase tracking-wider shrink-0 md:hidden" title={project.title}>{project.title}</span>
+                              <span className="truncate">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
                             </div>
                             {!isReadOnly && isAdmin && (
                               <>
@@ -449,6 +458,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                         <div className="flex w-full items-center pl-3 md:pl-7 pr-1 md:pr-3 overflow-hidden">
                           {!isReadOnly && isAdmin && !project.isLocked && !globalLocked && <div className="hidden md:flex w-6 justify-center items-center h-full opacity-100 md:opacity-0 md:group-hover/phase:opacity-100 cursor-grab text-slate-400 hover:text-slate-600 mr-1 shrink-0"><Icons.Grip /></div>}
                           <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-slate-300 mr-2 flex-shrink-0"></div>
+                          <div className="md:hidden w-2 h-2 rounded-full mr-1.5 shrink-0 shadow-xs" style={{ backgroundColor: getIndicatorColor(project.color) }} title={project.title}></div>
                           <input 
                             type="checkbox" 
                             disabled={isReadOnly || !isAdmin} 
@@ -499,8 +509,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                           }}
                         >
                         <span className="truncate drop-shadow-md flex items-center gap-1">
-                          {(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3" />}
-                          <span className="font-extrabold text-[9px] bg-black/25 px-1 py-0.5 rounded mr-0.5 md:hidden text-white/95 uppercase tracking-wider shrink-0">{project.title}</span>
+                          {(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3 shrink-0 text-amber-300" />}
+                          <span className="font-extrabold text-[9px] bg-black/35 px-1 py-0.5 rounded mr-1 md:hidden text-white/95 uppercase tracking-wider shrink-0" title={project.title}>{project.title}</span>
                           <span className="truncate">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
                         </span>
                         {taskCount > 0 && width > 100 && <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>}
