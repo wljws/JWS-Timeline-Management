@@ -159,6 +159,40 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
         {/* CONTENT ROWS */}
         <div className="relative z-20 pb-32 flex flex-col w-max min-w-full">
+          {/* Collection Header Row with Sticky Label (matching Overview) */}
+          {(() => {
+            const currentCollection = (collections && collections.find((c: any) => c.id === activeCollectionId)) || (collections && collections[0]);
+            const colTitle = currentCollection?.title || 'Collection';
+            return (
+              <div className="flex w-full group relative z-20 bg-slate-100 border-b border-slate-200">
+                <div 
+                  className="flex-shrink-0 sticky left-0 z-30 bg-slate-100 border-r border-slate-300 flex items-center h-[36px] shadow-[2px_0_5px_rgba(0,0,0,0.05)] px-3 md:px-4" 
+                  style={{ width: currentLeftWidth }}
+                >
+                  {!isLeftPanelCollapsed ? (
+                    <span className="text-[10px] md:text-xs font-extrabold text-slate-700 uppercase tracking-wider truncate">
+                      {colTitle}
+                    </span>
+                  ) : (
+                    <span className="text-[9px] font-bold text-slate-500 uppercase truncate text-center w-full">
+                      {colTitle.substring(0, 2)}
+                    </span>
+                  )}
+                </div>
+                <div className="flex-shrink-0 relative h-[36px] flex items-center" style={{ width: gridWidth }}>
+                  {/* Sticky Collection Header Tag for Horizontal Scrolling */}
+                  <div 
+                    className="sticky z-10 inline-flex items-center gap-1.5 text-[11px] font-bold text-slate-600 uppercase tracking-wider bg-slate-200/90 px-2 py-0.5 rounded shadow-xs"
+                    style={{ left: `calc(${currentLeftWidth}px + 8px)` }}
+                  >
+                    <span>{colTitle}</span>
+                    <span className="text-[10px] text-slate-500 font-normal">({visibleProjects.length} projects)</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {visibleProjects.map((project) => {
             const allPhasesSelected = project.phases.length > 0 && project.phases.every(ph => selectedPhaseIds.has(ph.id));
             const chronoIndices: Record<string, number> = {};
@@ -308,22 +342,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                 </div>
                 
                 <div className="flex-shrink-0 relative h-[48px] bg-slate-50/10 group-hover:bg-slate-50/30 transition-colors" style={{ width: gridWidth }}>
-                  {/* Sticky Project Title Indicator in Timeline Track */}
-                  <div 
-                    className="sticky z-20 pointer-events-none inline-flex items-center h-full float-left mr-2"
-                    style={{ left: `calc(${currentLeftWidth}px + 8px)` }}
-                  >
-                    <div 
-                      onClick={(e) => { e.stopPropagation(); toggleProjectExpand(project.id); }}
-                      className="inline-flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-md bg-slate-900/90 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[190px] sm:max-w-[260px] md:max-w-[320px] pointer-events-auto cursor-pointer active:scale-95 transition-transform"
-                      title={`Click to ${project.isExpanded ? 'collapse' : 'expand'} - ${project.title}`}
-                    >
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
-                      <span className="text-[11px] md:text-xs font-extrabold md:font-bold truncate drop-shadow-sm tracking-tight">{project.title}</span>
-                      {project.isExpanded && <span className="text-[9px] text-slate-300 font-normal shrink-0 hidden sm:inline">({project.phases.length} phases)</span>}
-                    </div>
-                  </div>
-
                   {!project.isExpanded && project.phases.map((phase, phaseIndex) => {
                     const colorIndex = chronoIndices[phase.id] !== undefined ? chronoIndices[phase.id] : phaseIndex;
                     const isCompleted = phase.tasks.length > 0 && phase.tasks.every(t => t.done);
@@ -360,11 +378,14 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                               width: `${Math.max(width, zoomLevel/2)}px`, 
                               backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, colorIndex) 
                             }}
+                            title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
                           >
-                            <div className="truncate drop-shadow-md flex items-center gap-1">
+                            <div className="truncate drop-shadow-md flex items-center gap-1 min-w-0">
                               {(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3 shrink-0 text-amber-300" />}
-                              <span className="font-extrabold text-[9px] bg-black/35 px-1 py-0.5 rounded text-white/95 uppercase tracking-wider shrink-0 md:hidden" title={project.title}>{project.title}</span>
-                              <span className="truncate">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                              <span className="truncate font-semibold tracking-tight">
+                                <span className="font-extrabold text-white mr-1 opacity-95">{project.title}:</span>
+                                <span className="opacity-90">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                              </span>
                             </div>
                             {!isReadOnly && isAdmin && (
                               <>
@@ -507,11 +528,14 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
                             width: `${Math.max(width, zoomLevel/2)}px`, 
                             backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, colorIndex) 
                           }}
+                          title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)})`}
                         >
-                        <span className="truncate drop-shadow-md flex items-center gap-1">
+                        <span className="truncate drop-shadow-md flex items-center gap-1 min-w-0">
                           {(globalLocked || project.isLocked) && <Icons.Lock className="w-3 h-3 shrink-0 text-amber-300" />}
-                          <span className="font-extrabold text-[9px] bg-black/35 px-1 py-0.5 rounded mr-1 md:hidden text-white/95 uppercase tracking-wider shrink-0" title={project.title}>{project.title}</span>
-                          <span className="truncate">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                          <span className="truncate font-semibold tracking-tight">
+                            <span className="font-extrabold text-white mr-1 opacity-95">{project.title}:</span>
+                            <span className="opacity-90">{abbreviatePhase(phase.title)} ({durationWeeks}w)</span>
+                          </span>
                         </span>
                         {taskCount > 0 && width > 100 && <span className="text-[9px] bg-black/20 px-1.5 rounded-full ml-2 flex-shrink-0">{doneCount}/{taskCount}</span>}
 

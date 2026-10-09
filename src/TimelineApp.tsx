@@ -756,7 +756,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if(!e.touches) e.preventDefault(); 
     e.stopPropagation();
     if (!isAdmin) return; // Only admin can drag/resize
-    const project = projects.find(p => p.id === projectId);
+    const allProjects = collections.flatMap(c => c.projects || []);
+    const project = allProjects.find(p => p.id === projectId) || projects.find(p => p.id === projectId);
     const phase = project?.phases.find(ph => ph.id === phaseId);
     if ((globalLocked || project?.isLocked) && !allocationId) return;
     if (globalLocked && allocationId) return; // Add this line to lock team blocks too
@@ -774,7 +775,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
       // Check if the current phase being dragged is part of a selection
       if (selectedPhaseIds.has(phaseId)) {
         // If it is, move all selected phases together (only if they have dates)
-        blocksToMove = projects.flatMap(p => 
+        const projectsPool = viewMode === 'overview' ? allProjects : projects;
+        blocksToMove = projectsPool.flatMap(p => 
           p.phases.filter(ph => selectedPhaseIds.has(ph.id) && ph.start && ph.end).map(ph => ({
             projectId: p.id,
             phaseId: ph.id,
@@ -791,8 +793,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
         blocksToMove = [{ 
           projectId, 
           phaseId, 
-          origStart: origStart!, 
-          origEnd: origEnd!, 
+          origStart: (origStart || phase?.start)!, 
+          origEnd: (origEnd || phase?.end)!, 
           origMilestones: phase?.milestones || [],
           origInternalReviews: phase?.internalReviews || [],
           origTasks: phase?.tasks || [],
@@ -850,83 +852,102 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             return false;
           };
 
-          setProjects(prev => prev.map(p => ({
-            ...p, phases: p.phases.map(ph => {
-              const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && b.projectId === p.id);
-              if (!block) return ph;
-              
-              if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
-                const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-                const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
-                const newStart = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
-                const newEnd = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-                
-                 const shiftedMilestones = (block.origMilestones || []).map((m: any) => ({
-                  ...m,
-                  date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
-                }));
-                
-                const shiftedInternalReviews = (block.origInternalReviews || []).map((m: any) => ({
-                  ...m,
-                  date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
-                }));
-                
-                const shiftedTasks = (block.origTasks || []).map((t: any) => ({
-                  ...t,
-                  start: t.start ? getDateFromOffset(timelineStart, getDayOffset(timelineStart, t.start, hideWeekends) + snappedDelta, hideWeekends) : null,
-                  end: t.end ? getDateFromOffset(timelineStart, getDayOffset(timelineStart, t.end, hideWeekends) + snappedDelta, hideWeekends) : null,
-                  allocations: (t.allocations || []).map((a: any) => ({
-                    ...a,
-                    start: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.start, hideWeekends) + snappedDelta, hideWeekends),
-                    end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
-                  }))
-                }));
-                
-                const shiftedAllocations = (block.origAllocations || []).map((a: any) => ({
-                  ...a,
-                  start: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.start, hideWeekends) + snappedDelta, hideWeekends),
-                  end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
-                }));
-                
-                return { ...ph, start: newStart, end: newEnd, milestones: shiftedMilestones, internalReviews: shiftedInternalReviews, tasks: shiftedTasks, teamAllocations: shiftedAllocations };
-              }
-              if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
-                const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-                return { ...ph, start: getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends) };
-              }
-              if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
-                const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
-                return { ...ph, end: getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends) };
-              }
-              
-              if (block.taskId && block.allocationId) {
-                if (p.id !== block.projectId || ph.id !== block.phaseId) return ph;
-                return {
-                  ...ph,
-                  teamAllocations: (ph.teamAllocations || []).map(a => {
-                    if (a.id !== block.allocationId) return a;
-                    let ns = a.start, ne = a.end;
+          setCollections(prevCols => prevCols.map(c => ({
+            ...c,
+            projects: (c.projects || []).map(p => {
+              const hasBlock = draggingBlock.blocksToMove.some((b: any) => b.projectId === p.id);
+              if (!hasBlock) return p;
+
+              return {
+                ...p,
+                phases: p.phases.map(ph => {
+                  const block = draggingBlock.blocksToMove.find((b: any) => b.phaseId === ph.id && b.projectId === p.id);
+                  if (!block) return ph;
+                  
+                  if (draggingBlock.type === 'move' && !block.taskId && !block.allocationId) {
                     const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
                     const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
-
-                    if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-                      ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
-                      ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-                    } else if (draggingBlock.type === 'resize-alloc-right') {
-                      ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-                    } else if (draggingBlock.type === 'resize-alloc-left') {
-                      ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
-                    }
-                    if (ne && ns && ne < ns) ne = ns;
+                    const newStart = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                    const newEnd = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
                     
-                    // Apply collision constraint
-                    if (isOverlap(ns, ne, block.assigneeName, block.allocationId)) return a;
+                    const shiftedMilestones = (block.origMilestones || []).map((m: any) => ({
+                      ...m,
+                      date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
+                    }));
+                    
+                    const shiftedInternalReviews = (block.origInternalReviews || []).map((m: any) => ({
+                      ...m,
+                      date: getDateFromOffset(timelineStart, getDayOffset(timelineStart, m.date, hideWeekends) + snappedDelta, hideWeekends)
+                    }));
+                    
+                    const shiftedTasks = (block.origTasks || []).map((t: any) => ({
+                      ...t,
+                      start: t.start ? getDateFromOffset(timelineStart, getDayOffset(timelineStart, t.start, hideWeekends) + snappedDelta, hideWeekends) : null,
+                      end: t.end ? getDateFromOffset(timelineStart, getDayOffset(timelineStart, t.end, hideWeekends) + snappedDelta, hideWeekends) : null,
+                      allocations: (t.allocations || []).map((a: any) => ({
+                        ...a,
+                        start: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.start, hideWeekends) + snappedDelta, hideWeekends),
+                        end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
+                      }))
+                    }));
+                    
+                    const shiftedAllocations = (block.origAllocations || []).map((a: any) => ({
+                      ...a,
+                      start: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.start, hideWeekends) + snappedDelta, hideWeekends),
+                      end: getDateFromOffset(timelineStart, getDayOffset(timelineStart, a.end, hideWeekends) + snappedDelta, hideWeekends)
+                    }));
+                    
+                    return { ...ph, start: newStart, end: newEnd, milestones: shiftedMilestones, internalReviews: shiftedInternalReviews, tasks: shiftedTasks, teamAllocations: shiftedAllocations };
+                  }
+                  if (draggingBlock.type === 'resize-left' && !block.taskId && !block.allocationId) {
+                    const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                    const newStart = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                    // Prevent shrinking start beyond end date (minimum 1 day)
+                    if (block.origEnd && newStart > block.origEnd) {
+                      return { ...ph, start: block.origEnd };
+                    }
+                    return { ...ph, start: newStart };
+                  }
+                  if (draggingBlock.type === 'resize-right' && !block.taskId && !block.allocationId) {
+                    const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+                    const newEnd = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+                    // Prevent shrinking end before start date (minimum 1 day)
+                    if (block.origStart && newEnd < block.origStart) {
+                      return { ...ph, end: block.origStart };
+                    }
+                    return { ...ph, end: newEnd };
+                  }
+                  
+                  if (block.taskId && block.allocationId) {
+                    if (p.id !== block.projectId || ph.id !== block.phaseId) return ph;
+                    return {
+                      ...ph,
+                      teamAllocations: (ph.teamAllocations || []).map(a => {
+                        if (a.id !== block.allocationId) return a;
+                        let ns = a.start, ne = a.end;
+                        const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                        const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
 
-                    return { ...a, start: ns, end: ne };
-                  })
-                };
-              }
-              return ph;
+                        if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                          ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                          ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+                        } else if (draggingBlock.type === 'resize-alloc-right') {
+                          ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+                        } else if (draggingBlock.type === 'resize-alloc-left') {
+                          ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                        }
+                        if (ne && ns && ne < ns) ne = ns;
+                        
+                        // Apply collision constraint
+                        if (isOverlap(ns, ne, block.assigneeName, block.allocationId)) return a;
+
+                        return { ...a, start: ns, end: ne };
+                      })
+                    };
+                  }
+                  return ph;
+                })
+              };
             })
           })));
           
@@ -2354,8 +2375,12 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           zoomLevel={zoomLevel} timelineStart={timelineStart} today={today} totalDays={totalDays}
           hideWeekends={hideWeekends}
           isLeftPanelCollapsed={isLeftPanelCollapsed} setIsLeftPanelCollapsed={setIsLeftPanelCollapsed}
-          setIsResizingCol={() => {}} scrollContainerRef={scrollContainerRef}
+          setIsResizingCol={setIsResizingCol} scrollContainerRef={scrollContainerRef}
           phaseColors={phaseColors}
+          handleBlockMouseDown={handleBlockMouseDown}
+          isAdmin={isAdmin}
+          isReadOnly={isReadOnly}
+          globalLocked={globalLocked}
         />
       )}
 

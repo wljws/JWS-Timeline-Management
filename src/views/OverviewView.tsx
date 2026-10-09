@@ -19,13 +19,19 @@ interface OverviewViewProps {
   setIsResizingCol: (resizing: boolean) => void;
   scrollContainerRef: React.RefObject<HTMLDivElement>;
   phaseColors?: Record<string, string>;
+  handleBlockMouseDown?: (e: any, projectId: string, phaseId: string, type: string, origStart: Date | null, origEnd: Date | null) => void;
+  isAdmin?: boolean;
+  isReadOnly?: boolean;
+  globalLocked?: boolean;
 }
 
 export const OverviewView: React.FC<OverviewViewProps> = ({
   overviewData, currentLeftWidth, gridWidth, weeks, zoomLevel, timelineStart, today, totalDays,
-  hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, phaseColors
+  hideWeekends, isLeftPanelCollapsed, setIsLeftPanelCollapsed, setIsResizingCol, scrollContainerRef, phaseColors,
+  handleBlockMouseDown, isAdmin, isReadOnly, globalLocked
 }) => {
   const [tappedBlock, setTappedBlock] = React.useState<{ project: any; phase: any; durationWeeks: string } | null>(null);
+  const dragStartPos = React.useRef({ x: 0, y: 0 });
 
   return (
     <div id="timeline-scroll-container" className="flex-1 overflow-auto overscroll-none bg-white relative touch-pan-x touch-pan-y" ref={scrollContainerRef}>
@@ -183,17 +189,6 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                       )}
                     </div>
                     <div className="flex-shrink-0 relative h-[48px]" style={{ width: gridWidth }}>
-                      {/* Sticky Project Title Indicator in Timeline Track */}
-                      <div 
-                        className="sticky z-20 pointer-events-none inline-flex items-center h-full float-left mr-2"
-                        style={{ left: `calc(${currentLeftWidth}px + 8px)` }}
-                      >
-                        <div className="inline-flex items-center gap-1.5 px-2 md:px-2.5 py-1 rounded-md bg-slate-900/90 backdrop-blur-md text-white shadow-md border border-slate-700/60 max-w-[190px] sm:max-w-[260px] md:max-w-[320px] pointer-events-auto">
-                          <div className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
-                          <span className="text-[11px] md:text-xs font-extrabold md:font-bold truncate drop-shadow-sm tracking-tight">{project.title}</span>
-                        </div>
-                      </div>
-
                       {project.phases.map((phase, pIdx) => {
                         if (!phase.start || !phase.end) return null;
                         const left = getDayOffset(timelineStart, phase.start, !!hideWeekends) * zoomLevel;
@@ -206,20 +201,57 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                           <React.Fragment key={phase.id}>
                             {isVisible && (
                               <div 
-                                onClick={() => setTappedBlock({ project, phase, durationWeeks })}
-                                className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-[10px] font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block cursor-pointer active:scale-95 transition-transform`}
+                                onMouseDown={(e) => {
+                                  dragStartPos.current = { x: e.clientX, y: e.clientY };
+                                  if (!isReadOnly && !globalLocked && !project.isLocked && handleBlockMouseDown) {
+                                    handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end);
+                                  }
+                                }}
+                                onTouchStart={(e) => {
+                                  if (e.touches && e.touches[0]) {
+                                    dragStartPos.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+                                  }
+                                  if (!isReadOnly && !globalLocked && !project.isLocked && handleBlockMouseDown) {
+                                    handleBlockMouseDown(e, project.id, phase.id, 'move', phase.start, phase.end);
+                                  }
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const currentPos = (e.clientX && e.clientY) ? { x: e.clientX, y: e.clientY } : dragStartPos.current;
+                                  if (Math.hypot(currentPos.x - dragStartPos.current.x, currentPos.y - dragStartPos.current.y) > 10) return;
+                                  setTappedBlock({ project, phase, durationWeeks });
+                                }}
+                                className={`absolute top-[8px] h-[32px] rounded-md shadow-sm text-xs font-semibold text-white px-2 flex flex-col justify-center overflow-hidden z-10 timeline-block touch-none select-none ${(globalLocked || project.isLocked) ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'}`}
                                 style={{ 
                                   left: `${left}px`, 
                                   width: `${Math.max(width, zoomLevel/2)}px`, 
                                   backgroundColor: (phaseColors && phaseColors[phase.title]) || getPhaseColor(project.color, pIdx % 6) 
                                 }}
-                                title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)}) - Tap for details`}
+                                title={`${project.title} - ${phase.title} (${formatDate(phase.start)} - ${formatDate(phase.end)}) - Drag to move or shrink/expand`}
                               >
-                                <div className="truncate drop-shadow-md flex items-center gap-1.5">
-                                  {project.isLocked && <Icons.Lock className="w-2.5 h-2.5 shrink-0 text-amber-300" />}
-                                  <span className="font-extrabold text-white bg-black/35 px-1.5 py-0.5 rounded text-[9px] shrink-0 tracking-wide uppercase drop-shadow-xs">{project.title}</span>
-                                  <span className="truncate font-semibold">{phase.title} ({durationWeeks}w)</span>
+                                <div className="truncate drop-shadow-md flex items-center gap-1.5 min-w-0">
+                                  {(globalLocked || project.isLocked) && <Icons.Lock className="w-2.5 h-2.5 shrink-0 text-amber-300" />}
+                                  <span className="truncate font-semibold tracking-tight">
+                                    <span className="font-extrabold text-white mr-1 opacity-95">{project.title}:</span>
+                                    <span className="opacity-90">{phase.title} ({durationWeeks}w)</span>
+                                  </span>
                                 </div>
+                                {!isReadOnly && isAdmin && !globalLocked && !project.isLocked && handleBlockMouseDown && (
+                                  <>
+                                    <div 
+                                      className="resize-handle resize-handle-left touch-none drag-handle" 
+                                      onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)} 
+                                      onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-left', phase.start, phase.end)}
+                                      title="Drag to shrink/expand start"
+                                    />
+                                    <div 
+                                      className="resize-handle resize-handle-right touch-none drag-handle" 
+                                      onMouseDown={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)} 
+                                      onTouchStart={(e) => handleBlockMouseDown(e, project.id, phase.id, 'resize-right', phase.start, phase.end)}
+                                      title="Drag to shrink/expand end"
+                                    />
+                                  </>
+                                )}
                                 <div className="absolute bottom-0 left-0 right-0 h-1 pointer-events-none opacity-80" style={{ backgroundColor: getIndicatorColor(project.color) }}></div>
                               </div>
                             )}
