@@ -925,16 +925,57 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
                       teamAllocations: (ph.teamAllocations || []).map(a => {
                         if (a.id !== block.allocationId) return a;
                         let ns = a.start, ne = a.end;
-                        const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-                        const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
 
-                        if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-                          ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
-                          ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-                        } else if (draggingBlock.type === 'resize-alloc-right') {
-                          ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-                        } else if (draggingBlock.type === 'resize-alloc-left') {
-                          ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                        if (viewMode === 'team') {
+                          const slotsMoved = Math.round(snappedDelta * 2);
+                          const origStartDay = diffDays(currentTeamWeekStart, block.origStart);
+                          const origStartHour = new Date(block.origStart).getHours();
+                          const origStartSlot = origStartDay * 2 + (origStartHour >= 12 ? 1 : 0);
+
+                          const origEndDay = diffDays(currentTeamWeekStart, block.origEnd);
+                          const origEndHour = new Date(block.origEnd).getHours() + new Date(block.origEnd).getMinutes() / 60;
+                          let origEndSlot: number;
+                          if (origEndHour === 0 && origEndDay > 0) {
+                            origEndSlot = origEndDay * 2;
+                          } else if (origEndHour <= 13) {
+                            origEndSlot = origEndDay * 2 + 1;
+                          } else {
+                            origEndSlot = origEndDay * 2 + 2;
+                          }
+
+                          let newStartSlot = origStartSlot;
+                          let newEndSlot = origEndSlot;
+                          if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                            newStartSlot = origStartSlot + slotsMoved;
+                            newEndSlot = origEndSlot + slotsMoved;
+                          } else if (draggingBlock.type === 'resize-alloc-right') {
+                            newEndSlot = Math.max(origStartSlot + 1, origEndSlot + slotsMoved);
+                          } else if (draggingBlock.type === 'resize-alloc-left') {
+                            newStartSlot = Math.min(origEndSlot - 1, origStartSlot + slotsMoved);
+                          }
+
+                          const sDay = Math.floor(newStartSlot / 2);
+                          const sIsPM = newStartSlot % 2 !== 0;
+                          ns = addDays(currentTeamWeekStart, sDay);
+                          ns.setHours(sIsPM ? 13 : 9, 0, 0, 0);
+
+                          const lastSlot = newEndSlot - 1;
+                          const eDay = Math.floor(lastSlot / 2);
+                          const eIsPM = lastSlot % 2 !== 0;
+                          ne = addDays(currentTeamWeekStart, eDay);
+                          ne.setHours(eIsPM ? 17 : 13, 0, 0, 0);
+                        } else {
+                          const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+                          const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+
+                          if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                            ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                            ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+                          } else if (draggingBlock.type === 'resize-alloc-right') {
+                            ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+                          } else if (draggingBlock.type === 'resize-alloc-left') {
+                            ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                          }
                         }
                         if (ne && ns && ne < ns) ne = ns;
                         
@@ -955,16 +996,57 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
             const block = draggingBlock.blocksToMove.find((b: any) => b.isAdHoc && b.taskId === t.id);
             if (!block) return t;
             let ns = t.start || new Date(), ne = t.end || new Date();
-            const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
-            const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
 
-            if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
-              ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
-              ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-            } else if (draggingBlock.type === 'resize-alloc-right') {
-              ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
-            } else if (draggingBlock.type === 'resize-alloc-left') {
-              ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+            if (viewMode === 'team') {
+              const slotsMoved = Math.round(snappedDelta * 2);
+              const origStartDay = diffDays(currentTeamWeekStart, block.origStart);
+              const origStartHour = new Date(block.origStart).getHours();
+              const origStartSlot = origStartDay * 2 + (origStartHour >= 12 ? 1 : 0);
+
+              const origEndDay = diffDays(currentTeamWeekStart, block.origEnd);
+              const origEndHour = new Date(block.origEnd).getHours() + new Date(block.origEnd).getMinutes() / 60;
+              let origEndSlot: number;
+              if (origEndHour === 0 && origEndDay > 0) {
+                origEndSlot = origEndDay * 2;
+              } else if (origEndHour <= 13) {
+                origEndSlot = origEndDay * 2 + 1;
+              } else {
+                origEndSlot = origEndDay * 2 + 2;
+              }
+
+              let newStartSlot = origStartSlot;
+              let newEndSlot = origEndSlot;
+              if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                newStartSlot = origStartSlot + slotsMoved;
+                newEndSlot = origEndSlot + slotsMoved;
+              } else if (draggingBlock.type === 'resize-alloc-right') {
+                newEndSlot = Math.max(origStartSlot + 1, origEndSlot + slotsMoved);
+              } else if (draggingBlock.type === 'resize-alloc-left') {
+                newStartSlot = Math.min(origEndSlot - 1, origStartSlot + slotsMoved);
+              }
+
+              const sDay = Math.floor(newStartSlot / 2);
+              const sIsPM = newStartSlot % 2 !== 0;
+              ns = addDays(currentTeamWeekStart, sDay);
+              ns.setHours(sIsPM ? 13 : 9, 0, 0, 0);
+
+              const lastSlot = newEndSlot - 1;
+              const eDay = Math.floor(lastSlot / 2);
+              const eIsPM = lastSlot % 2 !== 0;
+              ne = addDays(currentTeamWeekStart, eDay);
+              ne.setHours(eIsPM ? 17 : 13, 0, 0, 0);
+            } else {
+              const startOffset = getDayOffset(timelineStart, block.origStart, hideWeekends);
+              const endOffset = getDayOffset(timelineStart, block.origEnd, hideWeekends);
+
+              if (draggingBlock.type === 'move' || draggingBlock.type === 'move-alloc') {
+                ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+                ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+              } else if (draggingBlock.type === 'resize-alloc-right') {
+                ne = getDateFromOffset(timelineStart, endOffset + snappedDelta, hideWeekends);
+              } else if (draggingBlock.type === 'resize-alloc-left') {
+                ns = getDateFromOffset(timelineStart, startOffset + snappedDelta, hideWeekends);
+              }
             }
             if (ne < ns) ne = ns;
 
@@ -1711,11 +1793,20 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
               const startD = new Date(alloc.start < currentTeamWeekStart ? currentTeamWeekStart : alloc.start);
               const endD = new Date(alloc.end > weekEnd ? weekEnd : alloc.end);
               
-              const hrS = diffDays(currentTeamWeekStart, startD) * 24 + startD.getHours() + startD.getMinutes() / 60;
-              const hrE = diffDays(currentTeamWeekStart, endD) * 24 + endD.getHours() + endD.getMinutes() / 60;
+              const sDay = diffDays(currentTeamWeekStart, startD);
+              const startCol = Math.max(0, Math.min(9, sDay * 2 + (startD.getHours() >= 12 ? 1 : 0)));
               
-              const startCol = Math.max(0, Math.min(9, Math.floor(hrS / 24) * 2 + (startD.getHours() >= 12 ? 1 : 0)));
-              const endCol = Math.max(1, Math.min(10, Math.ceil(hrE / 12)));
+              const eDay = diffDays(currentTeamWeekStart, endD);
+              const eHour = endD.getHours() + endD.getMinutes() / 60;
+              let calculatedEndCol: number;
+              if (eHour === 0 && eDay > 0) {
+                calculatedEndCol = eDay * 2;
+              } else if (eHour <= 13) {
+                calculatedEndCol = eDay * 2 + 1;
+              } else {
+                calculatedEndCol = eDay * 2 + 2;
+              }
+              const endCol = Math.max(startCol + 1, Math.min(10, calculatedEndCol));
               
               const isAlreadyAdded = a.scheduled.some((item: any) => !item.isAdHoc && item.allocation.id === alloc.id);
               if (!isAlreadyAdded) {
@@ -1738,11 +1829,20 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           const startD = new Date(t.start < currentTeamWeekStart ? currentTeamWeekStart : t.start);
           const endD = new Date(t.end > weekEnd ? weekEnd : t.end);
           
-          const hrS = diffDays(currentTeamWeekStart, startD) * 24 + startD.getHours() + startD.getMinutes() / 60;
-          const hrE = diffDays(currentTeamWeekStart, endD) * 24 + endD.getHours() + endD.getMinutes() / 60;
+          const sDay = diffDays(currentTeamWeekStart, startD);
+          const sc = Math.max(0, Math.min(9, sDay * 2 + (startD.getHours() >= 12 ? 1 : 0)));
           
-          const sc = Math.max(0, Math.min(9, Math.floor(hrS / 24) * 2 + (startD.getHours() >= 12 ? 1 : 0)));
-          const ec = Math.max(1, Math.min(10, Math.ceil(hrE / 12)));
+          const eDay = diffDays(currentTeamWeekStart, endD);
+          const eHour = endD.getHours() + endD.getMinutes() / 60;
+          let calculatedEndCol: number;
+          if (eHour === 0 && eDay > 0) {
+            calculatedEndCol = eDay * 2;
+          } else if (eHour <= 13) {
+            calculatedEndCol = eDay * 2 + 1;
+          } else {
+            calculatedEndCol = eDay * 2 + 2;
+          }
+          const ec = Math.max(sc + 1, Math.min(10, calculatedEndCol));
           
           const isAlreadyAdded = a.scheduled.some((item: any) => item.isAdHoc && item.task.id === t.id);
           if (!isAlreadyAdded) {
