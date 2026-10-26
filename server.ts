@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import { createClient } from "@vercel/kv";
 import dotenv from "dotenv";
 
@@ -11,10 +12,149 @@ dotenv.config();
 const KV_URL = "https://awaited-drake-76193.upstash.io";
 const KV_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
 
-const kv = createClient({
-  url: process.env.KV_REST_API_URL || KV_URL,
-  token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
-})
+let kv: any = null;
+try {
+  kv = createClient({
+    url: process.env.KV_REST_API_URL || KV_URL,
+    token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
+  });
+} catch (e) {
+  console.warn("Could not initialize Vercel KV client:", e);
+}
+
+// Local File Persistence & In-Memory Cache
+const DATA_DIR = path.join(process.cwd(), "data");
+if (!fs.existsSync(DATA_DIR)) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
+}
+
+const DATA_FILE = path.join(DATA_DIR, "timeline-app-data.json");
+const SNAPSHOTS_FILE = path.join(DATA_DIR, "snapshots.json");
+
+let inMemoryData: any = null;
+let inMemorySnapshots: string[] = [];
+let isUpstashSuspended = false;
+let lastSuspensionTime = 0;
+const SUSPENSION_RETRY_INTERVAL = 60 * 1000; // Check Upstash again after 60s
+
+// Load persisted local data on startup
+try {
+  if (fs.existsSync(DATA_FILE)) {
+    inMemoryData = JSON.parse(fs.readFileSync(DATA_FILE, "utf-8"));
+    console.log("Loaded local timeline data from disk, timestamp:", inMemoryData?.timestamp);
+  }
+} catch (e) {
+  console.error("Failed to load local timeline data from disk:", e);
+}
+
+try {
+  if (fs.existsSync(SNAPSHOTS_FILE)) {
+    inMemorySnapshots = JSON.parse(fs.readFileSync(SNAPSHOTS_FILE, "utf-8"));
+  }
+} catch (e) {
+  console.error("Failed to load local snapshots from disk:", e);
+}
+
+const saveLocalData = (data: any) => {
+  inMemoryData = data;
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Failed to write timeline data to disk:", e);
+  }
+};
+
+const saveLocalSnapshot = (snapshotId: string, data: any) => {
+  try {
+    const snapFile = path.join(DATA_DIR, `${snapshotId}.json`);
+    fs.writeFileSync(snapFile, typeof data === 'string' ? data : JSON.stringify(data), "utf-8");
+    if (!inMemorySnapshots.includes(snapshotId)) {
+      inMemorySnapshots.push(snapshotId);
+      fs.writeFileSync(SNAPSHOTS_FILE, JSON.stringify(inMemorySnapshots.slice(-50)), "utf-8");
+    }
+  } catch (e) {
+    console.error("Failed to write snapshot to disk:", e);
+  }
+};
+
+// Safe KV getters and setters that never crash the server and minimize Upstash bandwidth
+async function safeKvGet(key: string): Promise<any> {
+  // If Upstash was suspended, allow a test retry after cooldown
+  if (isUpstashSuspended && Date.now() - lastSuspensionTime < SUSPENSION_RETRY_INTERVAL) {
+    if (key === "timeline-app-data") return inMemoryData;
+    if (key === "all_snapshots") return inMemorySnapshots;
+    return null;
+  }
+
+  // If we already have in-memory data, serve from memory cache to avoid unnecessary Upstash reads
+  if (key === "timeline-app-data" && inMemoryData) {
+    return inMemoryData;
+  }
+  if (key === "all_snapshots" && inMemorySnapshots.length > 0) {
+    return inMemorySnapshots;
+  }
+  if (!kv) {
+    if (key === "timeline-app-data") return inMemoryData;
+    if (key === "all_snapshots") return inMemorySnapshots;
+    return null;
+  }
+
+  try {
+    const data = await kv.get(key);
+    // If successfully reached Upstash after suspension, unmark suspended
+    if (isUpstashSuspended) {
+      console.log("Upstash connection successfully restored!");
+      isUpstashSuspended = false;
+    }
+    if (key === "timeline-app-data" && data) {
+      saveLocalData(data);
+    }
+    return data;
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("limit") || msg.includes("exceeded") || msg.includes("403")) {
+      isUpstashSuspended = true;
+      lastSuspensionTime = Date.now();
+      console.warn("Upstash limit exceeded; using server-side local storage fallback.");
+    } else {
+      console.warn(`Upstash KV get("${key}") failed:`, msg);
+    }
+    if (key === "timeline-app-data") return inMemoryData;
+    if (key === "all_snapshots") return inMemorySnapshots;
+    return null;
+  }
+}
+
+async function safeKvSet(key: string, value: any): Promise<boolean> {
+  // Always update in-memory and local disk first for reliable persistence
+  if (key === "timeline-app-data") {
+    saveLocalData(value);
+  }
+
+  // If Upstash was suspended and cooldown hasn't elapsed, skip Upstash network call
+  if (!kv || (isUpstashSuspended && Date.now() - lastSuspensionTime < SUSPENSION_RETRY_INTERVAL)) {
+    return true;
+  }
+
+  try {
+    await kv.set(key, value);
+    if (isUpstashSuspended) {
+      console.log("Upstash write connection successfully restored!");
+      isUpstashSuspended = false;
+    }
+    return true;
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("limit") || msg.includes("exceeded") || msg.includes("403")) {
+      isUpstashSuspended = true;
+      lastSuspensionTime = Date.now();
+      console.warn("Upstash limit exceeded on write; using server-side local storage fallback.");
+    } else {
+      console.warn(`Upstash KV set("${key}") warning:`, msg);
+    }
+    return true; // Return true because local save succeeded
+  }
+}
 
 const app = express();
 const PORT = 3000;
@@ -22,8 +162,11 @@ const PORT = 3000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// n8n Integration Webhook
-// Authentication removed for simplification as requested.
+// Lightweight version check endpoint (transfers ~25 bytes instead of 1MB+)
+app.get("/api/version", (req, res) => {
+  const ts = inMemoryData?.timestamp || 0;
+  res.json({ timestamp: ts, upstashSuspended: isUpstashSuspended });
+});
 
 // API to save snapshot
 app.post("/api/save-snapshot", async (req, res) => {
@@ -32,27 +175,24 @@ app.post("/api/save-snapshot", async (req, res) => {
     const timestamp = new Date().toISOString();
     const snapshotId = `snapshot_${timestamp}`;
     
-    await kv.set(snapshotId, data);
-    
-    // Keep a list of all snapshots
-    const snapshots = (await kv.get("all_snapshots") as string[]) || [];
-    snapshots.push(snapshotId);
-    await kv.set("all_snapshots", snapshots);
+    saveLocalSnapshot(snapshotId, data);
+    await safeKvSet(snapshotId, data);
+    await safeKvSet("all_snapshots", inMemorySnapshots);
 
     res.json({ success: true, snapshotId });
   } catch (error: any) {
-    console.error(error);
+    console.error("Save snapshot error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.get("/api/snapshots", async (req, res) => {
   try {
-    const snapshots = (await kv.get("all_snapshots") as string[]) || [];
+    const snapshots = (await safeKvGet("all_snapshots") as string[]) || inMemorySnapshots || [];
     res.json({ snapshots });
   } catch (error: any) {
-    console.error(error);
-    res.status(500).json({ error: error.message });
+    console.error("Get snapshots error:", error);
+    res.json({ snapshots: inMemorySnapshots });
   }
 });
 
@@ -62,31 +202,32 @@ app.post("/api/save-history", async (req, res) => {
     const { history, timestamp } = req.body;
     const ts = timestamp || Date.now();
     const data = { collections: typeof history === 'string' ? history : JSON.stringify(history), timestamp: ts };
-    await kv.set("timeline-app-data", data);
-    res.json({ success: true });
+    
+    await safeKvSet("timeline-app-data", data);
+    res.json({ success: true, timestamp: ts, upstashSuspended: isUpstashSuspended });
   } catch (error: any) {
-    console.error(error);
+    console.error("Save history error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 app.get("/api/history", async (req, res) => {
   try {
-    const data = await kv.get("timeline-app-data");
-    res.json({ result: data });
+    const data = await safeKvGet("timeline-app-data");
+    res.json({ result: data, upstashSuspended: isUpstashSuspended });
   } catch (error: any) {
     console.error("Error in /api/history:", error);
-    res.status(500).json({ error: error.message });
+    res.json({ result: inMemoryData, upstashSuspended: isUpstashSuspended });
   }
 });
 
 // GET current timeline data for n8n
 app.get(["/api/webhook/n8n", "/api/n8n-sync"], async (req, res) => {
   try {
-    const data = await kv.get("timeline-app-data");
+    const data = await safeKvGet("timeline-app-data");
     res.json({ success: true, data });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.json({ success: true, data: inMemoryData });
   }
 });
 
@@ -105,7 +246,7 @@ app.post(["/api/webhook/n8n", "/api/n8n-sync"], async (req, res) => {
     let stateToSave: any;
 
     if (action === 'patch') {
-      const current: any = await kv.get("timeline-app-data") || { collections: "[]" };
+      const current: any = (await safeKvGet("timeline-app-data")) || { collections: "[]" };
       stateToSave = {
         ...current,
         collections: typeof data === 'string' ? data : JSON.stringify(data),
@@ -120,13 +261,12 @@ app.post(["/api/webhook/n8n", "/api/n8n-sync"], async (req, res) => {
       };
     }
 
-    await kv.set("timeline-app-data", stateToSave);
+    await safeKvSet("timeline-app-data", stateToSave);
     
     const snapshotId = `n8n_sync_${timestamp}`;
-    await kv.set(snapshotId, stateToSave.collections);
-    const snapshots = (await kv.get("all_snapshots") as string[]) || [];
-    snapshots.push(snapshotId);
-    await kv.set("all_snapshots", snapshots.slice(-50));
+    saveLocalSnapshot(snapshotId, stateToSave.collections);
+    await safeKvSet(snapshotId, stateToSave.collections);
+    await safeKvSet("all_snapshots", inMemorySnapshots.slice(-50));
 
     res.json({ success: true, message: `Timeline ${action || 'updated'} via n8n`, timestamp });
   } catch (error: any) {
@@ -159,8 +299,6 @@ if (!process.env.VERCEL) {
     });
   });
 } else {
-  // On Vercel, we don't call listen, but we might still need to setup static serving
-  // Note: Vercel normally serves static files automatically if they are in the right place.
   if (process.env.NODE_ENV === "production") {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));

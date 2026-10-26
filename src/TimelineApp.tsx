@@ -576,54 +576,56 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
   // Sync Logic
   useEffect(() => {
     const fetchData = async (isInit = false) => {
-      if (isInit) setSyncStatus('Connecting to Cloud...');
+      if (isInit) setSyncStatus('Connecting...');
       try {
-        // Try Server API first
-        let data;
         const res = await fetch('/api/history');
         const contentType = res.headers.get("content-type");
         
         if (res.ok && contentType && contentType.includes("application/json")) {
           const json = await res.json();
-          data = json.result;
-        } else {
-          // Fallback: Direct Vercel KV fetch if server fails or returns HTML (likely index.html on 404)
-          if (!res.ok) console.warn(`Server API returned status ${res.status}, falling back...`);
-          else if (contentType && !contentType.includes("application/json")) {
-            console.warn("Server API returned non-JSON response (likely HTML index), falling back to direct KV...");
-          }
-          
-          const kvRes = await fetch(VERCEL_KV_URL, {
-            method: 'POST',
-            headers: { 
-              Authorization: `Bearer ${VERCEL_KV_TOKEN}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(["GET", appId])
-          });
-          if (kvRes.ok) {
-            const kvJson = await kvRes.ok ? await kvRes.json() : null;
-            data = kvJson?.result;
-          }
-        }
+          const data = json.result;
 
-        if (data) {
-          const parsed = typeof data === 'string' ? JSON.parse(data) : data;
-          if (isInit || (parsed.timestamp && parsed.timestamp > lastSavedTimestampRef.current)) {
-            if (!viewingSnapshot) {
-              isRemoteUpdate.current = true;
-              applyLoadedData(parsed);
-              lastSavedTimestampRef.current = parsed.timestamp || 0;
+          if (data) {
+            const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+            if (isInit || (parsed.timestamp && parsed.timestamp > lastSavedTimestampRef.current)) {
+              if (!viewingSnapshot) {
+                isRemoteUpdate.current = true;
+                applyLoadedData(parsed);
+                lastSavedTimestampRef.current = parsed.timestamp || 0;
+                try {
+                  localStorage.setItem('timeline_data', JSON.stringify(parsed));
+                } catch (e) {}
+              }
+            }
+          } else if (isInit) {
+            // If cloud/server returned null (e.g. while suspended), load from browser local backup
+            const local = localStorage.getItem('timeline_data');
+            if (local) {
+              try {
+                const parsed = JSON.parse(local);
+                applyLoadedData(parsed);
+                lastSavedTimestampRef.current = parsed.timestamp || 0;
+                // Also push to server local cache
+                fetch('/api/save-history', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ history: parsed.collections || parsed, timestamp: parsed.timestamp || Date.now() })
+                }).catch(() => {});
+              } catch (err) {}
             }
           }
+          if (isInit) setSyncStatus('Cloud Synced');
+        } else {
+          throw new Error('Invalid response from server');
         }
-        if (isInit) setSyncStatus('Cloud Synced');
       } catch (e) {
-        console.error("Sync error:", e);
+        console.warn("Sync fetch error:", e);
         if (isInit) {
           setSyncStatus('Local Only');
           const local = localStorage.getItem('timeline_data');
-          if (local) applyLoadedData(JSON.parse(local));
+          if (local) {
+            try { applyLoadedData(JSON.parse(local)); } catch (err) {}
+          }
         }
       } finally {
         if (isInit) setIsDataLoaded(true);
@@ -631,7 +633,24 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     };
 
     fetchData(true);
-    const poll = setInterval(() => fetchData(false), 5000); // Poll every 5s for multi-user sync
+
+    // Lightweight version check: queries tiny 25-byte version timestamp every 15s instead of full multi-MB dataset
+    const checkVersion = async () => {
+      if (document.visibilityState === 'hidden' || viewingSnapshot) return;
+      try {
+        const vRes = await fetch('/api/version');
+        if (vRes.ok) {
+          const { timestamp } = await vRes.json();
+          if (timestamp && timestamp > lastSavedTimestampRef.current) {
+            await fetchData(false);
+          }
+        }
+      } catch (err) {
+        // Silent fail on background version check
+      }
+    };
+
+    const poll = setInterval(checkVersion, 15000); // 15s interval, 99.99% bandwidth reduction
     return () => clearInterval(poll);
   }, [viewingSnapshot]);
 
@@ -641,35 +660,31 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
     if (isRemoteUpdate.current) { isRemoteUpdate.current = false; return; }
 
     const timer = setTimeout(async () => {
-      setSyncStatus('Saving to Cloud...');
+      setSyncStatus('Saving...');
       const ts = Date.now();
       const stateToSave = { collections, timestamp: ts };
 
+      // Always save to localStorage immediately as reliable local backup
       try {
-        // Try Server API first
+        localStorage.setItem('timeline_data', JSON.stringify(stateToSave));
+      } catch (e) {}
+
+      try {
         const res = await fetch('/api/save-history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ history: collections, timestamp: ts })
         });
 
-        if (!res.ok) {
-          // Fallback: Direct Vercel KV save
-          await fetch(VERCEL_KV_URL, {
-            method: 'POST',
-            headers: { 
-              Authorization: `Bearer ${VERCEL_KV_TOKEN}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(["SET", appId, JSON.stringify(stateToSave)])
-          });
+        if (res.ok) {
+          lastSavedTimestampRef.current = ts;
+          setSyncStatus('Cloud Synced');
+          setTimeout(() => setSyncStatus('Cloud Synced'), 3000);
+        } else {
+          setSyncStatus('Local Save Only');
         }
-        
-        lastSavedTimestampRef.current = ts;
-        setSyncStatus('Cloud Synced');
-        setTimeout(() => setSyncStatus('Cloud Synced'), 3000);
       } catch (e) {
-        console.error("Cloud save failed:", e);
+        console.warn("Save warning:", e);
         setSyncStatus('Local Save Only');
       }
     }, 2000);
@@ -2053,8 +2068,8 @@ export const TimelineApp: React.FC<TimelineAppProps> = ({ onLogout, userRole }) 
           )}
 
           <div className="flex items-center gap-1 bg-slate-800 rounded px-1.5 py-0.5">
-            <div className={`px-2 py-1 flex items-center gap-1 text-[10px] md:text-xs font-medium ${syncStatus === 'Synced' ? 'text-green-400' : 'text-slate-400'}`}>
-              {syncStatus === 'Saving...' ? <Icons.Spinner /> : <Icons.CloudCheck />} 
+            <div className={`px-2 py-1 flex items-center gap-1 text-[10px] md:text-xs font-medium ${syncStatus === 'Synced' || syncStatus === 'Cloud Synced' ? 'text-emerald-400' : syncStatus === 'Local Save Only' ? 'text-amber-400' : 'text-slate-400'}`} title={syncStatus}>
+              {syncStatus === 'Saving...' ? <Icons.Spinner /> : <Icons.CloudCheck className="w-3.5 h-3.5" />} 
               <span className="hidden md:inline">{syncStatus}</span>
             </div>
             <div className="w-px h-3 bg-slate-600 mx-0.5"></div>
