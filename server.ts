@@ -15,8 +15,8 @@ const KV_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMX
 let kv: any = null;
 try {
   kv = createClient({
-    url: process.env.KV_REST_API_URL || KV_URL,
-    token: process.env.KV_REST_API_TOKEN || KV_TOKEN,
+    url: process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.KV_URL || KV_URL,
+    token: process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || KV_TOKEN,
   });
 } catch (e) {
   console.warn("Could not initialize Vercel KV client:", e);
