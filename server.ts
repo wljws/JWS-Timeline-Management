@@ -1,6 +1,5 @@
 import express from "express";
 import cors from "cors";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { createClient } from "@vercel/kv";
@@ -10,7 +9,7 @@ dotenv.config();
 
 // Ensure credentials exist for the KV client
 const KV_URL = "https://awaited-drake-76193.upstash.io";
-const KV_TOKEN = "gQAAAAAAASmhAAIncDFiOGQ3N2EyNWRmNzM0NzdlOGM4MDVhZWMyY2NiZTJiMXAxNzYxOTM";
+const KV_TOKEN = "gQAAAAAAASmhAAIgcDEzMTMyNGNlMThjZmY0NTUwOTAzMTgxYzg0MjBiMDY3ZQ";
 
 let kv: any = null;
 try {
@@ -277,7 +276,8 @@ app.post(["/api/webhook/n8n", "/api/n8n-sync"], async (req, res) => {
 
 async function setupVite() {
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
+    const { createServer } = await import("vite");
+    const vite = await createServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
